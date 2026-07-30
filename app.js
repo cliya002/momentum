@@ -17,6 +17,7 @@
     todayFilter: "ht_today_filter",
     remindersEnabled: "ht_reminders_enabled",
     compact: "ht_compact",
+    showDetails: "ht_show_details",
     hintSeen: "ht_hint_seen",
     units: "ht_units",
     deviceName: "ht_device_name",
@@ -1896,6 +1897,7 @@
       deletePhotosBtn: $("#deletePhotosBtn"),
       themeSelect: $("#themeSelect"),
       compactToggle: $("#compactToggle"),
+      showDetailsToggle: $("#showDetailsToggle"),
       remindersToggle: $("#remindersToggle"),
       exportBtn: $("#exportBtn"),
       importBtn: $("#importBtn"),
@@ -2310,9 +2312,10 @@
     }
     info.appendChild(meta);
 
-    // Expandable detail panel (hidden until the row is tapped)
+    // Expandable detail panel (hidden until the row is tapped, unless "Show details" is on)
+    const showDetails = localStorage.getItem(KEYS.showDetails) === "true";
     const detail = document.createElement("div");
-    detail.className = "habit-detail hidden";
+    detail.className = "habit-detail" + (showDetails ? "" : " hidden");
     const chips = document.createElement("div");
     chips.className = "detail-chips";
     const catBadge = document.createElement("span");
@@ -4489,6 +4492,7 @@
     els.themeSelect.value = localStorage.getItem(KEYS.theme) || "auto";
     els.remindersToggle.checked = remindersEnabled() && ("Notification" in window) && Notification.permission === "granted";
     els.compactToggle.checked = localStorage.getItem(KEYS.compact) === "true";
+    els.showDetailsToggle.checked = localStorage.getItem(KEYS.showDetails) === "true";
     els.unitsSelect.value = localStorage.getItem(KEYS.units) === "metric" ? "metric" : "imperial";
     els.deviceNameInput.value = localStorage.getItem(KEYS.deviceName) || "";
     els.reminderDefault.value = localStorage.getItem(KEYS.reminderDefault) || "";
@@ -4836,6 +4840,10 @@
       const on = els.compactToggle.checked;
       localStorage.setItem(KEYS.compact, on ? "true" : "false");
       document.body.classList.toggle("compact", on);
+    });
+    els.showDetailsToggle.addEventListener("change", () => {
+      localStorage.setItem(KEYS.showDetails, els.showDetailsToggle.checked ? "true" : "false");
+      renderToday();
     });
 
     // Habits
