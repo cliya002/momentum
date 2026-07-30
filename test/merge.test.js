@@ -128,5 +128,17 @@ console.log("Scenario 8: categories merge by newest categoriesUpdatedAt");
   assert(m.categories.length === 3 && m.categories.includes("Nutrition"), "newer category list wins");
 }
 
+// ---------------------------------------------------------------
+console.log("Scenario 9: devices merge — union by id, newest lastSync wins");
+{
+  const A = defaultState(); const B = defaultState();
+  A.devices = { phone: { name: "iPhone", lastSync: 3000 }, laptop: { name: "Laptop", lastSync: 1000 } };
+  B.devices = { phone: { name: "iPhone", lastSync: 9000 }, tablet: { name: "iPad", lastSync: 2000 } };
+  const m = mergeStates(A, B);
+  assert(Object.keys(m.devices).length === 3, "all three devices present");
+  assert(m.devices.phone.lastSync === 9000, "newer phone lastSync wins");
+  assert(!!m.devices.laptop && !!m.devices.tablet, "unique devices from both sides kept");
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

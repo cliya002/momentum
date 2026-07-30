@@ -326,6 +326,7 @@
       categories: [...DEFAULT_CATEGORIES],
       categoriesUpdatedAt: 0,
       workSchedule: { days: {}, notes: "", updatedAt: 0 },
+      devices: {},
       deletions: { habits: {} },
     };
   }
@@ -549,6 +550,15 @@
       st.workSchedule.notes = (ws.notes || "").slice(0, 500);
       st.workSchedule.updatedAt = Number(ws.updatedAt) || 0;
     }
+    // Synced devices
+    st.devices = {};
+    if (s.devices && typeof s.devices === "object") {
+      for (const [id, d] of Object.entries(s.devices)) {
+        if (d && typeof d === "object") {
+          st.devices[id] = { name: String(d.name || "Device").slice(0, 40), lastSync: Number(d.lastSync) || 0 };
+        }
+      }
+    }
     // Custom metric definitions
     st.customMetrics = [];
     if (Array.isArray(s.customMetrics)) {
@@ -742,6 +752,16 @@
     const lws = local.workSchedule, rws = remote.workSchedule;
     if (lws && rws) merged.workSchedule = (Number(rws.updatedAt) || 0) > (Number(lws.updatedAt) || 0) ? rws : lws;
     else merged.workSchedule = lws || rws || { days: {}, notes: "", updatedAt: 0 };
+
+    // Devices: union by id, newest lastSync wins
+    merged.devices = {};
+    for (const src of [local.devices || {}, remote.devices || {}]) {
+      for (const [id, d] of Object.entries(src)) {
+        if (!merged.devices[id] || (Number(d.lastSync) || 0) > (Number(merged.devices[id].lastSync) || 0)) {
+          merged.devices[id] = d;
+        }
+      }
+    }
 
     // Custom metrics: union by id
     const cmMap = new Map();
@@ -1141,6 +1161,8 @@
         }
       }
 
+      stampThisDevice(); // record this device's presence in the uploaded data
+      persistRaw();
       const stateJson = JSON.stringify(state);
       const blobHash = quickHash(stateJson);
       if (lastSyncedHash === blobHash && !dirtyForSync) {
@@ -1199,6 +1221,7 @@
       dirtyForSync = false;
       updateSyncIndicator("synced");
       renderSyncStateLine();
+      renderDeviceList();
       const kb = (payload.length / 1024).toFixed(1);
       showSyncStatus(`✓ Pushed ${kb} KB · ${new Date().toLocaleTimeString()}`, "success");
     } catch (e) {
@@ -1248,12 +1271,14 @@
       if (!remoteState) throw new Error("Couldn't read remote state");
 
       state = mergeStates(state, remoteState);
+      stampThisDevice();
       persistRaw();
 
       lastSyncedAt = Date.now();
       localStorage.setItem(KEYS.lastSynced, String(lastSyncedAt));
       updateSyncIndicator("synced");
       renderSyncStateLine();
+      renderDeviceList();
       populateCategorySelects();
       showSyncStatus(`✓ Pulled and merged · ${new Date().toLocaleTimeString()}`, "success");
       switchView(currentView);
@@ -4378,11 +4403,59 @@
     if (note) note.hidden = !isIOS;
     renderSyncStateLine();
     renderDataSummary();
+    renderDeviceList();
     renderCategoryManager();
+  }
+
+  function renderDeviceList() {
+    const wrap = document.getElementById("deviceList");
+    if (!wrap) return;
+    wrap.innerHTML = "";
+    const devices = state.devices || {};
+    const entries = Object.entries(devices).sort((a, b) => (b[1].lastSync || 0) - (a[1].lastSync || 0));
+    const myId = getDeviceId();
+    if (entries.length === 0) {
+      wrap.innerHTML = '<p class="empty-inline">No devices yet. Push once to register this device.</p>';
+      return;
+    }
+    for (const [id, d] of entries) {
+      const row = document.createElement("div");
+      row.className = "device-row";
+      const isMe = id === myId;
+      row.innerHTML =
+        `<span class="dv-icon">${isMe ? "📱" : "🖥️"}</span>` +
+        `<div class="dv-info"><div class="dv-name">${escapeHtml(d.name || "Device")}` +
+        `${isMe ? '<span class="dv-you">THIS DEVICE</span>' : ""}</div>` +
+        `<div class="dv-when">Last synced ${timeAgo(d.lastSync)}</div></div>`;
+      if (!isMe) {
+        const rm = document.createElement("button");
+        rm.className = "dv-remove";
+        rm.textContent = "✕";
+        rm.title = "Remove this device from the list";
+        rm.addEventListener("click", () => {
+          if (!confirm(`Remove "${d.name}" from the device list? It'll reappear if that device syncs again.`)) return;
+          delete state.devices[id];
+          save();
+          renderDeviceList();
+        });
+        row.appendChild(rm);
+      }
+      wrap.appendChild(row);
+    }
   }
 
   function getDeviceName() {
     return localStorage.getItem(KEYS.deviceName) || "This device";
+  }
+  function getDeviceId() {
+    let id = localStorage.getItem("ht_device_id");
+    if (!id) { id = uid(); localStorage.setItem("ht_device_id", id); }
+    return id;
+  }
+  // Record this device's presence in the synced state.
+  function stampThisDevice() {
+    if (!state.devices) state.devices = {};
+    state.devices[getDeviceId()] = { name: getDeviceName(), lastSync: Date.now() };
   }
 
   function timeAgo(ts) {

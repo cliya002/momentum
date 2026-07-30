@@ -1452,6 +1452,22 @@ body.compact .habit-list { gap: 0.35rem; }
 .conflict-ok { color: var(--success); font-size: 0.85rem; padding: 0.5rem 0; }
 
 /* Category manager */
+.device-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.device-row {
+  display: flex; align-items: center; gap: 0.6rem;
+  background: var(--card-soft); border-radius: var(--radius-sm); padding: 0.6rem 0.75rem;
+}
+.device-row .dv-icon { font-size: 1.2rem; flex-shrink: 0; }
+.device-row .dv-info { flex: 1; min-width: 0; }
+.device-row .dv-name { font-weight: 600; font-size: 0.9rem; }
+.device-row .dv-name .dv-you { font-size: 0.68rem; color: var(--primary); font-weight: 700; margin-left: 0.35rem; }
+.device-row .dv-when { font-size: 0.75rem; color: var(--text-dim); margin-top: 1px; }
+.device-row .dv-remove {
+  background: transparent; border: none; color: var(--text-dim);
+  font-size: 1.1rem; padding: 0 0.35rem; flex-shrink: 0;
+}
+.device-row .dv-remove:hover { color: var(--danger); }
+
 .category-manager { display: flex; flex-direction: column; gap: 0.5rem; }
 .category-row {
   display: flex;
