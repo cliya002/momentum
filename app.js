@@ -3121,6 +3121,21 @@
     return when.getTime() - now.getTime();
   }
 
+  // The clock time a habit's reminder should fire at on the given day. If the
+  // habit has a per-day time override (e.g. the Work Schedule auto-fit moved it
+  // around a shift) and that override parses to a clock time, the reminder
+  // follows it; otherwise it uses the habit's fixed reminder time.
+  function effectiveReminderTime(habit, date) {
+    const dayIdx = date.getDay();
+    if (habit.dayTimes && habit.dayTimes[dayIdx]) {
+      const mins = parseTimeToMinutes(effectiveTime(habit, dayIdx));
+      if (Number.isFinite(mins)) {
+        return `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
+      }
+    }
+    return /^\d{2}:\d{2}$/.test(habit.reminderTime) ? habit.reminderTime : null;
+  }
+
   function scheduleReminders() {
     clearReminderTimers();
     if (!("Notification" in window) || Notification.permission !== "granted") return;
@@ -3128,14 +3143,19 @@
     const now = new Date();
 
     // ---- Group per-habit reminders by time slot ----
+    // The reminder tracks the habit's effective time for today, so anything the
+    // Work Schedule auto-fit moved (a per-day override) is reminded at its
+    // adjusted time rather than the original fixed reminder time.
     const groups = new Map(); // "HH:MM" -> [habitId]
     for (const h of state.habits) {
       if (!h.reminderTime || !/^\d{2}:\d{2}$/.test(h.reminderTime)) continue;
       if (!isHabitActiveOn(h, now)) continue;
-      const [hh, mm] = h.reminderTime.split(":").map(Number);
+      const rt = effectiveReminderTime(h, now);
+      if (!rt) continue;
+      const [hh, mm] = rt.split(":").map(Number);
       if (inQuietHours(hh, mm)) continue;
-      if (!groups.has(h.reminderTime)) groups.set(h.reminderTime, []);
-      groups.get(h.reminderTime).push(h.id);
+      if (!groups.has(rt)) groups.set(rt, []);
+      groups.get(rt).push(h.id);
     }
     for (const [time, ids] of groups) {
       const [hh, mm] = time.split(":").map(Number);
