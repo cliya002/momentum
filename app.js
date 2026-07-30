@@ -1892,6 +1892,13 @@
       habitsGroups: $("#habitsGroups"),
       habitsEmpty: $("#habitsEmpty"),
       habitSearch: $("#habitSearch"),
+      bulkToggleBtn: $("#bulkToggleBtn"),
+      bulkBar: $("#bulkBar"),
+      bulkCount: $("#bulkCount"),
+      bulkCategory: $("#bulkCategory"),
+      bulkMoveBtn: $("#bulkMoveBtn"),
+      bulkDeleteBtn: $("#bulkDeleteBtn"),
+      bulkDoneBtn: $("#bulkDoneBtn"),
       addBtn: $("#addBtn"),
       deleteAllBtn: $("#deleteAllBtn"),
       // habit modal
@@ -1926,6 +1933,7 @@
       statCompleted: $("#statCompleted"),
       statStreak: $("#statStreak"),
       dayAdherence: $("#dayAdherence"),
+      reportHeatmap: $("#reportHeatmap"),
       weeklyBreakdown: $("#weeklyBreakdown"),
       reportCategoryFilter: $("#reportCategoryFilter"),
       reportMenuBtn: $("#reportMenuBtn"),
@@ -3930,16 +3938,68 @@
 
   /* ---- Habits management ---- */
   let habitSearchTerm = "";
+  let bulkMode = false;
+  const bulkSelected = new Set();
+
+  function toggleBulkSelect(id) {
+    if (bulkSelected.has(id)) bulkSelected.delete(id);
+    else bulkSelected.add(id);
+    renderHabits();
+  }
+  function updateBulkBar() {
+    const els = getEls();
+    if (!els.bulkBar) return;
+    els.bulkBar.classList.toggle("hidden", !bulkMode);
+    els.bulkToggleBtn.textContent = bulkMode ? "Cancel" : "Select";
+    if (bulkMode) {
+      els.bulkCount.textContent = `${bulkSelected.size} selected`;
+      els.bulkMoveBtn.disabled = bulkSelected.size === 0;
+      els.bulkDeleteBtn.disabled = bulkSelected.size === 0;
+    }
+  }
+  function setBulkMode(on) {
+    bulkMode = on;
+    bulkSelected.clear();
+    if (on) {
+      const els = getEls();
+      els.bulkCategory.innerHTML = getCategories().map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
+    }
+    renderHabits();
+  }
+  function bulkMoveSelected() {
+    const els = getEls();
+    const cat = els.bulkCategory.value;
+    if (!cat || bulkSelected.size === 0) return;
+    const ts = Date.now();
+    for (const h of state.habits) if (bulkSelected.has(h.id)) { h.category = cat; h.updatedAt = ts; }
+    save();
+    showToast(`Moved ${bulkSelected.size} to ${cat}.`, "success");
+    setBulkMode(false);
+  }
+  function bulkDeleteSelected() {
+    if (bulkSelected.size === 0) return;
+    if (!confirm(`Delete ${bulkSelected.size} habit${bulkSelected.size === 1 ? "" : "s"} and their check-ins?`)) return;
+    const ts = Date.now();
+    for (const id of bulkSelected) { state.deletions.habits[id] = ts; }
+    state.habits = state.habits.filter((h) => !bulkSelected.has(h.id));
+    save();
+    showToast("Deleted.", "success");
+    setBulkMode(false);
+  }
+
   function renderHabits() {
     const els = getEls();
     els.habitsGroups.innerHTML = "";
+    updateBulkBar();
     if (state.habits.length === 0) {
       els.habitsEmpty.classList.remove("hidden");
       els.deleteAllBtn.classList.add("hidden");
+      els.bulkToggleBtn.classList.add("hidden");
       return;
     }
     els.habitsEmpty.classList.add("hidden");
     els.deleteAllBtn.classList.remove("hidden");
+    els.bulkToggleBtn.classList.remove("hidden");
 
     const term = (habitSearchTerm || "").trim().toLowerCase();
     const visible = term
@@ -3973,7 +4033,19 @@
         const li = document.createElement("li");
         li.className = "habit-item";
         li.style.cursor = "pointer";
-        li.addEventListener("click", () => openHabitModal(habit));
+        if (bulkMode) {
+          li.classList.add("selectable");
+          if (bulkSelected.has(habit.id)) li.classList.add("selected");
+          const cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.className = "bulk-check";
+          cb.checked = bulkSelected.has(habit.id);
+          cb.setAttribute("aria-label", `Select ${habit.name}`);
+          li.appendChild(cb);
+          li.addEventListener("click", () => toggleBulkSelect(habit.id));
+        } else {
+          li.addEventListener("click", () => openHabitModal(habit));
+        }
 
         const icon = document.createElement("div");
         icon.className = "habit-icon";
@@ -4018,8 +4090,10 @@
 
         li.appendChild(icon);
         li.appendChild(info);
-        li.appendChild(chev);
-        li.appendChild(del);
+        if (!bulkMode) {
+          li.appendChild(chev);
+          li.appendChild(del);
+        }
         ul.appendChild(li);
       }
       wrap.appendChild(ul);
@@ -4237,6 +4311,8 @@
 
     // Insight summary
     renderReportInsight(rows, pct, dayTotals, weekStart);
+    // 5-week heatmap
+    renderReportHeatmap(habitsInScope);
     // Category breakdown
     renderCategoryBreakdown(catTotals);
 
@@ -4319,6 +4395,37 @@
       wrap.appendChild(header);
       wrap.appendChild(cells);
       els.weeklyBreakdown.appendChild(wrap);
+    }
+  }
+
+  function renderReportHeatmap(habits) {
+    const el = getEls().reportHeatmap;
+    if (!el) return;
+    el.innerHTML = "";
+    const now = new Date();
+    // 5 weeks ending with the current week; align columns to Monday.
+    const start = addDays(startOfWeekMonday(now), -28);
+    for (let i = 0; i < 35; i++) {
+      const d = addDays(start, i);
+      const cell = document.createElement("div");
+      cell.className = "hm-cell";
+      const future = d > now && !sameDay(d, now);
+      if (future) {
+        cell.classList.add("hm-future");
+      } else {
+        let s = 0, done = 0;
+        for (const h of habits) { if (isHabitActiveOn(h, d)) { s++; if (isCompleted(h, d)) done++; } }
+        let bucket = "hm-0";
+        if (s === 0) bucket = "hm-none";
+        else {
+          const p = done / s;
+          bucket = p >= 1 ? "hm-4" : p >= 0.66 ? "hm-3" : p >= 0.33 ? "hm-2" : p > 0 ? "hm-1" : "hm-0";
+        }
+        cell.classList.add(bucket);
+        const label = d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+        cell.title = s === 0 ? `${label}: nothing scheduled` : `${label}: ${done}/${s} done`;
+      }
+      el.appendChild(cell);
     }
   }
 
@@ -5080,6 +5187,20 @@
     setMini($("#pEnergyMeta"), all.filter((e) => e.energy != null).map((e) => e.energy), (x) => x, "", false);
   }
 
+  // Pearson correlation coefficient, or null if undefined.
+  function pearson(xs, ys) {
+    const n = Math.min(xs.length, ys.length);
+    if (n < 2) return null;
+    let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
+    for (let i = 0; i < n; i++) {
+      const x = xs[i], y = ys[i];
+      sx += x; sy += y; sxx += x * x; syy += y * y; sxy += x * y;
+    }
+    const num = n * sxy - sx * sy;
+    const den = Math.sqrt((n * sxx - sx * sx) * (n * syy - sy * sy));
+    return den === 0 ? null : num / den;
+  }
+
   /* ---- Insight line ---- */
   function renderInsight() {
     const card = $("#insightCard");
@@ -5103,6 +5224,16 @@
     if (energyList.length >= 2) {
       const d = energyList[energyList.length - 1].energy - energyList[0].energy;
       if (Math.abs(d) >= 1) parts.push(`Energy ${d > 0 ? "up" : "down"} ${Math.abs(d)} pt${Math.abs(d) === 1 ? "" : "s"}.`);
+    }
+    // Correlation between weight and energy (needs 4+ weeks with both).
+    const paired = measurementList().filter((e) => e.weight != null && e.energy != null);
+    if (paired.length >= 4) {
+      const r = pearson(paired.map((e) => e.weight), paired.map((e) => e.energy));
+      if (r != null && Math.abs(r) >= 0.5) {
+        parts.push(r < 0
+          ? "Your energy tends to be higher on lower-weight weeks."
+          : "Your energy tends to rise along with your weight.");
+      }
     }
     if (parts.length === 0) { card.hidden = true; return; }
     card.hidden = false;
@@ -5914,6 +6045,10 @@
 
     // Habits
     els.habitSearch.addEventListener("input", () => { habitSearchTerm = els.habitSearch.value; renderHabits(); });
+    els.bulkToggleBtn.addEventListener("click", () => setBulkMode(!bulkMode));
+    els.bulkMoveBtn.addEventListener("click", bulkMoveSelected);
+    els.bulkDeleteBtn.addEventListener("click", bulkDeleteSelected);
+    els.bulkDoneBtn.addEventListener("click", () => setBulkMode(false));
     els.addBtn.addEventListener("click", () => openHabitModal(null));
     els.deleteAllBtn.addEventListener("click", deleteAllHabits);
     els.cancelBtn.addEventListener("click", closeModal);

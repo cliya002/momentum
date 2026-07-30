@@ -205,12 +205,20 @@
           <div class="page-header">
             <h1>Habits</h1>
             <div class="page-actions">
+              <button id="bulkToggleBtn" class="btn-secondary hidden">Select</button>
               <button id="deleteAllBtn" class="btn-secondary btn-danger-outline hidden">Delete all</button>
               <button id="addBtn" class="btn-primary">+ Add habit</button>
             </div>
           </div>
 
           <input type="search" id="habitSearch" class="habit-search" placeholder="Search habits…" aria-label="Search habits" />
+          <div id="bulkBar" class="bulk-bar hidden">
+            <span id="bulkCount">0 selected</span>
+            <select id="bulkCategory" class="filter-select" aria-label="Move to category"></select>
+            <button id="bulkMoveBtn" class="btn-secondary" type="button">Move</button>
+            <button id="bulkDeleteBtn" class="btn-secondary btn-danger-outline" type="button">Delete</button>
+            <button id="bulkDoneBtn" class="btn-primary" type="button">Done</button>
+          </div>
           <div id="habitsGroups" class="category-groups"></div>
           <div id="habitsEmpty" class="empty-state hidden">
             <p>No habits yet. Tap <b>+ Add habit</b> to add your first one.</p>
@@ -411,6 +419,12 @@
           <div class="card">
             <div class="card-title">Adherence by day</div>
             <div id="dayAdherence" class="day-adherence"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Last 5 weeks</div>
+            <div id="reportHeatmap" class="heatmap"></div>
+            <div class="heatmap-legend"><span>Less</span><span class="hm-cell hm-0"></span><span class="hm-cell hm-1"></span><span class="hm-cell hm-2"></span><span class="hm-cell hm-3"></span><span class="hm-cell hm-4"></span><span>More</span></div>
           </div>
 
           <div class="card">

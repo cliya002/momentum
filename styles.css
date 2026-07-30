@@ -2206,3 +2206,32 @@ body.compact .habit-list { gap: 0.35rem; }
   font-size: 0.95rem;
 }
 .habit-search:focus { outline: 2px solid var(--primary); outline-offset: 1px; border-color: var(--primary); }
+
+/* Report heatmap */
+.heatmap { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+.hm-cell { aspect-ratio: 1; border-radius: 4px; background: var(--card-soft); }
+.hm-cell.hm-none { background: var(--card-soft); opacity: 0.5; }
+.hm-cell.hm-future { background: transparent; border: 1px dashed var(--border); }
+.hm-cell.hm-0 { background: rgba(99, 102, 241, 0.12); }
+.hm-cell.hm-1 { background: rgba(99, 102, 241, 0.32); }
+.hm-cell.hm-2 { background: rgba(99, 102, 241, 0.52); }
+.hm-cell.hm-3 { background: rgba(99, 102, 241, 0.74); }
+.hm-cell.hm-4 { background: var(--primary); }
+.heatmap-legend {
+  display: flex; align-items: center; gap: 5px; justify-content: flex-end;
+  margin-top: 0.6rem; font-size: 0.72rem; color: var(--text-dim);
+}
+.heatmap-legend .hm-cell { width: 14px; height: 14px; aspect-ratio: auto; }
+
+/* Bulk selection (Habits) */
+.bulk-bar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 0.6rem 0.8rem; margin-bottom: 0.9rem;
+  position: sticky; top: 0.5rem; z-index: 5;
+}
+.bulk-bar #bulkCount { font-weight: 600; margin-right: auto; }
+.bulk-bar .filter-select { max-width: 45%; }
+.habit-item.selectable { user-select: none; }
+.habit-item.selected { outline: 2px solid var(--primary); outline-offset: -2px; }
+.bulk-check { width: 20px; height: 20px; flex-shrink: 0; accent-color: var(--primary); }
