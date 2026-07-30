@@ -467,6 +467,23 @@
     saveTimer = setTimeout(persistNow, 200);
   }
 
+  // ---- Storage limits ----
+  const STORAGE_WARN_BYTES = 4 * 1024 * 1024; // warn ~80% of the typical 5MB cap
+  function isQuotaError(e) {
+    return e && (e.name === "QuotaExceededError" ||
+      e.name === "NS_ERROR_DOM_QUOTA_REACHED" || e.code === 22 || e.code === 1014);
+  }
+  function estimateStorageBytes() {
+    let total = 0;
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        total += (k.length + (localStorage.getItem(k) || "").length);
+      }
+    } catch (e) { /* ignore */ }
+    return total * 2; // UTF-16 ≈ 2 bytes/char
+  }
+
   function persistNow() {
     saveTimer = null;
     try {
@@ -478,7 +495,11 @@
       if (isAutoSyncEnabled()) queueAutoSyncPush();
     } catch (e) {
       console.error("save failed", e);
-      showToast("Save failed", "error");
+      if (isQuotaError(e)) {
+        showToast("Storage full — data may not be saved. Export a backup, then delete old photos or check-in history in Settings.", "error");
+      } else {
+        showToast("Save failed", "error");
+      }
     }
   }
   // Write to localStorage only — no dirty flag, no auto-sync trigger.
@@ -3221,7 +3242,11 @@
   }
   function savePhotos(p) {
     try { localStorage.setItem(PHOTOS_KEY, JSON.stringify(p)); }
-    catch (e) { showToast("Couldn't save photo — storage full?", "error"); }
+    catch (e) {
+      showToast(isQuotaError(e)
+        ? "Storage full — couldn't save photo. Delete old photos in Settings first."
+        : "Couldn't save photo.", "error");
+    }
   }
   function getPhoto(wk) { return loadPhotos()[wk] || null; }
   function setPhoto(wk, dataUrl) {
@@ -3915,19 +3940,31 @@
     for (const day of Object.keys(state.completions)) checkins += Object.keys(state.completions[day]).length;
     const measurements = Object.keys(state.measurements).length;
     const photos = Object.keys(loadPhotos()).length;
-    // Approx storage: main data + photos
-    const dataBytes = (localStorage.getItem(KEYS.data) || "").length;
-    const photoBytes = (localStorage.getItem("ht_photos") || "").length;
-    const kb = Math.round((dataBytes + photoBytes) / 1024);
+    const bytes = estimateStorageBytes();
+    const used = bytes >= 1024 * 1024
+      ? (bytes / (1024 * 1024)).toFixed(1) + " MB"
+      : Math.round(bytes / 1024) + " KB";
     const items = [
       { n: state.habits.length, l: "Habits" },
       { n: checkins, l: "Check-ins" },
       { n: measurements, l: "Weekly logs" },
       { n: photos, l: "Photos" },
       { n: state.customMetrics.length, l: "Custom metrics" },
-      { n: kb + " KB", l: "Storage used" },
+      { n: used, l: "Storage used" },
     ];
-    wrap.innerHTML = items.map((i) => `<div class="ds-item"><div class="ds-num">${i.n}</div><div class="ds-label">${i.l}</div></div>`).join("");
+    let html = items.map((i) => `<div class="ds-item"><div class="ds-num">${i.n}</div><div class="ds-label">${i.l}</div></div>`).join("");
+    wrap.innerHTML = html;
+    // Proactive storage warning
+    const warn = $("#storageWarn");
+    if (warn) {
+      const pct = Math.round((bytes / (5 * 1024 * 1024)) * 100);
+      if (bytes >= STORAGE_WARN_BYTES) {
+        warn.hidden = false;
+        warn.textContent = `⚠️ Storage is ${pct}% full (~${used} of ~5 MB). Export a backup, then delete old progress photos or check-in history to free space.`;
+      } else {
+        warn.hidden = true;
+      }
+    }
   }
 
   /* ---- Category management ---- */
@@ -4390,9 +4427,17 @@
     location.reload(true);
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
+  // Expose internals for the automated test harness (harmless in the browser).
+  if (typeof self !== "undefined") {
+    self.__momentumTest = { mergeStates, normalizeState, defaultState, currentStreak, startOfWeekMonday, dateKey, addDays };
+  }
+
+  // Only boot in a real browser (guarded so the file can be loaded in Node for tests).
+  if (typeof document !== "undefined") {
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", boot);
+    } else {
+      boot();
+    }
   }
 })();

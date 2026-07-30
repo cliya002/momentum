@@ -1394,6 +1394,16 @@ body.compact .habit-list { gap: 0.35rem; }
 }
 .data-summary .ds-num { font-size: 1.2rem; font-weight: 700; }
 .data-summary .ds-label { font-size: 0.72rem; color: var(--text-dim); margin-top: 2px; }
+.storage-warn {
+  margin-top: 0.85rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: var(--text);
+}
 
 /* Category manager */
 .category-manager { display: flex; flex-direction: column; gap: 0.5rem; }
