@@ -389,6 +389,10 @@
               <img id="schedPhotoThumb" class="photo-thumb" hidden alt="Schedule photo" />
               <button type="button" id="schedPhotoRemove" class="btn-secondary" hidden>Remove</button>
             </div>
+            <div class="row-actions" style="margin-top:0.6rem">
+              <button type="button" id="schedOcrBtn" class="btn-secondary">🔍 Read hours from photo (beta)</button>
+            </div>
+            <div id="schedOcrStatus" class="sync-status" hidden></div>
             <label style="display:block;margin-top:0.75rem;font-size:0.85rem;color:var(--text-dim)">
               Notes
               <textarea id="schedNotes" rows="2" placeholder="e.g. Split shift Wed, on-call Sat…" style="width:100%;margin-top:0.35rem;padding:0.7rem 0.9rem;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg-2);color:var(--text);font-family:inherit;resize:vertical"></textarea>
@@ -705,6 +709,15 @@
           <div class="days-picker" id="daysPicker"></div>
           <small class="hint">Pick which days this habit should happen.</small>
         </label>
+
+        <div class="advanced-block">
+          <button type="button" id="advancedToggle" class="advanced-toggle"><span class="chevron">›</span> Advanced: different time per day</button>
+          <div id="dayTimesWrap" class="day-times-wrap hidden">
+            <p class="hint" style="margin:0 0 0.5rem">Leave a day blank to use the main time above. Set a time to override just that day (handy for shift work).</p>
+            <div id="dayTimesGrid" class="day-times-grid"></div>
+          </div>
+        </div>
+
         <div class="modal-actions">
           <button type="button" id="deleteBtn" class="btn-danger-link hidden">Delete</button>
           <button type="button" id="cancelBtn" class="btn-secondary">Cancel</button>

@@ -359,6 +359,16 @@
       unit: h.unit || "",
       increment: Number(h.increment) > 0 ? Number(h.increment) : 1,
       time: h.time || "",
+      dayTimes: (function () {
+        const out = {};
+        if (h.dayTimes && typeof h.dayTimes === "object") {
+          for (let d = 0; d < 7; d++) {
+            const v = h.dayTimes[d];
+            if (typeof v === "string" && v.trim()) out[d] = v.trim().slice(0, 40);
+          }
+        }
+        return out;
+      })(),
       notes: (h.notes || "").slice(0, 500),
       reminderTime: /^\d{2}:\d{2}$/.test(h.reminderTime) ? h.reminderTime : "",
       days: Array.isArray(h.days) && h.days.length ? h.days : [0,1,2,3,4,5,6],
@@ -663,6 +673,12 @@
   function isHabitActiveOn(habit, date) {
     if (!habit.days || habit.days.length === 0) return true;
     return habit.days.includes(date.getDay());
+  }
+
+  // The habit's time for a specific weekday — per-day override if set, else base.
+  function effectiveTime(habit, dayIdx) {
+    if (habit.dayTimes && habit.dayTimes[dayIdx]) return habit.dayTimes[dayIdx];
+    return habit.time;
   }
   function completionValue(habitId, date) {
     const key = dateKey(date);
@@ -1604,6 +1620,9 @@
       iconPicker: $("#iconPicker"),
       colorPicker: $("#colorPicker"),
       daysPicker: $("#daysPicker"),
+      advancedToggle: $("#advancedToggle"),
+      dayTimesWrap: $("#dayTimesWrap"),
+      dayTimesGrid: $("#dayTimesGrid"),
       cancelBtn: $("#cancelBtn"),
       deleteBtn: $("#deleteBtn"),
       // report
@@ -1729,15 +1748,18 @@
     { id: "anytime",   title: "🔁 All day / anytime", min: 24 * 60, max: Infinity },
   ];
 
-  function dayPartFor(habit) {
-    const label = (habit.time || "").trim().toLowerCase();
+  function dayPartForTime(timeStr) {
+    const label = (timeStr || "").trim().toLowerCase();
     if (!label || label === "all day" || label === "anytime") return "anytime";
-    const mins = parseTimeToMinutes(habit.time);
+    const mins = parseTimeToMinutes(timeStr);
     if (mins === null || mins >= 24 * 60) return "anytime";
     for (const p of DAY_PARTS) {
       if (mins >= p.min && mins <= p.max) return p.id;
     }
     return "anytime";
+  }
+  function dayPartFor(habit, dayIdx) {
+    return dayPartForTime(effectiveTime(habit, dayIdx == null ? new Date().getDay() : dayIdx));
   }
 
   // Which day part is "now" (for the highlight).
@@ -1832,16 +1854,18 @@
 
     // Bucket habits into day parts
     const buckets = new Map(DAY_PARTS.map((p) => [p.id, []]));
-    for (const h of active) buckets.get(dayPartFor(h)).push(h);
+    const todayIdx = today.getDay();
+    for (const h of active) buckets.get(dayPartFor(h, todayIdx)).push(h);
     const nowPart = currentDayPartId();
 
     for (const part of DAY_PARTS) {
       const list = buckets.get(part.id);
       if (!list || list.length === 0) continue;
 
+      const tIdx = today.getDay();
       const byOrderTime = (a, b) => {
-        const ta = parseTimeToMinutes(a.time) ?? 9999;
-        const tb = parseTimeToMinutes(b.time) ?? 9999;
+        const ta = parseTimeToMinutes(effectiveTime(a, tIdx)) ?? 9999;
+        const tb = parseTimeToMinutes(effectiveTime(b, tIdx)) ?? 9999;
         if (ta !== tb) return ta - tb;
         return (a.order ?? 0) - (b.order ?? 0);
       };
@@ -2056,11 +2080,11 @@
     const streak = currentStreak(habit);
     const meta = document.createElement("div");
     meta.className = "habit-meta";
-    const timeChip = timeChipLabel(habit.time);
+    const timeChip = timeChipLabel(effectiveTime(habit, date.getDay()));
     if (timeChip) {
       const timeEl = document.createElement("span");
       timeEl.className = "time-chip";
-      timeEl.textContent = timeChip;
+      timeEl.textContent = timeChip + ((habit.dayTimes && habit.dayTimes[date.getDay()]) ? " ✎" : "");
       meta.appendChild(timeEl);
     }
     if (atRisk) {
@@ -2864,6 +2888,21 @@
       els.daysPicker.appendChild(b);
     }
 
+    // Advanced: per-day time overrides
+    els.dayTimesGrid.innerHTML = "";
+    const dt = (habit && habit.dayTimes) ? habit.dayTimes : {};
+    for (const d of DAY_DISPLAY) {
+      const stored = dt[d.idx];
+      const hhmm = stored ? minToHHMM(parseTimeToMinutes(timeChipLabel(stored) || stored)) : "";
+      const row = document.createElement("div");
+      row.className = "day-time-row";
+      row.innerHTML = `<span class="dt-day">${d.full}</span><input type="time" data-daytime="${d.idx}" value="${hhmm}" />`;
+      els.dayTimesGrid.appendChild(row);
+    }
+    const hasOverrides = Object.keys(dt).length > 0;
+    els.dayTimesWrap.classList.toggle("hidden", !hasOverrides);
+    els.advancedToggle.classList.toggle("open", hasOverrides);
+
     els.modal.classList.remove("hidden");
     setTimeout(() => els.habitName.focus(), 50);
   }
@@ -2895,12 +2934,18 @@
       increment = Number.isFinite(inc) && inc > 0 ? inc : 1;
     }
 
+    const dayTimes = {};
+    els.dayTimesGrid.querySelectorAll("input[data-daytime]").forEach((inp) => {
+      if (inp.value) dayTimes[inp.dataset.daytime] = minToClock(hhmmToMin(inp.value));
+    });
+
     const now = Date.now();
     const payload = {
       name, icon, color, category,
       type: selectedType,
       target, unit, increment,
       time: els.habitTime.value.trim(),
+      dayTimes,
       reminderTime: /^\d{2}:\d{2}$/.test(els.habitReminder.value) ? els.habitReminder.value : "",
       notes: (els.habitNotes.value || "").trim().slice(0, 500),
       days: days.length ? days : [0,1,2,3,4,5,6],
@@ -3204,6 +3249,11 @@
     const m = /^(\d{2}):(\d{2})$/.exec(s || "");
     return m ? (+m[1]) * 60 + (+m[2]) : null;
   }
+  function minToHHMM(min) {
+    if (min == null) return "";
+    min = ((Math.round(min) % 1440) + 1440) % 1440;
+    return String(Math.floor(min / 60)).padStart(2, "0") + ":" + String(min % 60).padStart(2, "0");
+  }
 
   function renderSchedule() {
     const grid = $("#scheduleGrid");
@@ -3292,6 +3342,96 @@
     renderSchedPhoto();
   }
 
+  /* ---- OCR: read work hours from the schedule photo (Tesseract.js, lazy-loaded) ---- */
+  let tesseractPromise = null;
+  function lazyLoadTesseract() {
+    if (typeof Tesseract !== "undefined") return Promise.resolve();
+    if (tesseractPromise) return tesseractPromise;
+    tesseractPromise = new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+      s.onload = () => resolve();
+      s.onerror = () => { tesseractPromise = null; reject(new Error("Couldn't load the OCR engine — needs an internet connection.")); };
+      document.head.appendChild(s);
+    });
+    return tesseractPromise;
+  }
+
+  // Parse free OCR text into { dayIdx: {start,end} | {off:true} }.
+  function parseScheduleText(text) {
+    const dayMap = { sunday:0, sun:0, monday:1, mon:1, tuesday:2, tue:2, tues:2,
+      wednesday:3, wed:3, thursday:4, thu:4, thur:4, thurs:4, friday:5, fri:5, saturday:6, sat:6 };
+    const result = {};
+    for (const rawLine of text.split(/\n+/)) {
+      const line = rawLine.trim();
+      const low = line.toLowerCase();
+      let dayIdx = null;
+      for (const k of Object.keys(dayMap)) {
+        if (new RegExp("\\b" + k + "\\b").test(low)) { dayIdx = dayMap[k]; break; }
+      }
+      if (dayIdx == null) continue;
+      if (/\b(off|rest|leave|holiday|closed)\b/.test(low) && !/\d/.test(low)) { result[dayIdx] = { off: true }; continue; }
+      const times = [];
+      const re = /(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?/gi;
+      let m;
+      while ((m = re.exec(line)) && times.length < 4) {
+        let h = +m[1]; const min = m[2] ? +m[2] : 0;
+        const ap = (m[3] || "").replace(/[.\s]/g, "").toLowerCase();
+        if (h > 24) continue;
+        if (ap === "pm" && h < 12) h += 12;
+        if (ap === "am" && h === 12) h = 0;
+        times.push({ min: h * 60 + min, hadAp: !!ap });
+      }
+      if (times.length >= 2) {
+        let start = times[0].min, end = times[1].min;
+        // "9-5" with no am/pm → assume the end is PM
+        if (end <= start && !times[1].hadAp && end < 12 * 60) end += 12 * 60;
+        result[dayIdx] = { start: minToHHMM(start), end: minToHHMM(end) };
+      }
+    }
+    return result;
+  }
+
+  async function runScheduleOcr() {
+    const photo = localStorage.getItem(SCHED_PHOTO_KEY);
+    const status = $("#schedOcrStatus");
+    const btn = $("#schedOcrBtn");
+    if (!photo) { showToast("Add a schedule photo first."); return; }
+    status.hidden = false; status.className = "sync-status loading";
+    status.textContent = "Loading OCR engine…"; btn.disabled = true;
+    try {
+      await lazyLoadTesseract();
+      status.textContent = "Reading the photo… this can take 10–20 seconds.";
+      const { data: { text } } = await Tesseract.recognize(photo, "eng");
+      const parsed = parseScheduleText(text);
+      const keys = Object.keys(parsed);
+      if (keys.length === 0) {
+        status.className = "sync-status warn";
+        status.textContent = "Couldn't read any day/time rows. Enter hours manually below.";
+        return;
+      }
+      const summary = DAY_DISPLAY.filter((d) => parsed[d.idx])
+        .map((d) => { const p = parsed[d.idx]; return `${d.full}: ${p.off ? "Off" : (p.start + "–" + p.end)}`; })
+        .join("\n");
+      if (!confirm("OCR found:\n\n" + summary + "\n\nApply these hours? You can still edit them after.")) {
+        status.hidden = true; return;
+      }
+      for (const [idx, p] of Object.entries(parsed)) {
+        state.workSchedule.days[idx] = { off: !!p.off, start: p.start || "", end: p.end || "" };
+      }
+      state.workSchedule.updatedAt = Date.now();
+      save();
+      renderSchedule();
+      status.className = "sync-status success";
+      status.textContent = "Applied — review and tweak the hours below.";
+    } catch (e) {
+      status.className = "sync-status error";
+      status.textContent = "OCR failed: " + (e.message || e);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
   // Compute suggested new time for a habit that clashes with a work block.
   function suggestFit(habitMin, workStart, workEnd) {
     // Move to before work if the habit sits nearer the start, else after work.
@@ -3328,12 +3468,13 @@
     const conflicts = [];
     for (const habit of state.habits) {
       if (!habit.days.includes(dayIdx)) continue;      // not scheduled that day
-      const label = timeChipLabel(habit.time);          // strips "· description"
+      const eff = effectiveTime(habit, dayIdx);         // per-day override if set
+      const label = timeChipLabel(eff);                 // strips "· description"
       const hm = parseTimeToMinutes(label);
       if (hm == null || hm >= 24 * 60) continue;         // "All day"/named → flexible, skip
       if (hm >= ws && hm < we) {
         const newMin = suggestFit(hm, ws, we);
-        conflicts.push({ habit, newTime: minToClock(newMin) });
+        conflicts.push({ habit, dayIdx, curTime: eff, newTime: minToClock(newMin) });
       }
     }
 
@@ -3352,31 +3493,34 @@
       const info = document.createElement("div");
       info.className = "cf-info";
       info.innerHTML = `<div class="cf-name">${escapeHtml(c.habit.name)}</div>` +
-        `<div class="cf-move">${escapeHtml(timeChipLabel(c.habit.time) || c.habit.time)} → <b>${escapeHtml(c.newTime)}</b></div>`;
+        `<div class="cf-move">${escapeHtml(timeChipLabel(c.curTime) || c.curTime)} → <b>${escapeHtml(c.newTime)}</b> <span style="opacity:.7">(${DAY_DISPLAY.find(d=>d.idx===c.dayIdx).full} only)</span></div>`;
       const btn = document.createElement("button");
       btn.className = "cf-apply";
       btn.textContent = "Apply";
-      btn.addEventListener("click", () => { applyFit(c.habit.id, c.newTime); renderConflicts(); });
+      btn.addEventListener("click", () => { applyFit(c.habit.id, c.newTime, c.dayIdx); renderConflicts(); });
       row.appendChild(icon); row.appendChild(info); row.appendChild(btn);
       list.appendChild(row);
     }
     if (applyAll) {
       applyAll.hidden = false;
       applyAll.onclick = () => {
-        for (const c of conflicts) applyFit(c.habit.id, c.newTime);
+        for (const c of conflicts) applyFit(c.habit.id, c.newTime, c.dayIdx);
         renderConflicts();
-        showToast(`Adjusted ${conflicts.length} habit${conflicts.length === 1 ? "" : "s"}.`, "success");
+        showToast(`Adjusted ${conflicts.length} habit${conflicts.length === 1 ? "" : "s"} for ${DAY_DISPLAY.find(d=>d.idx===dayIdx).full}.`, "success");
       };
     }
   }
 
-  // Apply a new clock time to a habit, preserving any "· description" suffix.
-  function applyFit(habitId, newClock) {
+  // Apply a new clock time to a habit for a specific day only (per-day override),
+  // preserving any "· description" suffix from that day's current time.
+  function applyFit(habitId, newClock, dayIdx) {
     const habit = state.habits.find((h) => h.id === habitId);
     if (!habit) return;
-    const dotIdx = habit.time.indexOf("·");
-    const suffix = dotIdx >= 0 ? " " + habit.time.slice(dotIdx) : "";
-    habit.time = newClock + suffix;
+    const cur = effectiveTime(habit, dayIdx);
+    const dotIdx = cur.indexOf("·");
+    const suffix = dotIdx >= 0 ? " " + cur.slice(dotIdx) : "";
+    if (!habit.dayTimes) habit.dayTimes = {};
+    habit.dayTimes[dayIdx] = newClock + suffix;
     habit.updatedAt = Date.now();
     save();
   }
@@ -4430,6 +4574,10 @@
       btn.classList.add("selected");
       els.countFields.classList.toggle("hidden", btn.dataset.type !== "count");
     });
+    els.advancedToggle.addEventListener("click", () => {
+      const open = els.dayTimesWrap.classList.toggle("hidden");
+      els.advancedToggle.classList.toggle("open", !open);
+    });
 
     // Schedule
     const schedNotes = $("#schedNotes");
@@ -4440,6 +4588,8 @@
     if (schedPhotoRemove) schedPhotoRemove.addEventListener("click", removeSchedPhoto);
     const schedRefDay = $("#schedRefDay");
     if (schedRefDay) schedRefDay.addEventListener("change", renderConflicts);
+    const schedOcrBtn = $("#schedOcrBtn");
+    if (schedOcrBtn) schedOcrBtn.addEventListener("click", runScheduleOcr);
     const schedThumb = $("#schedPhotoThumb");
     if (schedThumb) schedThumb.addEventListener("click", () => {
       const src = schedThumb.getAttribute("src"); if (src) openPhotoViewer(src);

@@ -1673,6 +1673,23 @@ body.compact .habit-list { gap: 0.35rem; }
 }
 .days-picker button.selected { background: var(--primary); color: #fff; border-color: var(--primary); }
 
+.advanced-block { margin-bottom: 0.85rem; }
+.advanced-toggle {
+  background: transparent; border: none; color: var(--primary);
+  font-weight: 600; font-size: 0.85rem; padding: 0.4rem 0; display: flex; align-items: center; gap: 0.4rem;
+}
+.advanced-toggle .chevron { transition: transform 0.15s; display: inline-block; }
+.advanced-toggle.open .chevron { transform: rotate(90deg); }
+.day-times-wrap { margin-top: 0.5rem; }
+.day-times-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+.day-time-row {
+  display: flex; align-items: center; gap: 0.5rem;
+  background: var(--card-soft); border-radius: var(--radius-sm); padding: 0.35rem 0.5rem;
+}
+.day-time-row .dt-day { font-size: 0.75rem; font-weight: 700; width: 2.2rem; flex-shrink: 0; }
+.day-time-row input { padding: 0.3rem 0.4rem; font-size: 0.85rem; }
+@media (max-width: 640px) { .day-times-grid { grid-template-columns: 1fr; } }
+
 .modal-actions {
   display: flex;
   gap: 0.5rem;
