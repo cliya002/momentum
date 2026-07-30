@@ -3,3 +3,7 @@ Thumbs.db
 node_modules/
 .vscode/
 *.log
+
+# Cloudflare Wrangler local cache/state (contains account info)
+worker/.wrangler/
+.wrangler/
