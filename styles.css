@@ -1405,6 +1405,52 @@ body.compact .habit-list { gap: 0.35rem; }
   color: var(--text);
 }
 
+/* Schedule tab */
+.schedule-grid { display: flex; flex-direction: column; gap: 0.5rem; }
+.sched-row {
+  display: grid;
+  grid-template-columns: 3.2rem auto 1fr;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.6rem;
+  background: var(--card-soft);
+  border-radius: var(--radius-sm);
+}
+.sched-row.off .sched-times { opacity: 0.35; pointer-events: none; }
+.sched-day { font-weight: 700; font-size: 0.85rem; }
+.sched-off {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  font-size: 0.72rem; color: var(--text-dim);
+}
+.sched-off input { width: auto; }
+.sched-times { display: flex; align-items: center; gap: 0.4rem; justify-self: end; }
+.sched-times input[type="time"] { width: auto; padding: 0.35rem 0.5rem; font-size: 0.85rem; }
+.sched-times span { color: var(--text-dim); font-size: 0.8rem; }
+
+.conflict-list { display: flex; flex-direction: column; gap: 0.6rem; }
+.conflict-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.conflict-row .cf-icon {
+  width: 34px; height: 34px; border-radius: 9px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; color: #fff; font-size: 1.05rem;
+}
+.conflict-row .cf-info { flex: 1; min-width: 0; }
+.conflict-row .cf-name { font-weight: 600; font-size: 0.9rem; }
+.conflict-row .cf-move { font-size: 0.78rem; color: var(--text-dim); margin-top: 1px; }
+.conflict-row .cf-move b { color: var(--primary); }
+.conflict-row .cf-apply {
+  background: var(--primary-soft); color: var(--primary);
+  border: none; border-radius: 8px; font-weight: 700; font-size: 0.78rem;
+  padding: 0.4rem 0.7rem; flex-shrink: 0;
+}
+.conflict-ok { color: var(--success); font-size: 0.85rem; padding: 0.5rem 0; }
+
 /* Category manager */
 .category-manager { display: flex; flex-direction: column; gap: 0.5rem; }
 .category-row {
@@ -1929,16 +1975,23 @@ body.compact .habit-list { gap: 0.35rem; }
     align-items: center;
     gap: 2px;
     flex: 1;
+    min-width: 0;
     background: transparent;
     border: none;
-    padding: 0.35rem 0.25rem;
+    padding: 0.35rem 0.15rem;
     color: var(--text-dim);
-    font-size: 0.62rem;
+    font-size: 0.58rem;
     font-weight: 600;
     border-radius: var(--radius-sm);
     width: auto;
   }
-  .bottom-nav .nav-item.bottom-tab .nav-icon { font-size: 1.35rem; width: auto; }
+  .bottom-nav .nav-item.bottom-tab .bt-label {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .bottom-nav .nav-item.bottom-tab .nav-icon { font-size: 1.3rem; width: auto; }
   .bottom-nav .nav-item.bottom-tab:hover { background: transparent; }
   .bottom-nav .nav-item.bottom-tab.active { background: transparent; color: var(--primary); }
   /* Leave room above the bottom bar so content isn't hidden behind it */

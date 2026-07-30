@@ -219,6 +219,7 @@
       customMetrics: [],
       categories: [...DEFAULT_CATEGORIES],
       categoriesUpdatedAt: 0,
+      workSchedule: { days: {}, notes: "", updatedAt: 0 },
       deletions: { habits: {} },
     };
   }
@@ -413,6 +414,25 @@
     }
     if (!st.categories.length) st.categories = [...DEFAULT_CATEGORIES];
     st.categoriesUpdatedAt = Number(s.categoriesUpdatedAt) || 0;
+    // Work schedule
+    st.workSchedule = { days: {}, notes: "", updatedAt: 0 };
+    if (s.workSchedule && typeof s.workSchedule === "object") {
+      const ws = s.workSchedule;
+      if (ws.days && typeof ws.days === "object") {
+        for (let d = 0; d < 7; d++) {
+          const day = ws.days[d];
+          if (day && typeof day === "object") {
+            st.workSchedule.days[d] = {
+              off: !!day.off,
+              start: /^\d{2}:\d{2}$/.test(day.start) ? day.start : "",
+              end: /^\d{2}:\d{2}$/.test(day.end) ? day.end : "",
+            };
+          }
+        }
+      }
+      st.workSchedule.notes = (ws.notes || "").slice(0, 500);
+      st.workSchedule.updatedAt = Number(ws.updatedAt) || 0;
+    }
     // Custom metric definitions
     st.customMetrics = [];
     if (Array.isArray(s.customMetrics)) {
@@ -601,6 +621,11 @@
     const lg = local.goal, rg = remote.goal;
     if (lg && rg) merged.goal = (Number(rg.updatedAt) || 0) > (Number(lg.updatedAt) || 0) ? rg : lg;
     else merged.goal = lg || rg || null;
+
+    // Work schedule: newer updatedAt wins
+    const lws = local.workSchedule, rws = remote.workSchedule;
+    if (lws && rws) merged.workSchedule = (Number(rws.updatedAt) || 0) > (Number(lws.updatedAt) || 0) ? rws : lws;
+    else merged.workSchedule = lws || rws || { days: {}, notes: "", updatedAt: 0 };
 
     // Custom metrics: union by id
     const cmMap = new Map();
@@ -1513,6 +1538,7 @@
     LEGACY_PLAIN_KEYS.forEach((k) => localStorage.removeItem(k));
     LEGACY_KEYS_TO_CLEAR.forEach((k) => localStorage.removeItem(k));
     localStorage.removeItem("ht_photos");
+    localStorage.removeItem("ht_schedule_photo");
     state = defaultState();
     location.reload();
   }
@@ -1537,6 +1563,7 @@
         habits: $("#page-habits"),
         progress: $("#page-progress"),
         report: $("#page-report"),
+        schedule: $("#page-schedule"),
         settings: $("#page-settings"),
       },
       // today
@@ -1678,6 +1705,7 @@
     else if (view === "habits") renderHabits();
     else if (view === "progress") { progressOffset = 0; renderProgress(); }
     else if (view === "report") { weekOffset = 0; renderReport(); }
+    else if (view === "schedule") renderSchedule();
     else if (view === "settings") hydrateSettings();
     closeSidebar();
   }
@@ -3159,6 +3187,200 @@
     window.print();
   }
 
+  /* ================================================================
+   * Schedule tab
+   * ================================================================ */
+  const SCHED_PHOTO_KEY = "ht_schedule_photo";
+  let schedSaveTimer = null;
+
+  function minToClock(min) {
+    min = ((Math.round(min) % 1440) + 1440) % 1440;
+    let h = Math.floor(min / 60), m = min % 60;
+    const ampm = h < 12 ? "AM" : "PM";
+    let hh = h % 12; if (hh === 0) hh = 12;
+    return `${hh}:${String(m).padStart(2, "0")} ${ampm}`;
+  }
+  function hhmmToMin(s) {
+    const m = /^(\d{2}):(\d{2})$/.exec(s || "");
+    return m ? (+m[1]) * 60 + (+m[2]) : null;
+  }
+
+  function renderSchedule() {
+    const grid = $("#scheduleGrid");
+    if (!grid) return;
+    // Per-day rows
+    grid.innerHTML = "";
+    const ws = state.workSchedule.days;
+    for (const d of DAY_DISPLAY) {
+      const day = ws[d.idx] || { off: false, start: "", end: "" };
+      const row = document.createElement("div");
+      row.className = "sched-row" + (day.off ? " off" : "");
+      row.innerHTML =
+        `<span class="sched-day">${d.full}</span>` +
+        `<label class="sched-off"><input type="checkbox" data-off="${d.idx}" ${day.off ? "checked" : ""}/> Off</label>` +
+        `<span class="sched-times">` +
+        `<input type="time" data-start="${d.idx}" value="${day.start}" />` +
+        `<span>to</span>` +
+        `<input type="time" data-end="${d.idx}" value="${day.end}" />` +
+        `</span>`;
+      grid.appendChild(row);
+    }
+    grid.querySelectorAll("input[data-off]").forEach((el) =>
+      el.addEventListener("change", () => updateSchedDay(+el.dataset.off, "off", el.checked)));
+    grid.querySelectorAll("input[data-start]").forEach((el) =>
+      el.addEventListener("change", () => updateSchedDay(+el.dataset.start, "start", el.value)));
+    grid.querySelectorAll("input[data-end]").forEach((el) =>
+      el.addEventListener("change", () => updateSchedDay(+el.dataset.end, "end", el.value)));
+
+    // Notes + photo
+    const notes = $("#schedNotes");
+    if (notes) notes.value = state.workSchedule.notes || "";
+    renderSchedPhoto();
+
+    // Reference-day selector
+    const sel = $("#schedRefDay");
+    if (sel && !sel.dataset.filled) {
+      sel.innerHTML = DAY_DISPLAY.map((d) => `<option value="${d.idx}">${d.full}</option>`).join("");
+      sel.dataset.filled = "1";
+      const todayIdx = new Date().getDay();
+      sel.value = String(todayIdx);
+    }
+    renderConflicts();
+  }
+
+  function updateSchedDay(idx, field, value) {
+    if (!state.workSchedule.days[idx]) state.workSchedule.days[idx] = { off: false, start: "", end: "" };
+    state.workSchedule.days[idx][field] = value;
+    state.workSchedule.updatedAt = Date.now();
+    save();
+    if (field === "off") renderSchedule();
+    else renderConflicts();
+  }
+
+  function onSchedNotes() {
+    if (schedSaveTimer) clearTimeout(schedSaveTimer);
+    schedSaveTimer = setTimeout(() => {
+      state.workSchedule.notes = ($("#schedNotes").value || "").slice(0, 500);
+      state.workSchedule.updatedAt = Date.now();
+      save();
+      const s = $("#schedSaved"); if (s) { s.hidden = false; setTimeout(() => (s.hidden = true), 1200); }
+    }, 500);
+  }
+
+  function renderSchedPhoto() {
+    const thumb = $("#schedPhotoThumb"), remove = $("#schedPhotoRemove");
+    if (!thumb) return;
+    const photo = localStorage.getItem(SCHED_PHOTO_KEY);
+    if (photo) { thumb.src = photo; thumb.hidden = false; remove.hidden = false; }
+    else { thumb.hidden = true; remove.hidden = true; thumb.removeAttribute("src"); }
+  }
+  async function onSchedPhotoPick(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    try {
+      const dataUrl = await compressImage(file, 900, 0.6); // larger for legibility
+      localStorage.setItem(SCHED_PHOTO_KEY, dataUrl);
+      e.target.value = "";
+      renderSchedPhoto();
+      showToast("Schedule photo saved (this device).", "success");
+    } catch (err) {
+      showToast(isQuotaError(err) ? "Storage full — delete some photos first." : "Couldn't save that image.", "error");
+    }
+  }
+  function removeSchedPhoto() {
+    localStorage.removeItem(SCHED_PHOTO_KEY);
+    renderSchedPhoto();
+  }
+
+  // Compute suggested new time for a habit that clashes with a work block.
+  function suggestFit(habitMin, workStart, workEnd) {
+    // Move to before work if the habit sits nearer the start, else after work.
+    const distToStart = habitMin - workStart;
+    const distToEnd = workEnd - habitMin;
+    if (distToStart <= distToEnd) {
+      let t = workStart - 45;                       // 45 min before shift
+      if (t < 5 * 60) t = workEnd + 30;             // too early → put after work
+      return t;
+    }
+    return workEnd + 30;                            // 30 min after shift
+  }
+
+  function renderConflicts() {
+    const list = $("#conflictList");
+    const applyAll = $("#applyAllFitBtn");
+    if (!list) return;
+    const sel = $("#schedRefDay");
+    const dayIdx = sel ? Number(sel.value) : new Date().getDay();
+    const day = state.workSchedule.days[dayIdx];
+    list.innerHTML = "";
+    if (applyAll) applyAll.hidden = true;
+
+    if (!day || day.off || !day.start || !day.end) {
+      list.innerHTML = `<p class="conflict-ok">No work hours set for ${DAY_DISPLAY.find(d=>d.idx===dayIdx)?.full || "this day"} — nothing to fit around.</p>`;
+      return;
+    }
+    const ws = hhmmToMin(day.start), we = hhmmToMin(day.end);
+    if (ws == null || we == null || we <= ws) {
+      list.innerHTML = `<p class="conflict-ok">Enter a valid start and end time to see suggestions.</p>`;
+      return;
+    }
+
+    const conflicts = [];
+    for (const habit of state.habits) {
+      if (!habit.days.includes(dayIdx)) continue;      // not scheduled that day
+      const label = timeChipLabel(habit.time);          // strips "· description"
+      const hm = parseTimeToMinutes(label);
+      if (hm == null || hm >= 24 * 60) continue;         // "All day"/named → flexible, skip
+      if (hm >= ws && hm < we) {
+        const newMin = suggestFit(hm, ws, we);
+        conflicts.push({ habit, newTime: minToClock(newMin) });
+      }
+    }
+
+    if (conflicts.length === 0) {
+      list.innerHTML = `<p class="conflict-ok">✓ No habits clash with your ${day.start}–${day.end} shift.</p>`;
+      return;
+    }
+
+    for (const c of conflicts) {
+      const row = document.createElement("div");
+      row.className = "conflict-row";
+      const icon = document.createElement("div");
+      icon.className = "cf-icon";
+      icon.style.background = c.habit.color;
+      icon.textContent = c.habit.icon;
+      const info = document.createElement("div");
+      info.className = "cf-info";
+      info.innerHTML = `<div class="cf-name">${escapeHtml(c.habit.name)}</div>` +
+        `<div class="cf-move">${escapeHtml(timeChipLabel(c.habit.time) || c.habit.time)} → <b>${escapeHtml(c.newTime)}</b></div>`;
+      const btn = document.createElement("button");
+      btn.className = "cf-apply";
+      btn.textContent = "Apply";
+      btn.addEventListener("click", () => { applyFit(c.habit.id, c.newTime); renderConflicts(); });
+      row.appendChild(icon); row.appendChild(info); row.appendChild(btn);
+      list.appendChild(row);
+    }
+    if (applyAll) {
+      applyAll.hidden = false;
+      applyAll.onclick = () => {
+        for (const c of conflicts) applyFit(c.habit.id, c.newTime);
+        renderConflicts();
+        showToast(`Adjusted ${conflicts.length} habit${conflicts.length === 1 ? "" : "s"}.`, "success");
+      };
+    }
+  }
+
+  // Apply a new clock time to a habit, preserving any "· description" suffix.
+  function applyFit(habitId, newClock) {
+    const habit = state.habits.find((h) => h.id === habitId);
+    if (!habit) return;
+    const dotIdx = habit.time.indexOf("·");
+    const suffix = dotIdx >= 0 ? " " + habit.time.slice(dotIdx) : "";
+    habit.time = newClock + suffix;
+    habit.updatedAt = Date.now();
+    save();
+  }
+
   /* ---- Progress / Measurements ---- */
   function currentWeekKey(offset) {
     const now = new Date();
@@ -4207,6 +4429,20 @@
       els.typePicker.querySelectorAll(".type-btn").forEach((b) => b.classList.remove("selected"));
       btn.classList.add("selected");
       els.countFields.classList.toggle("hidden", btn.dataset.type !== "count");
+    });
+
+    // Schedule
+    const schedNotes = $("#schedNotes");
+    if (schedNotes) schedNotes.addEventListener("input", onSchedNotes);
+    const schedPhoto = $("#schedPhoto");
+    if (schedPhoto) schedPhoto.addEventListener("change", onSchedPhotoPick);
+    const schedPhotoRemove = $("#schedPhotoRemove");
+    if (schedPhotoRemove) schedPhotoRemove.addEventListener("click", removeSchedPhoto);
+    const schedRefDay = $("#schedRefDay");
+    if (schedRefDay) schedRefDay.addEventListener("change", renderConflicts);
+    const schedThumb = $("#schedPhotoThumb");
+    if (schedThumb) schedThumb.addEventListener("click", () => {
+      const src = schedThumb.getAttribute("src"); if (src) openPhotoViewer(src);
     });
 
     // Report / Progress

@@ -59,6 +59,9 @@
           <button class="nav-item" data-tab="report">
             <span class="nav-icon">📊</span> <span>Report</span>
           </button>
+          <button class="nav-item" data-tab="schedule">
+            <span class="nav-icon">💼</span> <span>Schedule</span>
+          </button>
           <button class="nav-item" data-tab="settings">
             <span class="nav-icon">⚙️</span> <span>Settings</span>
           </button>
@@ -363,6 +366,49 @@
           </div>
         </div>
 
+        <!-- ============ Schedule ============ -->
+        <div class="page" id="page-schedule">
+          <div class="page-header">
+            <div>
+              <h1>Work schedule</h1>
+              <p class="subtitle">Set your hours — habits auto-fit around them</p>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">This week's hours</div>
+            <p class="card-sub">Set when you're working each day. Toggle a day off if you're not.</p>
+            <div id="scheduleGrid" class="schedule-grid"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">📸 Schedule reference <span class="hint">(optional, stays on this device)</span></div>
+            <p class="card-sub">Snap or upload a photo of your roster to refer to while you enter hours.</p>
+            <div class="photo-field">
+              <input id="schedPhoto" type="file" accept="image/*" capture="environment" />
+              <img id="schedPhotoThumb" class="photo-thumb" hidden alt="Schedule photo" />
+              <button type="button" id="schedPhotoRemove" class="btn-secondary" hidden>Remove</button>
+            </div>
+            <label style="display:block;margin-top:0.75rem;font-size:0.85rem;color:var(--text-dim)">
+              Notes
+              <textarea id="schedNotes" rows="2" placeholder="e.g. Split shift Wed, on-call Sat…" style="width:100%;margin-top:0.35rem;padding:0.7rem 0.9rem;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg-2);color:var(--text);font-family:inherit;resize:vertical"></textarea>
+            </label>
+            <p id="schedSaved" class="saved-note" hidden>Saved.</p>
+          </div>
+
+          <div class="card">
+            <div class="card-title">
+              Auto-fit habits
+              <select id="schedRefDay" class="filter-select" style="margin-left:auto" aria-label="Reference day"></select>
+            </div>
+            <p class="card-sub">Habits that clash with your shift on the selected day, with suggested times that dodge work hours.</p>
+            <div id="conflictList" class="conflict-list"></div>
+            <div class="row-actions" style="margin-top:0.85rem">
+              <button id="applyAllFitBtn" class="btn-primary" hidden>Apply all suggestions</button>
+            </div>
+          </div>
+        </div>
+
         <!-- ============ Settings ============ -->
         <div class="page" id="page-settings">
           <div class="page-header"><h1>Settings</h1></div>
@@ -559,6 +605,7 @@
       <button class="nav-item bottom-tab" data-tab="habits"><span class="nav-icon">🎯</span><span class="bt-label">Habits</span></button>
       <button class="nav-item bottom-tab" data-tab="progress"><span class="nav-icon">📈</span><span class="bt-label">Progress</span></button>
       <button class="nav-item bottom-tab" data-tab="report"><span class="nav-icon">📊</span><span class="bt-label">Report</span></button>
+      <button class="nav-item bottom-tab" data-tab="schedule"><span class="nav-icon">💼</span><span class="bt-label">Work</span></button>
       <button class="nav-item bottom-tab" data-tab="settings"><span class="nav-icon">⚙️</span><span class="bt-label">Settings</span></button>
     </nav>
   </main>
