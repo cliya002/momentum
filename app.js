@@ -289,6 +289,81 @@
         { name: "Write / blog",    icon: "✍️",  color: "#ec4899", category: "Custom", time: "Evening", notes: "" },
       ],
     },
+    {
+      title: "🏋️ Strength & muscle",
+      items: [
+        { name: "Push day",        icon: "💪",  color: "#6366f1", category: "Fitness", time: "Morning", days: [1], notes: "Chest, shoulders, triceps" },
+        { name: "Pull day",        icon: "🏋️",  color: "#3b82f6", category: "Fitness", time: "Morning", days: [3], notes: "Back, biceps" },
+        { name: "Leg day",         icon: "🦵",  color: "#ef4444", category: "Fitness", time: "Morning", days: [5], notes: "Squats, hamstrings, calves" },
+        { name: "Progressive overload log", icon: "📈", color: "#14b8a6", category: "Fitness", time: "Morning", notes: "Beat last week" },
+        { name: "Warm-up",         icon: "🔥",  color: "#f59e0b", category: "Fitness", time: "Morning", notes: "" },
+        { name: "Post-workout protein", icon: "🥤", color: "#ec4899", category: "Nutrition", time: "Morning", notes: "Within 1 hr" },
+      ],
+    },
+    {
+      title: "🧘 Mindfulness & spiritual",
+      items: [
+        { name: "Morning meditation", icon: "🧘", color: "#a855f7", category: "Custom", time: "Morning", notes: "10 min" },
+        { name: "Prayer",          icon: "🙏",  color: "#6366f1", category: "Custom", time: "Morning", notes: "" },
+        { name: "Read scripture",  icon: "📿",  color: "#f59e0b", category: "Custom", time: "Morning", notes: "" },
+        { name: "Gratitude journal", icon: "🙌", color: "#ec4899", category: "Custom", time: "Evening", notes: "3 things" },
+        { name: "Visualisation",   icon: "🌅",  color: "#38bdf8", category: "Custom", time: "Morning", notes: "" },
+        { name: "Evening reflection", icon: "🕯️", color: "#a855f7", category: "Custom", time: "10:00 PM", notes: "" },
+      ],
+    },
+    {
+      title: "🍳 Meal prep & cooking",
+      items: [
+        { name: "Meal prep",       icon: "🍱",  color: "#22c55e", category: "Nutrition", time: "Evening", days: [0], notes: "Batch cook for the week" },
+        { name: "Cook dinner",     icon: "🍳",  color: "#f59e0b", category: "Nutrition", time: "6:00 PM", notes: "" },
+        { name: "Pack tomorrow's meals", icon: "🥡", color: "#14b8a6", category: "Nutrition", time: "Evening", days: [0,1,2,3,4], notes: "" },
+        { name: "Grocery shop",    icon: "🛒",  color: "#3b82f6", category: "Nutrition", time: "Afternoon", days: [6], notes: "" },
+        { name: "No takeout",      icon: "🚫",  color: "#ef4444", category: "Nutrition", time: "All day", notes: "" },
+        { name: "Eat breakfast",   icon: "🍳",  color: "#f59e0b", category: "Nutrition", time: "Morning", notes: "" },
+      ],
+    },
+    {
+      title: "🎓 Study & exams",
+      items: [
+        { name: "Study session",   icon: "📚",  color: "#6366f1", category: "Custom", time: "Evening", notes: "Pomodoro x4" },
+        { name: "Review flashcards", icon: "🃏", color: "#f59e0b", category: "Custom", time: "Morning", notes: "Spaced repetition" },
+        { name: "Practice problems", icon: "✏️", color: "#3b82f6", category: "Custom", time: "Afternoon", notes: "" },
+        { name: "Revise notes",    icon: "📝",  color: "#14b8a6", category: "Custom", time: "Evening", notes: "" },
+        { name: "No phone while studying", icon: "📵", color: "#ef4444", category: "Custom", time: "Evening", notes: "" },
+        { name: "Past paper",      icon: "📄",  color: "#a855f7", category: "Custom", time: "Afternoon", days: [6], notes: "Timed" },
+      ],
+    },
+    {
+      title: "🧴 Skin & beauty",
+      items: [
+        { name: "Cleanser",        icon: "🧼",  color: "#38bdf8", category: "Custom", time: "Morning", notes: "" },
+        { name: "Moisturiser",     icon: "🧴",  color: "#ec4899", category: "Custom", time: "Morning", notes: "" },
+        { name: "Retinol",         icon: "🌙",  color: "#a855f7", category: "Custom", time: "10:00 PM", days: [1,3,5], notes: "PM only" },
+        { name: "Face mask",       icon: "💆",  color: "#f472b6", category: "Custom", time: "Evening", days: [0], notes: "" },
+        { name: "Lip balm / SPF",  icon: "☀️",  color: "#f59e0b", category: "Custom", time: "Morning", notes: "" },
+        { name: "Drink water for skin", icon: "💧", color: "#38bdf8", category: "Nutrition", time: "All day", notes: "" },
+      ],
+    },
+    {
+      title: "👶 Parenting & family",
+      items: [
+        { name: "Read to kids",    icon: "📖",  color: "#f59e0b", category: "Custom", time: "Evening", notes: "" },
+        { name: "Family dinner",   icon: "🍽️",  color: "#22c55e", category: "Custom", time: "6:00 PM", notes: "No screens" },
+        { name: "School run",      icon: "🚗",  color: "#3b82f6", category: "Custom", time: "Morning", days: [1,2,3,4,5], notes: "" },
+        { name: "Playtime",        icon: "🧸",  color: "#ec4899", category: "Custom", time: "Afternoon", notes: "" },
+        { name: "Bedtime routine (kids)", icon: "🌙", color: "#a855f7", category: "Custom", time: "8:00 PM", notes: "" },
+      ],
+    },
+    {
+      title: "🌱 Eco & mindful living",
+      items: [
+        { name: "Reusable bottle", icon: "🍶",  color: "#22c55e", category: "Custom", time: "All day", notes: "" },
+        { name: "Walk/bike instead of drive", icon: "🚲", color: "#14b8a6", category: "Fitness", time: "All day", notes: "" },
+        { name: "Recycle",         icon: "♻️",  color: "#22c55e", category: "Custom", time: "All day", notes: "" },
+        { name: "Meat-free day",   icon: "🥗",  color: "#84cc16", category: "Nutrition", time: "All day", days: [1], notes: "" },
+        { name: "Declutter one thing", icon: "📦", color: "#a855f7", category: "Custom", time: "Anytime", notes: "" },
+      ],
+    },
   ];
 
   const TEMPLATE_ITEM_DEFAULTS = {
