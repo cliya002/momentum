@@ -183,6 +183,112 @@
         { name: "Practice instrument", icon: "🎵", color: "#ec4899", category: "Custom", time: "Evening", notes: "" },
       ],
     },
+    {
+      title: "🏃 Cardio & sports",
+      items: [
+        { name: "Run",             icon: "🏃",  color: "#ef4444", category: "Fitness", time: "Morning", notes: "" },
+        { name: "Cycling",         icon: "🚴",  color: "#f59e0b", category: "Fitness", time: "Morning", notes: "" },
+        { name: "Swim",            icon: "🏊",  color: "#38bdf8", category: "Fitness", time: "Morning", notes: "" },
+        { name: "Yoga",            icon: "🧘",  color: "#a855f7", category: "Fitness", time: "Morning", notes: "" },
+        { name: "HIIT session",    icon: "🔥",  color: "#ef4444", category: "Fitness", time: "Morning", days: [2,4], notes: "" },
+        { name: "Sports / game",   icon: "⚽",  color: "#22c55e", category: "Fitness", time: "Evening", days: [6], notes: "" },
+        { name: "Jump rope",       icon: "🪢",  color: "#3b82f6", category: "Fitness", time: "Morning", notes: "" },
+      ],
+    },
+    {
+      title: "🧖 Recovery & stress",
+      items: [
+        { name: "Sauna",           icon: "🧖",  color: "#ef4444", category: "Sleep", time: "Evening", notes: "" },
+        { name: "Cold plunge / shower", icon: "🧊", color: "#38bdf8", category: "Fitness", time: "Morning", notes: "" },
+        { name: "Massage gun",     icon: "💆",  color: "#a855f7", category: "Fitness", time: "Evening", notes: "" },
+        { name: "Box breathing",   icon: "🌬️",  color: "#14b8a6", category: "Custom", time: "Anytime", notes: "4-4-4-4" },
+        { name: "Power nap",       icon: "😴",  color: "#6366f1", category: "Sleep", time: "Afternoon", notes: "20 min" },
+        { name: "Stretch before bed", icon: "🧘", color: "#a855f7", category: "Sleep", time: "10:00 PM", notes: "" },
+      ],
+    },
+    {
+      title: "🍵 Drinks & extras",
+      items: [
+        { name: "Lemon water",     icon: "🍋",  color: "#f59e0b", category: "Nutrition", time: "Morning", notes: "" },
+        { name: "Green tea",       icon: "🍵",  color: "#22c55e", category: "Nutrition", time: "Afternoon", notes: "" },
+        { name: "Bone broth",      icon: "🍲",  color: "#f59e0b", category: "Nutrition", time: "Evening", notes: "" },
+        { name: "No alcohol",      icon: "🚫",  color: "#ef4444", category: "Nutrition", time: "All day", notes: "" },
+        { name: "No caffeine after 2pm", icon: "☕", color: "#a855f7", category: "Nutrition", time: "Afternoon", notes: "" },
+        { name: "Take vitamins with food", icon: "💊", color: "#3b82f6", category: "Supplements", time: "8:00 AM · with meal 1", notes: "" },
+      ],
+    },
+    {
+      title: "🦷 Dental & eye care",
+      items: [
+        { name: "Brush teeth (AM)", icon: "🪥", color: "#38bdf8", category: "Custom", time: "Morning", notes: "" },
+        { name: "Brush teeth (PM)", icon: "🪥", color: "#3b82f6", category: "Custom", time: "10:30 PM", notes: "" },
+        { name: "Mouthwash",       icon: "🦷",  color: "#14b8a6", category: "Custom", time: "10:30 PM", notes: "" },
+        { name: "Whitening strips", icon: "✨", color: "#a855f7", category: "Custom", time: "Evening", days: [1,4], notes: "" },
+        { name: "Eye breaks (20-20-20)", icon: "👀", color: "#22c55e", category: "Custom", time: "All day", notes: "Every 20 min, look 20ft away 20s" },
+      ],
+    },
+    {
+      title: "🧠 Mental health",
+      items: [
+        { name: "Therapy session", icon: "🛋️",  color: "#a855f7", category: "Custom", time: "Afternoon", days: [3], notes: "" },
+        { name: "No doom-scrolling", icon: "📵", color: "#ef4444", category: "Custom", time: "All day", notes: "" },
+        { name: "Worry journal",   icon: "📓",  color: "#3b82f6", category: "Custom", time: "Evening", notes: "" },
+        { name: "Affirmations",    icon: "💬",  color: "#ec4899", category: "Custom", time: "Morning", notes: "" },
+        { name: "Time in nature",  icon: "🌳",  color: "#22c55e", category: "Custom", time: "Afternoon", notes: "" },
+        { name: "Screen-free meal", icon: "🍽️", color: "#f59e0b", category: "Custom", time: "Evening", notes: "" },
+      ],
+    },
+    {
+      title: "❤️ Relationships & social",
+      items: [
+        { name: "Call family",     icon: "📞",  color: "#ec4899", category: "Custom", time: "Evening", days: [0], notes: "" },
+        { name: "Text a friend",   icon: "💬",  color: "#38bdf8", category: "Custom", time: "Anytime", notes: "" },
+        { name: "Quality time",    icon: "❤️",  color: "#ef4444", category: "Custom", time: "Evening", notes: "Phone away" },
+        { name: "Date night",      icon: "🌹",  color: "#ec4899", category: "Custom", time: "Evening", days: [5], notes: "" },
+        { name: "Random act of kindness", icon: "🤝", color: "#22c55e", category: "Custom", time: "All day", notes: "" },
+      ],
+    },
+    {
+      title: "💰 Money & admin",
+      items: [
+        { name: "Log expenses",    icon: "🧾",  color: "#14b8a6", category: "Custom", time: "Evening", notes: "" },
+        { name: "No impulse buys", icon: "🛑",  color: "#ef4444", category: "Custom", time: "All day", notes: "" },
+        { name: "Check budget",    icon: "💰",  color: "#f59e0b", category: "Custom", time: "Evening", days: [0], notes: "Weekly review" },
+        { name: "Pack lunch",      icon: "🥪",  color: "#22c55e", category: "Custom", time: "Morning", days: [1,2,3,4,5], notes: "" },
+      ],
+    },
+    {
+      title: "🏠 Home & pets",
+      items: [
+        { name: "Make the bed",    icon: "🛏️",  color: "#6366f1", category: "Custom", time: "Morning", notes: "" },
+        { name: "Do the dishes",   icon: "🍽️",  color: "#14b8a6", category: "Custom", time: "Evening", notes: "" },
+        { name: "Water the plants", icon: "🪴", color: "#22c55e", category: "Custom", time: "Morning", days: [1,4], notes: "" },
+        { name: "Laundry",         icon: "🧺",  color: "#38bdf8", category: "Custom", time: "Evening", days: [0], notes: "" },
+        { name: "Walk the dog",    icon: "🐕",  color: "#f59e0b", category: "Custom", time: "Morning", notes: "" },
+        { name: "Feed the pet",    icon: "🐾",  color: "#ec4899", category: "Custom", time: "Morning", notes: "" },
+        { name: "Take out trash",  icon: "🗑️",  color: "#a855f7", category: "Custom", time: "Evening", days: [2,5], notes: "" },
+      ],
+    },
+    {
+      title: "🚭 Quit / reduce",
+      items: [
+        { name: "No smoking",      icon: "🚭",  color: "#ef4444", category: "Custom", time: "All day", notes: "" },
+        { name: "No vaping",       icon: "💨",  color: "#ef4444", category: "Custom", time: "All day", notes: "" },
+        { name: "No nail biting",  icon: "💅",  color: "#ec4899", category: "Custom", time: "All day", notes: "" },
+        { name: "No soda",         icon: "🥤",  color: "#f59e0b", category: "Nutrition", time: "All day", notes: "" },
+        { name: "Screen curfew",   icon: "🌙",  color: "#6366f1", category: "Sleep", time: "10:00 PM", notes: "No screens after" },
+      ],
+    },
+    {
+      title: "📚 Learning & growth",
+      items: [
+        { name: "Language practice", icon: "🗣️", color: "#3b82f6", category: "Custom", time: "Morning", notes: "e.g. Duolingo" },
+        { name: "Read 10 pages",   icon: "📖",  color: "#14b8a6", category: "Custom", time: "Evening", notes: "" },
+        { name: "Listen to a podcast", icon: "🎧", color: "#a855f7", category: "Custom", time: "Anytime", notes: "" },
+        { name: "Online course",   icon: "💻",  color: "#6366f1", category: "Custom", time: "Evening", notes: "" },
+        { name: "Write / blog",    icon: "✍️",  color: "#ec4899", category: "Custom", time: "Evening", notes: "" },
+      ],
+    },
   ];
 
   const TEMPLATE_ITEM_DEFAULTS = {
