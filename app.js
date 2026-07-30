@@ -3519,6 +3519,7 @@
   // status, so they're informational — the app's on-open catch-up stays exact.
   function buildPushSchedule() {
     const entries = [];
+    const today = new Date();
     const byTime = new Map();
     for (const h of state.habits) {
       if (!h.reminderTime || !/^\d{2}:\d{2}$/.test(h.reminderTime)) continue;
@@ -3527,26 +3528,51 @@
     }
     for (const [time, hs] of byTime) {
       const days = [...new Set(hs.flatMap((h) => (h.days && h.days.length ? h.days : [0, 1, 2, 3, 4, 5, 6])))];
+      const label = fmtClockLabel(time);
       let title, body;
       if (hs.length === 1) {
-        title = `${hs[0].icon || "⏰"} ${hs[0].name}`;
-        body = hs[0].notes || "Time to check this off.";
+        const h = hs[0];
+        title = `${h.icon || "⏰"} ${h.name}`;
+        const bits = [`Due ${label}`];
+        if (h.notes) bits.push(h.notes);
+        body = bits.join(" · ");
       } else {
-        title = `🕒 Your ${fmtClockLabel(time)} stack · ${hs.length} items`;
-        body = hs.map((h) => `${h.icon || "•"} ${h.name}`).join(", ");
+        title = `🕒 ${label} · ${hs.length} to check off`;
+        // One line per habit with its dose/notes for supplement stacks.
+        body = hs.map((h) => `${h.icon || "•"} ${h.name}${h.notes ? " — " + h.notes : ""}`).join("\n");
       }
-      entries.push({ time, days, title, body });
+      // ids make the notification actionable (Done / Snooze).
+      entries.push({ time, days, title, body, ids: hs.map((h) => h.id) });
     }
     const md = localStorage.getItem(KEYS.morningDigest);
-    if (md) entries.push({ time: md, days: [0, 1, 2, 3, 4, 5, 6], title: "☀️ Good morning", body: "Time for today's habits. Open Momentum." });
+    if (md) {
+      const dayHabits = state.habits.filter((h) => isHabitActiveOn(h, today) && !h.nightPrevDay);
+      const names = dayHabits.slice(0, 4).map((h) => `${h.icon || "•"} ${h.name}`).join(", ");
+      const body = dayHabits.length
+        ? `${dayHabits.length} habit${dayHabits.length === 1 ? "" : "s"} today${names ? " — " + names + (dayHabits.length > 4 ? "…" : "") : ""}.`
+        : "A fresh day. Open Momentum to plan your habits.";
+      entries.push({ time: md, days: [0, 1, 2, 3, 4, 5, 6], title: "☀️ Good morning", body });
+    }
     const en = localStorage.getItem(KEYS.eveningNudge);
-    if (en) entries.push({ time: en, days: [0, 1, 2, 3, 4, 5, 6], title: "🌙 Before you wind down", body: "Anything still pending? Open Momentum." });
+    if (en) {
+      const dayHabits = state.habits.filter((h) => isHabitActiveOn(h, today));
+      const body = dayHabits.length
+        ? `Wind-down check-in — log what you finished today${dayHabits.length ? ` (${dayHabits.length} on today's list)` : ""}.`
+        : "Wind-down check-in. Open Momentum to log your day.";
+      entries.push({ time: en, days: [0, 1, 2, 3, 4, 5, 6], title: "🌙 Before you wind down", body });
+    }
     const wr = localStorage.getItem(KEYS.weeklyReport);
-    if (wr) entries.push({ time: wr, days: [0], title: "📊 Your week in Momentum", body: "Open for your weekly recap." });
+    if (wr) entries.push({ time: wr, days: [0], title: "📊 Your week in Momentum", body: "See your adherence, best day, and streaks in the Report tab." });
     const f = state.fasting;
     if (f && f.scheduleEnabled) {
-      if (/^\d{2}:\d{2}$/.test(f.startTime)) entries.push({ time: f.startTime, days: [0, 1, 2, 3, 4, 5, 6], title: "🍽️ Time to start fasting", body: `Eating window closed. Break your fast around ${f.eatTime}.` });
-      if (/^\d{2}:\d{2}$/.test(f.eatTime)) entries.push({ time: f.eatTime, days: [0, 1, 2, 3, 4, 5, 6], title: "🥗 Eating window open", body: "You can break your fast now." });
+      if (/^\d{2}:\d{2}$/.test(f.startTime) && /^\d{2}:\d{2}$/.test(f.eatTime)) {
+        const [sh, sm] = f.startTime.split(":").map(Number);
+        const [eh, em] = f.eatTime.split(":").map(Number);
+        let mins = (eh * 60 + em) - (sh * 60 + sm); if (mins <= 0) mins += 1440;
+        const hrs = Math.round(mins / 60);
+        entries.push({ time: f.startTime, days: [0, 1, 2, 3, 4, 5, 6], title: "🍽️ Time to start fasting", body: `Begin your ${hrs}h fast. Eating window opens ${fmtClockLabel(f.eatTime)}.` });
+        entries.push({ time: f.eatTime, days: [0, 1, 2, 3, 4, 5, 6], title: "🥗 Eating window open", body: `Break your fast. Next fast starts ${fmtClockLabel(f.startTime)}.` });
+      }
     }
     return entries;
   }

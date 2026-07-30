@@ -125,6 +125,7 @@ async function runSchedule(env) {
           title: entry.title || "Momentum",
           body: entry.body || "",
           tag: entry.tag || ("ht-push-" + entry.time),
+          ids: Array.isArray(entry.ids) ? entry.ids : [],
         });
         if (res === "gone") { gone = true; break; }
         rec.sent[sk] = dateStr;
