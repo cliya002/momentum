@@ -28,6 +28,8 @@
     reminderSound: "ht_reminder_sound",
     morningDigest: "ht_morning_digest",
     eveningNudge: "ht_evening_nudge",
+    weeklyReport: "ht_weekly_report",
+    snoozeMin: "ht_snooze_min",
   };
   const DEFAULT_CATEGORIES = ["Fitness","Nutrition","Sleep","Supplements","Custom"];
   function getCategories() {
@@ -1970,6 +1972,8 @@
       quietEnd: $("#quietEnd"),
       morningDigest: $("#morningDigest"),
       eveningNudge: $("#eveningNudge"),
+      weeklyReport: $("#weeklyReport"),
+      snoozeDuration: $("#snoozeDuration"),
       clearHistoryBtn: $("#clearHistoryBtn"),
       deletePhotosBtn: $("#deletePhotosBtn"),
       themeSelect: $("#themeSelect"),
@@ -3160,6 +3164,14 @@
   function remindersEnabled() {
     return localStorage.getItem(KEYS.remindersEnabled) === "true";
   }
+  function snoozeMinutes() {
+    const n = parseInt(localStorage.getItem(KEYS.snoozeMin), 10);
+    return [10, 15, 30, 60].includes(n) ? n : 10;
+  }
+  function snoozeLabel() {
+    const n = snoozeMinutes();
+    return n >= 60 ? `${n / 60}h` : `${n}m`;
+  }
   function inQuietHours(hh, mm) {
     const qs = localStorage.getItem(KEYS.quietStart);
     const qe = localStorage.getItem(KEYS.quietEnd);
@@ -3239,6 +3251,15 @@
       const delay = msUntilToday(hh, mm);
       if (delay > 0 && delay < 24 * 60 * 60 * 1000) {
         reminderTimers.push(setTimeout(fireEveningNudge, delay));
+      }
+    }
+    // ---- Weekly summary (Sundays only) ----
+    const wr = localStorage.getItem(KEYS.weeklyReport);
+    if (wr && /^\d{2}:\d{2}$/.test(wr) && now.getDay() === 0) {
+      const [hh, mm] = wr.split(":").map(Number);
+      const delay = msUntilToday(hh, mm);
+      if (delay > 0 && delay < 24 * 60 * 60 * 1000) {
+        reminderTimers.push(setTimeout(fireWeeklyReport, delay));
       }
     }
     scheduleFastingReminders();
@@ -3359,8 +3380,11 @@
         tag: "ht-slot-" + (h.reminderTime || h.id),
       });
     } else {
-      const label = pending[0].time ? pending[0].time.split("·")[0].trim() : "Reminder";
-      notify(`⏰ ${label} · ${pending.length} habits`, {
+      const chip = timeChipLabel(effectiveTime(pending[0], today.getDay()));
+      const title = chip
+        ? `🕒 Your ${chip} stack · ${pending.length} items`
+        : `⏰ ${pending.length} habits to check off`;
+      notify(title, {
         body: pending.map((h) => `${h.icon || "•"} ${h.name}`).join(", "),
         ids: pending.map((h) => h.id),
         tag: "ht-slot-" + (pending[0].reminderTime || "group"),
@@ -3396,6 +3420,43 @@
     notify(title, { body, ids: pending.map((h) => h.id), tag: "ht-nudge" });
     if (soundEnabled()) { try { playChime(); } catch (e) {} }
   }
+  // Weekly summary — a recap of the last 7 days, fired Sunday evening.
+  function fireWeeklyReport() {
+    const stamp = todayKey();
+    if (localStorage.getItem("ht_weekly_sent") === stamp) return; // once per day
+    localStorage.setItem("ht_weekly_sent", stamp);
+    const today = new Date();
+    let done = 0, total = 0, bestDay = null, bestPct = -1;
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(today, -i);
+      let dDone = 0, dTot = 0;
+      for (const h of state.habits) {
+        if (isHabitActiveOn(h, d)) { dTot++; total++; if (isCompleted(h, d)) { dDone++; done++; } }
+      }
+      if (dTot > 0) { const p = dDone / dTot; if (p > bestPct) { bestPct = p; bestDay = d; } }
+    }
+    const pct = total ? Math.round((done / total) * 100) : 0;
+    let body;
+    if (!total) {
+      body = "No habits scheduled this week yet. Add a few to start building momentum.";
+    } else {
+      body = `${pct}% adherence · ${done}/${total} check-ins`;
+      if (bestDay) body += ` · best day ${bestDay.toLocaleDateString(undefined, { weekday: "long" })}`;
+    }
+    notify("📊 Your week in Momentum", { body, tag: "ht-weekly" });
+    if (soundEnabled()) { try { playChime(); } catch (e) {} }
+  }
+  function maybeFireWeeklyReport() {
+    if (!("Notification" in window) || Notification.permission !== "granted" || !remindersEnabled()) return;
+    const wr = localStorage.getItem(KEYS.weeklyReport);
+    if (!wr || !/^\d{2}:\d{2}$/.test(wr)) return;
+    const now = new Date();
+    if (now.getDay() !== 0) return; // Sundays only
+    const [hh, mm] = wr.split(":").map(Number);
+    if (now.getHours() * 60 + now.getMinutes() < hh * 60 + mm) return; // not time yet
+    fireWeeklyReport(); // self-dedupes per day
+  }
+
   // Central notification helper: prefer the service worker (enables action
   // buttons + reliability when unfocused), fall back to a page Notification.
   async function notify(title, opts = {}) {
@@ -3414,7 +3475,7 @@
     if (opts.ids && opts.ids.length) {
       options.actions = [
         { action: "done", title: "✓ Done" },
-        { action: "snooze", title: "Snooze 10m" },
+        { action: "snooze", title: `Snooze ${snoozeLabel()}` },
       ];
     }
     try {
@@ -3448,9 +3509,10 @@
       updateBadge();
       showToast(`Marked ${ids.length} done.`, "success");
     } else if (action === "snooze" && ids.length) {
-      const t = setTimeout(() => fireGroupReminder(ids), 10 * 60 * 1000);
+      const mins = snoozeMinutes();
+      const t = setTimeout(() => fireGroupReminder(ids), mins * 60 * 1000);
       reminderTimers.push(t);
-      showToast("Snoozed 10 minutes.");
+      showToast(`Snoozed ${snoozeLabel()}.`);
     }
   }
 
@@ -3544,9 +3606,11 @@
         }
         const md = localStorage.getItem(KEYS.morningDigest);
         const en = localStorage.getItem(KEYS.eveningNudge);
+        const wr = localStorage.getItem(KEYS.weeklyReport);
         const extras = [];
         if (md) extras.push(`${md} digest`);
         if (en) extras.push(`${en} nudge`);
+        if (wr) extras.push(`${wr} Sun summary`);
         const sorted = [...times].sort();
         if (sorted.length === 0 && extras.length === 0) {
           prev.innerHTML = "No reminder times set. Add a reminder time on a habit (in its edit screen).";
@@ -5126,6 +5190,8 @@
     els.quietEnd.value = localStorage.getItem(KEYS.quietEnd) || "";
     els.morningDigest.value = localStorage.getItem(KEYS.morningDigest) || "";
     els.eveningNudge.value = localStorage.getItem(KEYS.eveningNudge) || "";
+    els.weeklyReport.value = localStorage.getItem(KEYS.weeklyReport) || "";
+    els.snoozeDuration.value = String(snoozeMinutes());
     renderReminderInfo();
     // Show the iOS guidance note on Apple devices
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
@@ -5638,6 +5704,14 @@
       else localStorage.removeItem(KEYS.eveningNudge);
       scheduleReminders(); renderReminderInfo();
     });
+    els.weeklyReport.addEventListener("change", () => {
+      if (els.weeklyReport.value) localStorage.setItem(KEYS.weeklyReport, els.weeklyReport.value);
+      else localStorage.removeItem(KEYS.weeklyReport);
+      scheduleReminders(); renderReminderInfo();
+    });
+    els.snoozeDuration.addEventListener("change", () => {
+      localStorage.setItem(KEYS.snoozeMin, els.snoozeDuration.value);
+    });
     els.quietStart.addEventListener("change", () => {
       if (els.quietStart.value) localStorage.setItem(KEYS.quietStart, els.quietStart.value); else localStorage.removeItem(KEYS.quietStart);
       scheduleReminders();
@@ -5726,6 +5800,7 @@
     cleanupNotifiedKeys();
     scheduleReminders();
     catchUpReminders();
+    maybeFireWeeklyReport();
 
     // Fasting: resume an in-progress manual fast (re-arm its goal alert) and
     // start the ticking countdown for either manual or scheduled (auto) mode.
@@ -5743,6 +5818,7 @@
       if (currentView === "today") renderToday();
       scheduleReminders();
       catchUpReminders();
+      maybeFireWeeklyReport();
     });
     document.addEventListener("pointerdown", unlockAudioOnce, { once: true });
     document.addEventListener("keydown", unlockAudioOnce, { once: true });

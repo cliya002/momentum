@@ -614,6 +614,22 @@
                 <input type="time" id="eveningNudge" style="width:auto" />
               </label>
             </div>
+            <div class="field toggle-field">
+              <label class="toggle-row">
+                <span><b>Weekly summary</b><br><span class="hint">A recap of your week, Sunday evening.</span></span>
+                <input type="time" id="weeklyReport" style="width:auto" />
+              </label>
+            </div>
+            <div class="field">
+              <label>Snooze length <span class="hint">(when you tap Snooze on a reminder)</span>
+                <select id="snoozeDuration">
+                  <option value="10">10 minutes</option>
+                  <option value="15">15 minutes</option>
+                  <option value="30">30 minutes</option>
+                  <option value="60">1 hour</option>
+                </select>
+              </label>
+            </div>
 
             <div id="permStatus" class="perm-status"></div>
             <div id="reminderPreview" class="reminder-preview"></div>
