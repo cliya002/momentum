@@ -69,13 +69,20 @@ export default {
         return json({ ok: true, cleared: n });
       }
       if (url.pathname === "/debug") {
-        const ids = []; let cursor;
+        const subs = []; let cursor;
         do {
           const list = await env.SUBS.list({ prefix: "sub:", cursor });
           cursor = list.list_complete ? null : list.cursor;
-          for (const k of list.keys) ids.push(k.name);
+          for (const k of list.keys) {
+            const rec = safeParse(await env.SUBS.get(k.name));
+            subs.push({
+              id: k.name,
+              tz: rec && rec.tz,
+              schedule: rec && rec.schedule ? rec.schedule.map((e) => ({ time: e.time, title: e.title, days: e.days })) : [],
+            });
+          }
         } while (cursor);
-        return json({ count: ids.length, ids });
+        return json({ count: subs.length, subs });
       }
       if (url.pathname === "/test" && request.method === "POST") {
         const body = await request.json();
