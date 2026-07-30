@@ -38,9 +38,12 @@ export default {
       if (url.pathname === "/subscribe" && request.method === "POST") {
         const body = await request.json();
         if (!body.subscription || !body.subscription.endpoint) return json({ error: "missing subscription" }, 400);
-        const id = await hashEndpoint(body.subscription.endpoint);
+        // Key by a stable device id when provided so re-registering the same
+        // device OVERWRITES its entry instead of creating a duplicate.
+        const id = await keyFor(body);
         const prev = safeParse(await env.SUBS.get("sub:" + id));
         const rec = {
+          deviceId: body.deviceId || null,
           subscription: body.subscription,
           tz: typeof body.tz === "string" ? body.tz : "UTC",
           schedule: Array.isArray(body.schedule) ? body.schedule.slice(0, 100) : [],
@@ -52,9 +55,27 @@ export default {
       }
       if (url.pathname === "/unsubscribe" && request.method === "POST") {
         const body = await request.json();
-        const ep = body.endpoint || (body.subscription && body.subscription.endpoint);
-        if (ep) await env.SUBS.delete("sub:" + (await hashEndpoint(ep)));
+        const id = await keyFor(body);
+        if (id) await env.SUBS.delete("sub:" + id);
         return json({ ok: true });
+      }
+      if (url.pathname === "/reset" && (request.method === "POST" || request.method === "GET")) {
+        let cursor, n = 0;
+        do {
+          const list = await env.SUBS.list({ prefix: "sub:", cursor });
+          cursor = list.list_complete ? null : list.cursor;
+          for (const k of list.keys) { await env.SUBS.delete(k.name); n++; }
+        } while (cursor);
+        return json({ ok: true, cleared: n });
+      }
+      if (url.pathname === "/debug") {
+        const ids = []; let cursor;
+        do {
+          const list = await env.SUBS.list({ prefix: "sub:", cursor });
+          cursor = list.list_complete ? null : list.cursor;
+          for (const k of list.keys) ids.push(k.name);
+        } while (cursor);
+        return json({ count: ids.length, ids });
       }
       if (url.pathname === "/test" && request.method === "POST") {
         const body = await request.json();
@@ -213,6 +234,12 @@ function unb64url(str) {
 async function hashEndpoint(ep) {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(ep));
   return b64url(new Uint8Array(d)).slice(0, 32);
+}
+// Stable storage key: prefer the app-provided device id, else hash the endpoint.
+async function keyFor(body) {
+  if (body && typeof body.deviceId === "string" && body.deviceId) return "dev_" + body.deviceId.slice(0, 40);
+  const ep = body && (body.endpoint || (body.subscription && body.subscription.endpoint));
+  return ep ? await hashEndpoint(ep) : null;
 }
 function safeParse(s) { try { return s ? JSON.parse(s) : null; } catch (e) { return null; } }
 function json(obj, status = 200) {

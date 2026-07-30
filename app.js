@@ -33,6 +33,7 @@
     pushUrl: "ht_push_url",
     pushVapid: "ht_push_vapid",
     pushEnabled: "ht_push_enabled",
+    pushDeviceId: "ht_push_device_id",
   };
   const DEFAULT_CATEGORIES = ["Fitness","Nutrition","Sleep","Supplements","Custom"];
   function getCategories() {
@@ -1981,6 +1982,7 @@
       pushUrl: $("#pushUrl"),
       pushVapid: $("#pushVapid"),
       pushTestBtn: $("#pushTestBtn"),
+      pushResetBtn: $("#pushResetBtn"),
       pushStatus: $("#pushStatus"),
       clearHistoryBtn: $("#clearHistoryBtn"),
       deletePhotosBtn: $("#deletePhotosBtn"),
@@ -3482,6 +3484,12 @@
   function pushConfigured() {
     return !!(localStorage.getItem(KEYS.pushUrl) && localStorage.getItem(KEYS.pushVapid));
   }
+  // Stable per-device id so the worker overwrites (not duplicates) on re-register.
+  function pushDeviceId() {
+    let id = localStorage.getItem(KEYS.pushDeviceId);
+    if (!id) { id = uid(); localStorage.setItem(KEYS.pushDeviceId, id); }
+    return id;
+  }
   function pushEnabled() {
     return localStorage.getItem(KEYS.pushEnabled) === "true" && pushConfigured();
   }
@@ -3560,6 +3568,7 @@
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            deviceId: pushDeviceId(),
             subscription: sub.toJSON(),
             tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
             schedule: buildPushSchedule(),
@@ -3605,6 +3614,7 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          deviceId: pushDeviceId(),
           subscription: sub.toJSON(),
           tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
           schedule: buildPushSchedule(),
@@ -3645,6 +3655,25 @@
     }
   }
 
+  // Clear every subscription stored on the worker (fixes duplicate pushes from
+  // stale/rotated subscriptions), then re-register just this device.
+  async function resetBackgroundDevices() {
+    const els = getEls();
+    const url = ((localStorage.getItem(KEYS.pushUrl) || els.pushUrl.value) || "").trim().replace(/\/$/, "");
+    if (!/^https:\/\//.test(url)) { showPushStatus("Enter your push server URL first.", "warn"); return; }
+    try {
+      showPushStatus("Clearing server devices…");
+      const resp = await fetch(url + "/reset", { method: "POST" });
+      const data = await resp.json().catch(() => ({}));
+      if (pushEnabled()) {
+        await enableBackgroundPush(); // re-register this one device fresh
+      }
+      showPushStatus(`Cleared ${data.cleared ?? "all"} device(s). This one re-registered — you should now get a single notification.`, "success");
+    } catch (e) {
+      showPushStatus("Reset failed: " + (e.message || e), "warn");
+    }
+  }
+
   async function disableBackgroundPush() {
     const url = (localStorage.getItem(KEYS.pushUrl) || "").replace(/\/$/, "");
     localStorage.setItem(KEYS.pushEnabled, "false");
@@ -3655,7 +3684,7 @@
           await fetch(url + "/unsubscribe", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ endpoint: sub.endpoint }),
+            body: JSON.stringify({ deviceId: pushDeviceId(), endpoint: sub.endpoint }),
           }).catch(() => {});
         }
         await sub.unsubscribe().catch(() => {});
@@ -5927,6 +5956,7 @@
       else disableBackgroundPush();
     });
     els.pushTestBtn.addEventListener("click", testBackgroundPush);
+    els.pushResetBtn.addEventListener("click", resetBackgroundDevices);
     els.quietStart.addEventListener("change", () => {
       if (els.quietStart.value) localStorage.setItem(KEYS.quietStart, els.quietStart.value); else localStorage.removeItem(KEYS.quietStart);
       scheduleReminders();
