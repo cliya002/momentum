@@ -1828,17 +1828,11 @@ body.compact .habit-list { gap: 0.35rem; }
 @media (max-width: 900px) {
   .topbar { display: flex; }
   .content { padding: 1rem 1rem calc(var(--safe-bottom) + 5rem); }
-  .sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    height: 100vh;
-    transform: translateX(-100%);
-    transition: transform 0.25s ease;
-    box-shadow: var(--shadow-lg);
-  }
-  .sidebar.open { transform: translateX(0); }
-  .sidebar-backdrop.open { display: block; }
+  /* On phones the bottom tab bar is the only nav — remove the drawer entirely
+     so its backdrop can't swallow taps. */
+  #menuToggle { display: none !important; }
+  .sidebar { display: none !important; }
+  .sidebar-backdrop { display: none !important; }
   .page-header h1 { font-size: 1.4rem; }
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
   .stat-grid-3 { grid-template-columns: repeat(3, 1fr); }
