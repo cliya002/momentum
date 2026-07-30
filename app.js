@@ -572,6 +572,7 @@
       notes: (h.notes || "").slice(0, 500),
       reminderTime: /^\d{2}:\d{2}$/.test(h.reminderTime) ? h.reminderTime : "",
       nightPrevDay: !!h.nightPrevDay,
+      noPush: !!h.noPush,
       days: Array.isArray(h.days) && h.days.length ? h.days : [0,1,2,3,4,5,6],
       order: Number.isFinite(Number(h.order)) ? Number(h.order) : idx,
       createdAt: h.createdAt || new Date(now).toISOString(),
@@ -1890,6 +1891,7 @@
       // habits
       habitsGroups: $("#habitsGroups"),
       habitsEmpty: $("#habitsEmpty"),
+      habitSearch: $("#habitSearch"),
       addBtn: $("#addBtn"),
       deleteAllBtn: $("#deleteAllBtn"),
       // habit modal
@@ -1910,6 +1912,7 @@
       colorPicker: $("#colorPicker"),
       daysPicker: $("#daysPicker"),
       habitNightPrevDay: $("#habitNightPrevDay"),
+      habitNoPush: $("#habitNoPush"),
       advancedToggle: $("#advancedToggle"),
       dayTimesWrap: $("#dayTimesWrap"),
       dayTimesGrid: $("#dayTimesGrid"),
@@ -2659,8 +2662,12 @@
   }
 
   /* ---- Confetti + haptic celebration ---- */
+  function prefersReducedMotion() {
+    return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }
   function celebrate(big) {
     if (navigator.vibrate) navigator.vibrate(big ? [30, 40, 30] : 20);
+    if (prefersReducedMotion()) return; // respect the OS "reduce motion" setting
     const layer = $("#confetti");
     if (!layer) return;
     const colors = ["#6366f1", "#14b8a6", "#22c55e", "#3b82f6", "#ec4899", "#f59e0b"];
@@ -2683,6 +2690,7 @@
   function maybeCelebrate(habit, date) {
     const today = new Date();
     if (!sameDay(date, today)) return;
+    checkStreakMilestone(habit);
     const scheduled = state.habits.filter((h) => isHabitActiveOn(h, today));
     if (scheduled.length === 0) return;
     const allDone = scheduled.every((h) => isCompleted(h, today));
@@ -2692,6 +2700,21 @@
     const block = scheduled.filter((h) => dayPartFor(h) === partId);
     const blockPendingBefore = block.some((h) => habitStatus(h, today) === "pending");
     if (!blockPendingBefore && block.length > 1) celebrate(false);
+  }
+
+  // Celebrate streak milestones once each (7, 30, 60, 100, 200, 365 days).
+  const STREAK_MILESTONES = [7, 30, 60, 100, 200, 365];
+  function checkStreakMilestone(habit) {
+    if (!habit) return;
+    const streak = currentStreak(habit);
+    if (streak < STREAK_MILESTONES[0]) return;
+    const milestone = STREAK_MILESTONES.filter((m) => m <= streak).pop();
+    if (!milestone) return;
+    const key = "ht_milestone_" + habit.id;
+    if (Number(localStorage.getItem(key) || 0) >= milestone) return; // already celebrated
+    localStorage.setItem(key, String(milestone));
+    celebrate(true);
+    showToast(`🔥 ${milestone}-day streak: ${habit.name}!`, "success");
   }
 
   /* ---- Drag reorder within a block ---- */
@@ -3517,12 +3540,34 @@
   // Build the reminder schedule the worker will fire on. Times are local "HH:MM"
   // plus the weekdays each applies to. Background pushes can't know completion
   // status, so they're informational — the app's on-open catch-up stays exact.
+  // A snapshot of the last 7 days for the weekly push body (computed at sync).
+  function weeklySummaryText() {
+    const today = new Date();
+    let done = 0, total = 0, bestDay = null, bestPct = -1;
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(today, -i);
+      let dDone = 0, dTot = 0;
+      for (const h of state.habits) {
+        if (isHabitActiveOn(h, d)) { dTot++; total++; if (isCompleted(h, d)) { dDone++; done++; } }
+      }
+      if (dTot > 0) { const p = dDone / dTot; if (p > bestPct) { bestPct = p; bestDay = d; } }
+    }
+    if (!total) return "See your adherence, streaks, and trends in the Report tab.";
+    const pct = Math.round((done / total) * 100);
+    let s = `${pct}% adherence · ${done}/${total} check-ins`;
+    if (bestDay) s += ` · best day ${bestDay.toLocaleDateString(undefined, { weekday: "long" })}`;
+    return s + ". Open Report for the full picture.";
+  }
+
   function buildPushSchedule() {
     const entries = [];
     const today = new Date();
     const byTime = new Map();
     for (const h of state.habits) {
       if (!h.reminderTime || !/^\d{2}:\d{2}$/.test(h.reminderTime)) continue;
+      if (h.noPush) continue; // habit opted out of background reminders
+      const [qh, qm] = h.reminderTime.split(":").map(Number);
+      if (inQuietHours(qh, qm)) continue; // don't push during quiet hours
       if (!byTime.has(h.reminderTime)) byTime.set(h.reminderTime, []);
       byTime.get(h.reminderTime).push(h);
     }
@@ -3562,7 +3607,7 @@
       entries.push({ time: en, days: [0, 1, 2, 3, 4, 5, 6], title: "🌙 Before you wind down", body });
     }
     const wr = localStorage.getItem(KEYS.weeklyReport);
-    if (wr) entries.push({ time: wr, days: [0], title: "📊 Your week in Momentum", body: "See your adherence, best day, and streaks in the Report tab." });
+    if (wr) entries.push({ time: wr, days: [0], title: "📊 Your week in Momentum", body: weeklySummaryText() });
     const f = state.fasting;
     if (f && f.scheduleEnabled) {
       if (/^\d{2}:\d{2}$/.test(f.startTime) && /^\d{2}:\d{2}$/.test(f.eatTime)) {
@@ -3681,22 +3726,20 @@
     }
   }
 
-  // Clear every subscription stored on the worker (fixes duplicate pushes from
-  // stale/rotated subscriptions), then re-register just this device.
-  async function resetBackgroundDevices() {
+  // Re-register this device with a fresh subscription. Because the worker keys
+  // by a stable device id, this overwrites (never duplicates) this device's
+  // entry — handy if pushes stop after the browser rotates the subscription.
+  async function reregisterDevice() {
     const els = getEls();
     const url = ((localStorage.getItem(KEYS.pushUrl) || els.pushUrl.value) || "").trim().replace(/\/$/, "");
     if (!/^https:\/\//.test(url)) { showPushStatus("Enter your push server URL first.", "warn"); return; }
     try {
-      showPushStatus("Clearing server devices…");
-      const resp = await fetch(url + "/reset", { method: "POST" });
-      const data = await resp.json().catch(() => ({}));
-      if (pushEnabled()) {
-        await enableBackgroundPush(); // re-register this one device fresh
-      }
-      showPushStatus(`Cleared ${data.cleared ?? "all"} device(s). This one re-registered — you should now get a single notification.`, "success");
+      showPushStatus("Re-registering this device…");
+      const sub = await getPushSubscription();
+      if (sub) await sub.unsubscribe().catch(() => {});
+      await enableBackgroundPush(); // creates a fresh subscription under the same device id
     } catch (e) {
-      showPushStatus("Reset failed: " + (e.message || e), "warn");
+      showPushStatus("Re-register failed: " + (e.message || e), "warn");
     }
   }
 
@@ -3886,6 +3929,7 @@
   }
 
   /* ---- Habits management ---- */
+  let habitSearchTerm = "";
   function renderHabits() {
     const els = getEls();
     els.habitsGroups.innerHTML = "";
@@ -3897,12 +3941,21 @@
     els.habitsEmpty.classList.add("hidden");
     els.deleteAllBtn.classList.remove("hidden");
 
+    const term = (habitSearchTerm || "").trim().toLowerCase();
+    const visible = term
+      ? state.habits.filter((h) => (h.name || "").toLowerCase().includes(term) || (h.notes || "").toLowerCase().includes(term))
+      : state.habits;
+
     const cats = getCategories();
     const groupMap = new Map();
     for (const cat of cats) groupMap.set(cat, []);
-    for (const h of state.habits) {
+    for (const h of visible) {
       if (!groupMap.has(h.category)) groupMap.set(h.category, []); // preserve unknown categories
       groupMap.get(h.category).push(h);
+    }
+    if (term && visible.length === 0) {
+      els.habitsGroups.innerHTML = `<div class="empty-state"><p>No habits match “${escapeHtml(term)}”.</p></div>`;
+      return;
     }
 
     for (const cat of groupMap.keys()) {
@@ -3998,6 +4051,7 @@
     els.habitReminder.value = habit ? (habit.reminderTime || "") : (localStorage.getItem(KEYS.reminderDefault) || "");
     els.habitNotes.value = habit ? (habit.notes || "") : "";
     els.habitNightPrevDay.checked = habit ? !!habit.nightPrevDay : false;
+    els.habitNoPush.checked = habit ? !!habit.noPush : false;
     els.habitTarget.value = habit && habit.type === "count" ? habit.target : "";
     els.habitUnit.value = habit ? habit.unit : "";
     els.habitIncrement.value = habit && habit.type === "count" ? habit.increment : "";
@@ -4107,6 +4161,7 @@
       dayTimes,
       reminderTime: /^\d{2}:\d{2}$/.test(els.habitReminder.value) ? els.habitReminder.value : "",
       nightPrevDay: !!els.habitNightPrevDay.checked,
+      noPush: !!els.habitNoPush.checked,
       notes: (els.habitNotes.value || "").trim().slice(0, 500),
       days: days.length ? days : [0,1,2,3,4,5,6],
       updatedAt: now,
@@ -5858,6 +5913,7 @@
     }
 
     // Habits
+    els.habitSearch.addEventListener("input", () => { habitSearchTerm = els.habitSearch.value; renderHabits(); });
     els.addBtn.addEventListener("click", () => openHabitModal(null));
     els.deleteAllBtn.addEventListener("click", deleteAllHabits);
     els.cancelBtn.addEventListener("click", closeModal);
@@ -5982,7 +6038,7 @@
       else disableBackgroundPush();
     });
     els.pushTestBtn.addEventListener("click", testBackgroundPush);
-    els.pushResetBtn.addEventListener("click", resetBackgroundDevices);
+    els.pushResetBtn.addEventListener("click", reregisterDevice);
     els.quietStart.addEventListener("change", () => {
       if (els.quietStart.value) localStorage.setItem(KEYS.quietStart, els.quietStart.value); else localStorage.removeItem(KEYS.quietStart);
       scheduleReminders();
@@ -6108,6 +6164,14 @@
     if (params.has("notif")) {
       const ids = (params.get("ids") || "").split(",").filter(Boolean);
       handleNotifAction(params.get("notif"), { ids });
+      history.replaceState(null, "", location.pathname);
+    }
+    // Home-screen shortcuts open the app with ?tab= (and optional add=1).
+    const shortcutTab = params.get("tab");
+    const validTabs = ["today", "habits", "progress", "report", "work", "settings"];
+    if (shortcutTab && validTabs.includes(shortcutTab)) {
+      currentView = shortcutTab;
+      if (params.get("add") === "1") setTimeout(() => openHabitModal(null), 300);
       history.replaceState(null, "", location.pathname);
     }
     switchView(currentView);

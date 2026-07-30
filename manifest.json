@@ -21,5 +21,10 @@
       "type": "image/png",
       "purpose": "any maskable"
     }
+  ],
+  "shortcuts": [
+    { "name": "Today", "short_name": "Today", "url": "./?tab=today" },
+    { "name": "Add habit", "short_name": "Add", "url": "./?tab=habits&add=1" },
+    { "name": "Progress", "short_name": "Progress", "url": "./?tab=progress" }
   ]
 }

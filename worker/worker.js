@@ -60,6 +60,8 @@ export default {
         return json({ ok: true });
       }
       if (url.pathname === "/reset" && (request.method === "POST" || request.method === "GET")) {
+        // Destructive — require the admin token (set via `wrangler secret put ADMIN_TOKEN`).
+        if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
         let cursor, n = 0;
         do {
           const list = await env.SUBS.list({ prefix: "sub:", cursor });
@@ -248,6 +250,11 @@ async function keyFor(body) {
   if (body && typeof body.deviceId === "string" && body.deviceId) return "dev_" + body.deviceId.slice(0, 40);
   const ep = body && (body.endpoint || (body.subscription && body.subscription.endpoint));
   return ep ? await hashEndpoint(ep) : null;
+}
+function authed(request, env) {
+  if (!env.ADMIN_TOKEN) return false; // fail closed until a token is configured
+  const t = new URL(request.url).searchParams.get("token") || request.headers.get("x-admin-token");
+  return t === env.ADMIN_TOKEN;
 }
 function safeParse(s) { try { return s ? JSON.parse(s) : null; } catch (e) { return null; } }
 function json(obj, status = 200) {

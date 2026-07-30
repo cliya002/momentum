@@ -2182,3 +2182,27 @@ body.compact .habit-list { gap: 0.35rem; }
   background: var(--card-soft); color: var(--text); font-size: 0.85rem; font-weight: 400;
 }
 .push-setup code { background: var(--card-soft); padding: 0 0.25rem; border-radius: 4px; font-size: 0.78rem; }
+
+/* Respect the OS "Reduce Motion" accessibility setting */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .confetti-piece { display: none !important; }
+}
+
+/* Habits search box */
+.habit-search {
+  width: 100%;
+  padding: 0.6rem 0.9rem;
+  margin-bottom: 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--text);
+  font-size: 0.95rem;
+}
+.habit-search:focus { outline: 2px solid var(--primary); outline-offset: 1px; border-color: var(--primary); }

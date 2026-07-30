@@ -210,6 +210,7 @@
             </div>
           </div>
 
+          <input type="search" id="habitSearch" class="habit-search" placeholder="Search habits…" aria-label="Search habits" />
           <div id="habitsGroups" class="category-groups"></div>
           <div id="habitsEmpty" class="empty-state hidden">
             <p>No habits yet. Tap <b>+ Add habit</b> to add your first one.</p>
@@ -652,7 +653,7 @@
               </details>
               <div class="row-actions">
                 <button id="pushTestBtn" class="btn-secondary" type="button">Send test push</button>
-                <button id="pushResetBtn" class="btn-secondary" type="button">Reset devices</button>
+                <button id="pushResetBtn" class="btn-secondary" type="button">Re-register device</button>
               </div>
               <div id="pushStatus" class="sync-status" hidden></div>
             </div>
@@ -825,6 +826,11 @@
         <label class="toggle-row night-prev-row">
           <span><b>🌙 Night habit</b><br><span class="hint">Log for the previous day. Great for bedtime or no-screens you tick off the next morning.</span></span>
           <input type="checkbox" id="habitNightPrevDay" />
+        </label>
+
+        <label class="toggle-row night-prev-row">
+          <span><b>🔕 Skip background reminder</b><br><span class="hint">Keep this habit's reminder in-app only — no background push notification.</span></span>
+          <input type="checkbox" id="habitNoPush" />
         </label>
 
         <label>
