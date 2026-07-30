@@ -2309,23 +2309,73 @@
   function renderUpNext(active, today) {
     const el = getEls().adherenceUpNext;
     if (!el) return;
-    const pendingHabits = active
-      .filter((h) => habitStatus(h, today) === "pending")
-      .sort((a, b) => (parseTimeToMinutes(a.time) ?? 9999) - (parseTimeToMinutes(b.time) ?? 9999));
-    if (pendingHabits.length === 0) { el.hidden = true; return; }
-    // Prefer the next upcoming by clock time; fall back to first pending.
+    const tIdx = today.getDay();
+    const timeOf = (h) => parseTimeToMinutes(effectiveTime(h, tIdx));
     const nowMin = today.getHours() * 60 + today.getMinutes();
-    const upcoming = pendingHabits.find((h) => {
-      const m = parseTimeToMinutes(h.time);
-      return m !== null && m < 24 * 60 && m >= nowMin;
-    });
-    const next = upcoming || pendingHabits[0];
-    const chip = timeChipLabel(next.time);
+
+    const pending = active.filter((h) => habitStatus(h, today) === "pending");
+    if (pending.length === 0) { el.hidden = true; el.innerHTML = ""; return; }
+
+    const timed = pending.filter((h) => { const m = timeOf(h); return m !== null && m < 24 * 60; });
+    const untimed = pending.filter((h) => { const m = timeOf(h); return m === null || m >= 24 * 60; });
+    const overdue = timed.filter((h) => timeOf(h) < nowMin).sort((a, b) => timeOf(a) - timeOf(b));
+    const upcoming = timed.filter((h) => timeOf(h) >= nowMin).sort((a, b) => timeOf(a) - timeOf(b));
+
     el.hidden = false;
-    el.innerHTML =
-      `<span class="upnext-label">Up next</span>` +
-      (chip ? `<span>🕒 ${escapeHtml(chip)}</span>` : "") +
-      `<span class="upnext-name">${escapeHtml(next.icon + " " + next.name)}</span>`;
+    el.innerHTML = "";
+
+    // ---- Up next: the soonest upcoming, else an untimed one, else earliest overdue.
+    const next = upcoming[0] || untimed[0] || overdue[0];
+    if (next) {
+      const chip = timeChipLabel(effectiveTime(next, tIdx));
+      const row = document.createElement("div");
+      row.className = "upnext-row";
+      row.innerHTML =
+        `<span class="upnext-label">Up next</span>` +
+        (chip ? `<span class="upnext-time">🕒 ${escapeHtml(chip)}</span>` : "") +
+        `<span class="upnext-name">${escapeHtml(next.icon + " " + next.name)}</span>`;
+      const remaining = pending.length - 1;
+      if (remaining > 0) {
+        const more = document.createElement("span");
+        more.className = "upnext-more";
+        more.textContent = `+${remaining} more today`;
+        row.appendChild(more);
+      }
+      el.appendChild(row);
+    }
+
+    // ---- Missed: overdue pending habits. Tap a chip to mark it done.
+    if (overdue.length) {
+      const missed = document.createElement("div");
+      missed.className = "missed-row";
+      const label = document.createElement("span");
+      label.className = "missed-label";
+      label.textContent = `⚠ Missed so far (${overdue.length})`;
+      missed.appendChild(label);
+      const listWrap = document.createElement("div");
+      listWrap.className = "missed-list";
+      const cap = 8;
+      for (const h of overdue.slice(0, cap)) {
+        const chip = document.createElement("button");
+        chip.className = "missed-chip";
+        chip.type = "button";
+        const t = timeChipLabel(effectiveTime(h, tIdx));
+        chip.innerHTML = `${escapeHtml(h.icon + " " + h.name)}${t ? ` <span class="mc-time">${escapeHtml(t)}</span>` : ""}`;
+        chip.title = "Tap to mark done";
+        chip.addEventListener("click", () => {
+          setCompletionWithUndo(h, today, h.target, `${h.name} marked done`);
+        });
+        listWrap.appendChild(chip);
+      }
+      if (overdue.length > cap) {
+        const more = document.createElement("span");
+        more.className = "missed-more";
+        more.textContent = `+${overdue.length - cap} more`;
+        listWrap.appendChild(more);
+      }
+      missed.appendChild(listWrap);
+      el.appendChild(missed);
+    }
   }
 
   // Renders the "Last night" group for night-prev-day habits, logged against
