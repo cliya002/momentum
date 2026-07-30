@@ -3216,7 +3216,13 @@
 
   function scheduleReminders() {
     clearReminderTimers();
-    if (pushEnabled()) syncPushSchedule(); // keep the background worker's schedule fresh
+    if (pushEnabled()) {
+      // The Worker delivers every scheduled reminder (even when the app is
+      // closed), so we must NOT also fire local timers — that would double up.
+      syncPushSchedule();
+      updateBadge();
+      return;
+    }
     if (!("Notification" in window) || Notification.permission !== "granted") return;
     if (!remindersEnabled()) { scheduleFastingReminders(); updateBadge(); return; }
     const now = new Date();
@@ -3326,6 +3332,7 @@
     } catch (e) {}
   }
   function catchUpReminders() {
+    if (pushEnabled()) return; // the Worker already delivers these
     if (!("Notification" in window) || Notification.permission !== "granted") return;
     if (!remindersEnabled()) return;
     const now = new Date();
@@ -3456,6 +3463,7 @@
     if (soundEnabled()) { try { playChime(); } catch (e) {} }
   }
   function maybeFireWeeklyReport() {
+    if (pushEnabled()) return; // the Worker already delivers the weekly summary
     if (!("Notification" in window) || Notification.permission !== "granted" || !remindersEnabled()) return;
     const wr = localStorage.getItem(KEYS.weeklyReport);
     if (!wr || !/^\d{2}:\d{2}$/.test(wr)) return;
