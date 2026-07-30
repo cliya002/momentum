@@ -1875,3 +1875,41 @@ body.compact .habit-list { gap: 0.35rem; }
   .adherence-card { background: #eee; color: #000; }
   a[href]:after { content: ""; }
 }
+
+/* ================ Bottom tab bar (mobile) ================ */
+.bottom-nav { display: none; }
+@media (max-width: 900px) {
+  .bottom-nav {
+    display: flex;
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    background: var(--card);
+    border-top: 1px solid var(--border);
+    padding: 0.3rem 0.25rem calc(var(--safe-bottom) + 0.3rem);
+    z-index: 45;
+    justify-content: space-around;
+    box-shadow: 0 -2px 12px rgba(0,0,0,0.06);
+  }
+  [data-theme="dark"] .bottom-nav { box-shadow: 0 -2px 12px rgba(0,0,0,0.3); }
+  .bottom-nav .nav-item.bottom-tab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    flex: 1;
+    background: transparent;
+    border: none;
+    padding: 0.35rem 0.25rem;
+    color: var(--text-dim);
+    font-size: 0.62rem;
+    font-weight: 600;
+    border-radius: var(--radius-sm);
+    width: auto;
+  }
+  .bottom-nav .nav-item.bottom-tab .nav-icon { font-size: 1.35rem; width: auto; }
+  .bottom-nav .nav-item.bottom-tab:hover { background: transparent; }
+  .bottom-nav .nav-item.bottom-tab.active { background: transparent; color: var(--primary); }
+  /* Leave room above the bottom bar so content isn't hidden behind it */
+  .content { padding-bottom: calc(var(--safe-bottom) + 5.5rem); }
+}
+@media print { .bottom-nav { display: none !important; } }
