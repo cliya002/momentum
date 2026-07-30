@@ -30,6 +30,9 @@
     eveningNudge: "ht_evening_nudge",
     weeklyReport: "ht_weekly_report",
     snoozeMin: "ht_snooze_min",
+    pushUrl: "ht_push_url",
+    pushVapid: "ht_push_vapid",
+    pushEnabled: "ht_push_enabled",
   };
   const DEFAULT_CATEGORIES = ["Fitness","Nutrition","Sleep","Supplements","Custom"];
   function getCategories() {
@@ -1974,6 +1977,10 @@
       eveningNudge: $("#eveningNudge"),
       weeklyReport: $("#weeklyReport"),
       snoozeDuration: $("#snoozeDuration"),
+      pushToggle: $("#pushToggle"),
+      pushUrl: $("#pushUrl"),
+      pushVapid: $("#pushVapid"),
+      pushStatus: $("#pushStatus"),
       clearHistoryBtn: $("#clearHistoryBtn"),
       deletePhotosBtn: $("#deletePhotosBtn"),
       themeSelect: $("#themeSelect"),
@@ -3208,6 +3215,7 @@
 
   function scheduleReminders() {
     clearReminderTimers();
+    if (pushEnabled()) syncPushSchedule(); // keep the background worker's schedule fresh
     if (!("Notification" in window) || Notification.permission !== "granted") return;
     if (!remindersEnabled()) { scheduleFastingReminders(); updateBadge(); return; }
     const now = new Date();
@@ -3455,6 +3463,169 @@
     const [hh, mm] = wr.split(":").map(Number);
     if (now.getHours() * 60 + now.getMinutes() < hh * 60 + mm) return; // not time yet
     fireWeeklyReport(); // self-dedupes per day
+  }
+
+  /* ---- Background push (Web Push via a user-deployed Cloudflare Worker) -----
+   * Lets reminders arrive when the app is closed. The client subscribes with a
+   * VAPID public key, then uploads its schedule + timezone to the worker, which
+   * sends the push at the right local time. Fully opt-in and independent of the
+   * in-app reminder timers. */
+  function pushConfigured() {
+    return !!(localStorage.getItem(KEYS.pushUrl) && localStorage.getItem(KEYS.pushVapid));
+  }
+  function pushEnabled() {
+    return localStorage.getItem(KEYS.pushEnabled) === "true" && pushConfigured();
+  }
+  function showPushStatus(msg, kind) {
+    const el = getEls().pushStatus;
+    if (!el) return;
+    el.hidden = false;
+    el.className = "sync-status " + (kind || "");
+    el.textContent = msg;
+  }
+  function urlBase64ToUint8Array(base64String) {
+    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const raw = atob(base64);
+    const out = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+    return out;
+  }
+  function fmtClockLabel(hhmm) {
+    const [h, m] = hhmm.split(":").map(Number);
+    const ap = h < 12 ? "AM" : "PM";
+    const h12 = ((h + 11) % 12) + 1;
+    return `${h12}:${String(m).padStart(2, "0")} ${ap}`;
+  }
+  // Build the reminder schedule the worker will fire on. Times are local "HH:MM"
+  // plus the weekdays each applies to. Background pushes can't know completion
+  // status, so they're informational — the app's on-open catch-up stays exact.
+  function buildPushSchedule() {
+    const entries = [];
+    const byTime = new Map();
+    for (const h of state.habits) {
+      if (!h.reminderTime || !/^\d{2}:\d{2}$/.test(h.reminderTime)) continue;
+      if (!byTime.has(h.reminderTime)) byTime.set(h.reminderTime, []);
+      byTime.get(h.reminderTime).push(h);
+    }
+    for (const [time, hs] of byTime) {
+      const days = [...new Set(hs.flatMap((h) => (h.days && h.days.length ? h.days : [0, 1, 2, 3, 4, 5, 6])))];
+      let title, body;
+      if (hs.length === 1) {
+        title = `${hs[0].icon || "⏰"} ${hs[0].name}`;
+        body = hs[0].notes || "Time to check this off.";
+      } else {
+        title = `🕒 Your ${fmtClockLabel(time)} stack · ${hs.length} items`;
+        body = hs.map((h) => `${h.icon || "•"} ${h.name}`).join(", ");
+      }
+      entries.push({ time, days, title, body });
+    }
+    const md = localStorage.getItem(KEYS.morningDigest);
+    if (md) entries.push({ time: md, days: [0, 1, 2, 3, 4, 5, 6], title: "☀️ Good morning", body: "Time for today's habits. Open Momentum." });
+    const en = localStorage.getItem(KEYS.eveningNudge);
+    if (en) entries.push({ time: en, days: [0, 1, 2, 3, 4, 5, 6], title: "🌙 Before you wind down", body: "Anything still pending? Open Momentum." });
+    const wr = localStorage.getItem(KEYS.weeklyReport);
+    if (wr) entries.push({ time: wr, days: [0], title: "📊 Your week in Momentum", body: "Open for your weekly recap." });
+    const f = state.fasting;
+    if (f && f.scheduleEnabled) {
+      if (/^\d{2}:\d{2}$/.test(f.startTime)) entries.push({ time: f.startTime, days: [0, 1, 2, 3, 4, 5, 6], title: "🍽️ Time to start fasting", body: `Eating window closed. Break your fast around ${f.eatTime}.` });
+      if (/^\d{2}:\d{2}$/.test(f.eatTime)) entries.push({ time: f.eatTime, days: [0, 1, 2, 3, 4, 5, 6], title: "🥗 Eating window open", body: "You can break your fast now." });
+    }
+    return entries;
+  }
+  async function getPushSubscription() {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return null;
+    const reg = await navigator.serviceWorker.ready;
+    return reg.pushManager.getSubscription();
+  }
+  let pushSyncTimer = null;
+  function syncPushSchedule() {
+    if (!pushEnabled()) return;
+    if (pushSyncTimer) clearTimeout(pushSyncTimer);
+    pushSyncTimer = setTimeout(async () => {
+      try {
+        const sub = await getPushSubscription();
+        if (!sub) return;
+        const url = localStorage.getItem(KEYS.pushUrl).replace(/\/$/, "");
+        await fetch(url + "/subscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            subscription: sub.toJSON(),
+            tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+            schedule: buildPushSchedule(),
+          }),
+        });
+      } catch (e) { /* offline or worker down — will retry on next reschedule */ }
+    }, 800);
+  }
+  async function enableBackgroundPush() {
+    const els = getEls();
+    const url = (els.pushUrl.value || "").trim().replace(/\/$/, "");
+    const key = (els.pushVapid.value || "").trim();
+    if (!/^https:\/\//.test(url) || !key) {
+      showPushStatus("Enter your push server URL (https) and VAPID public key first.", "warn");
+      els.pushToggle.checked = false;
+      return;
+    }
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      showPushStatus("This browser/device doesn't support Web Push. On iPhone, add Momentum to your Home Screen first.", "warn");
+      els.pushToggle.checked = false;
+      return;
+    }
+    let perm = Notification.permission;
+    if (perm === "default") perm = await Notification.requestPermission();
+    if (perm !== "granted") {
+      showPushStatus("Allow notifications to enable background reminders.", "warn");
+      els.pushToggle.checked = false;
+      return;
+    }
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(key),
+        });
+      }
+      localStorage.setItem(KEYS.pushUrl, url);
+      localStorage.setItem(KEYS.pushVapid, key);
+      localStorage.setItem(KEYS.pushEnabled, "true");
+      const resp = await fetch(url + "/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subscription: sub.toJSON(),
+          tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+          schedule: buildPushSchedule(),
+        }),
+      });
+      if (!resp.ok) throw new Error("server " + resp.status);
+      showPushStatus("Background reminders on. They'll arrive even when Momentum is closed.", "success");
+    } catch (e) {
+      localStorage.setItem(KEYS.pushEnabled, "false");
+      els.pushToggle.checked = false;
+      showPushStatus("Couldn't reach the push server. Check the URL and that the worker is deployed.", "warn");
+    }
+  }
+  async function disableBackgroundPush() {
+    const url = (localStorage.getItem(KEYS.pushUrl) || "").replace(/\/$/, "");
+    localStorage.setItem(KEYS.pushEnabled, "false");
+    try {
+      const sub = await getPushSubscription();
+      if (sub) {
+        if (url) {
+          await fetch(url + "/unsubscribe", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ endpoint: sub.endpoint }),
+          }).catch(() => {});
+        }
+        await sub.unsubscribe().catch(() => {});
+      }
+    } catch (e) {}
+    showPushStatus("Background reminders off.", "success");
   }
 
   // Central notification helper: prefer the service worker (enables action
@@ -5192,6 +5363,9 @@
     els.eveningNudge.value = localStorage.getItem(KEYS.eveningNudge) || "";
     els.weeklyReport.value = localStorage.getItem(KEYS.weeklyReport) || "";
     els.snoozeDuration.value = String(snoozeMinutes());
+    els.pushUrl.value = localStorage.getItem(KEYS.pushUrl) || "";
+    els.pushVapid.value = localStorage.getItem(KEYS.pushVapid) || "";
+    els.pushToggle.checked = pushEnabled();
     renderReminderInfo();
     // Show the iOS guidance note on Apple devices
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
@@ -5712,6 +5886,10 @@
     els.snoozeDuration.addEventListener("change", () => {
       localStorage.setItem(KEYS.snoozeMin, els.snoozeDuration.value);
     });
+    els.pushToggle.addEventListener("change", () => {
+      if (els.pushToggle.checked) enableBackgroundPush();
+      else disableBackgroundPush();
+    });
     els.quietStart.addEventListener("change", () => {
       if (els.quietStart.value) localStorage.setItem(KEYS.quietStart, els.quietStart.value); else localStorage.removeItem(KEYS.quietStart);
       scheduleReminders();
@@ -5829,6 +6007,7 @@
       navigator.serviceWorker.addEventListener("message", (e) => {
         const d = e.data || {};
         if (d.type === "notif-action") handleNotifAction(d.action, d.data || {});
+        else if (d.type === "push-resubscribe" && pushEnabled()) enableBackgroundPush();
       });
     }
     // Cold-start: notification opened the app with ?notif=&ids=

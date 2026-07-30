@@ -2171,3 +2171,14 @@ body.compact .habit-list { gap: 0.35rem; }
   border: 1px dashed var(--border);
 }
 .night-prev-row { align-items: flex-start; }
+
+/* Background push settings */
+.push-block { border-top: 1px solid var(--border); padding-top: 0.9rem; margin-top: 0.4rem; }
+.push-setup { margin-top: 0.6rem; }
+.push-setup summary { cursor: pointer; font-size: 0.85rem; font-weight: 600; color: var(--primary); }
+.push-setup .push-field { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.82rem; font-weight: 600; margin-top: 0.6rem; }
+.push-setup .push-field input {
+  padding: 0.5rem 0.6rem; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--card-soft); color: var(--text); font-size: 0.85rem; font-weight: 400;
+}
+.push-setup code { background: var(--card-soft); padding: 0 0.25rem; border-radius: 4px; font-size: 0.78rem; }

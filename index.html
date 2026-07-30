@@ -634,6 +634,24 @@
             <div id="permStatus" class="perm-status"></div>
             <div id="reminderPreview" class="reminder-preview"></div>
             <div id="reminderStatus" class="sync-status" hidden></div>
+
+            <div class="field push-block">
+              <label class="toggle-row">
+                <span><b>🌐 Background reminders (beta)</b><br><span class="hint">Get reminders even when Momentum is closed. Needs a one-time push server setup — see the guide.</span></span>
+                <input type="checkbox" id="pushToggle" />
+              </label>
+              <details class="push-setup">
+                <summary>Server settings</summary>
+                <label class="push-field">Push server URL
+                  <input type="url" id="pushUrl" placeholder="https://your-worker.workers.dev" autocomplete="off" />
+                </label>
+                <label class="push-field">VAPID public key
+                  <input type="text" id="pushVapid" placeholder="BENf… (public key from setup)" autocomplete="off" />
+                </label>
+                <p class="hint">Deploy the Cloudflare Worker in <code>worker/</code> (see <code>worker/README.md</code>), then paste its URL and public key here.</p>
+              </details>
+              <div id="pushStatus" class="sync-status" hidden></div>
+            </div>
           </div>
 
           <div class="card">
