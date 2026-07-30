@@ -2800,6 +2800,21 @@
     showToast(`Fast started · ${hours}h goal (until ${fmtTimeOfDay(f.startTs + hours * 3600000)})`);
   }
 
+  // Apply a preset ratio (e.g. 16 → 16:8) to the daily schedule window,
+  // keeping the eating-window start (eatTime) fixed and moving the fast start.
+  function applyFastPresetToSchedule(fastHours) {
+    const f = fastingState();
+    const eatHours = Math.max(0, 24 - fastHours);
+    const [eh, em] = (f.eatTime || "12:00").split(":").map(Number);
+    let startMin = (eh * 60 + em) + eatHours * 60;
+    startMin = ((startMin % 1440) + 1440) % 1440;
+    const sh = Math.floor(startMin / 60), sm = startMin % 60;
+    f.startTime = `${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}`;
+    f.updatedAt = Date.now();
+    save();
+    scheduleReminders();
+  }
+
   function endFast() {
     const f = fastingState();
     if (!f.active || !f.startTs) return;
@@ -2877,6 +2892,7 @@
     return t;
   }
   function fastLabel(fastMin, eatMin) {
+    if (eatMin <= 0) return `${Math.round(fastMin / 60)}h`;
     const fh = fastMin / 60, eh = eatMin / 60;
     if (Number.isInteger(fh) && Number.isInteger(eh)) return `${fh}:${eh}`;
     return `${(fastMin / 60).toFixed(1)}h fast`;
@@ -5241,7 +5257,9 @@
         const btn = e.target.closest(".preset-chip");
         if (!btn) return;
         selectedFastGoal = Number(btn.dataset.hrs) || 16;
+        applyFastPresetToSchedule(selectedFastGoal);
         renderFasting();
+        showToast(`${btn.textContent.trim()} · fast starts ${fastingState().startTime}, eat ${fastingState().eatTime}`);
       });
       els.fastingStartBtn.addEventListener("click", () => startFast(selectedFastGoal));
       els.fastingStopBtn.addEventListener("click", () => endFast());
