@@ -4086,6 +4086,8 @@
     // Granular danger zone
     els.clearHistoryBtn.addEventListener("click", clearAllHistory);
     els.deletePhotosBtn.addEventListener("click", deleteAllPhotos);
+    const fu = document.getElementById("forceUpdateBtn");
+    if (fu) fu.addEventListener("click", forceUpdate);
     // Settings — Theme
     els.themeSelect.addEventListener("change", onThemeChange);
     els.unitsSelect.addEventListener("change", () => {
@@ -4169,9 +4171,42 @@
 
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("./sw.js").catch(() => {});
+        navigator.serviceWorker.register("./sw.js").then((reg) => {
+          // Check for updates on load, then auto-reload when a new SW activates.
+          reg.update().catch(() => {});
+          reg.addEventListener("updatefound", () => {
+            const nw = reg.installing;
+            if (!nw) return;
+            nw.addEventListener("statechange", () => {
+              if (nw.state === "installed" && navigator.serviceWorker.controller) {
+                showToast("Updating to the latest version…");
+              }
+            });
+          });
+        }).catch(() => {});
+        let refreshing = false;
+        navigator.serviceWorker.addEventListener("controllerchange", () => {
+          if (refreshing) return;
+          refreshing = true;
+          window.location.reload();
+        });
       });
     }
+  }
+
+  // Nuke caches + service workers and hard-reload. Escape hatch for stuck updates.
+  async function forceUpdate() {
+    try {
+      if ("serviceWorker" in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.unregister()));
+      }
+      if (window.caches) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+    } catch (e) { /* ignore */ }
+    location.reload(true);
   }
 
   if (document.readyState === "loading") {
