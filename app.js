@@ -3270,12 +3270,77 @@
     notify("🥗 Eating window open", { body: "You can break your fast now.", tag: "ht-fast-eat" });
   }
 
+  // ---- Missed-reminder catch-up -------------------------------------------
+  // PWA timers only fire while the app is open, so a reminder due while the app
+  // was closed is otherwise lost. On open/visibility we send one notification
+  // for anything that came due while away and is still pending. A per-day
+  // "notified" set (persisted) de-dupes against the normal scheduled reminders.
+  function notifiedTodayKey() { return "ht_notified_" + todayKey(); }
+  function getNotifiedToday() {
+    try { return new Set(JSON.parse(localStorage.getItem(notifiedTodayKey()) || "[]")); }
+    catch (e) { return new Set(); }
+  }
+  function markNotified(ids) {
+    if (!ids || !ids.length) return;
+    const s = getNotifiedToday();
+    ids.forEach((id) => s.add(id));
+    try { localStorage.setItem(notifiedTodayKey(), JSON.stringify([...s])); } catch (e) {}
+  }
+  function cleanupNotifiedKeys() {
+    const keep = notifiedTodayKey();
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith("ht_notified_") && k !== keep) localStorage.removeItem(k);
+      }
+    } catch (e) {}
+  }
+  function catchUpReminders() {
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    if (!remindersEnabled()) return;
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const notified = getNotifiedToday();
+    const overdue = [];
+    for (const h of state.habits) {
+      if (!h.reminderTime || !/^\d{2}:\d{2}$/.test(h.reminderTime)) continue;
+      if (!isHabitActiveOn(h, now)) continue;
+      const rt = effectiveReminderTime(h, now);
+      if (!rt) continue;
+      const [hh, mm] = rt.split(":").map(Number);
+      if (hh * 60 + mm > nowMin) continue;             // not due yet
+      if (inQuietHours(hh, mm)) continue;
+      if (habitStatus(h, now) !== "pending") continue; // already done/skipped
+      if (notified.has(h.id)) continue;                // already pinged today
+      overdue.push(h);
+    }
+    if (overdue.length === 0) return;
+    markNotified(overdue.map((h) => h.id));
+    if (soundEnabled()) { try { playChime(); } catch (e) {} }
+    if (navigator.vibrate) { try { navigator.vibrate([40, 30, 40]); } catch (e) {} }
+    if (overdue.length === 1) {
+      const h = overdue[0];
+      notify(`⏰ ${h.icon || ""} ${h.name}`.trim(), {
+        body: "Still pending from earlier today.",
+        ids: [h.id],
+        tag: "ht-catchup",
+      });
+    } else {
+      notify(`⏰ ${overdue.length} habits still pending`, {
+        body: overdue.slice(0, 6).map((h) => `${h.icon || "•"} ${h.name}`).join(", ") + (overdue.length > 6 ? "…" : ""),
+        ids: overdue.map((h) => h.id),
+        tag: "ht-catchup",
+      });
+    }
+  }
+
   function fireGroupReminder(ids) {
     const today = new Date();
     const pending = ids
       .map((id) => state.habits.find((h) => h.id === id))
       .filter((h) => h && isHabitActiveOn(h, today) && !isCompleted(h, today) && !isSkipped(h, today));
     if (pending.length === 0) return;
+    markNotified(pending.map((h) => h.id));
     if (soundEnabled()) { try { playChime(); } catch (e) {} }
     if (navigator.vibrate) { try { navigator.vibrate([40, 30, 40]); } catch (e) {} }
     if (pending.length === 1) {
@@ -3311,11 +3376,16 @@
     const scheduled = state.habits.filter((h) => isHabitActiveOn(h, today));
     const pending = scheduled.filter((h) => habitStatus(h, today) === "pending");
     if (pending.length === 0) return;
-    notify("🌙 Before you wind down", {
-      body: `${pending.length} habit${pending.length === 1 ? "" : "s"} still pending: ${pending.slice(0, 5).map((h) => h.name).join(", ")}${pending.length > 5 ? "…" : ""}`,
-      ids: pending.map((h) => h.id),
-      tag: "ht-nudge",
-    });
+    const atRisk = pending.filter((h) => isStreakAtRisk(h, today));
+    let title = "🌙 Before you wind down";
+    let body;
+    if (atRisk.length) {
+      title = `🔥 ${atRisk.length} streak${atRisk.length === 1 ? "" : "s"} at risk`;
+      body = `Don't break the chain: ${atRisk.slice(0, 5).map((h) => h.name).join(", ")}${atRisk.length > 5 ? "…" : ""}`;
+    } else {
+      body = `${pending.length} habit${pending.length === 1 ? "" : "s"} still pending: ${pending.slice(0, 5).map((h) => h.name).join(", ")}${pending.length > 5 ? "…" : ""}`;
+    }
+    notify(title, { body, ids: pending.map((h) => h.id), tag: "ht-nudge" });
     if (soundEnabled()) { try { playChime(); } catch (e) {} }
   }
   // Central notification helper: prefer the service worker (enables action
@@ -3476,6 +3546,7 @@
           const all = [...sorted, ...extras];
           prev.innerHTML = `<b>Today's reminders:</b> ${all.map(escapeHtml).join(" · ")}`;
         }
+        prev.innerHTML += `<br><span class="hint">Reminders fire while the app is open. Miss one because it was closed? You'll get a catch-up notification when you reopen Momentum.</span>`;
       }
     }
   }
@@ -5644,7 +5715,9 @@
     checkPairingLink();
     updateSyncIndicator(navigator.onLine ? "idle" : "offline");
     if (isAutoSyncEnabled()) startAutoSync();
+    cleanupNotifiedKeys();
     scheduleReminders();
+    catchUpReminders();
 
     // Fasting: resume an in-progress manual fast (re-arm its goal alert) and
     // start the ticking countdown for either manual or scheduled (auto) mode.
@@ -5661,6 +5734,7 @@
       // midnight — no manual refresh needed.
       if (currentView === "today") renderToday();
       scheduleReminders();
+      catchUpReminders();
     });
     document.addEventListener("pointerdown", unlockAudioOnce, { once: true });
     document.addEventListener("keydown", unlockAudioOnce, { once: true });
