@@ -2095,7 +2095,11 @@
     // that row instead (see renderTodayItem).
     fastingCardPlacedThisRender = false;
     if (els.fastingCard) {
+      // Hidden by default: the fasting tracker only shows embedded inside an
+      // "Intermittent fasting" habit row (see renderTodayItem). If no such
+      // habit is rendered today, the card stays hidden.
       els.fastingCard.classList.remove("embedded");
+      els.fastingCard.classList.add("hidden");
       if (els.todayHint && els.todayHint.parentNode) {
         els.todayHint.parentNode.insertBefore(els.fastingCard, els.todayHint);
       }
@@ -2580,6 +2584,7 @@
       const e = getEls();
       if (e.fastingCard) {
         fastingCardPlacedThisRender = true;
+        e.fastingCard.classList.remove("hidden");
         e.fastingCard.classList.add("embedded");
         li.classList.add("has-fasting");
         li.appendChild(e.fastingCard);
