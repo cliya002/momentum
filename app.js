@@ -1980,6 +1980,7 @@
       pushToggle: $("#pushToggle"),
       pushUrl: $("#pushUrl"),
       pushVapid: $("#pushVapid"),
+      pushTestBtn: $("#pushTestBtn"),
       pushStatus: $("#pushStatus"),
       clearHistoryBtn: $("#clearHistoryBtn"),
       deletePhotosBtn: $("#deletePhotosBtn"),
@@ -3602,13 +3603,40 @@
         }),
       });
       if (!resp.ok) throw new Error("server " + resp.status);
-      showPushStatus("Background reminders on. They'll arrive even when Momentum is closed.", "success");
+      showPushStatus("Background reminders on. Tap “Send test push” to confirm delivery.", "success");
     } catch (e) {
       localStorage.setItem(KEYS.pushEnabled, "false");
       els.pushToggle.checked = false;
-      showPushStatus("Couldn't reach the push server. Check the URL and that the worker is deployed.", "warn");
+      showPushStatus("Setup failed: " + (e.message || e) + ". Check the URL/key and that the app is opened from the Home Screen.", "warn");
     }
   }
+  // Fire an immediate push through the worker to verify the whole path works,
+  // without waiting for a scheduled time.
+  async function testBackgroundPush() {
+    const els = getEls();
+    const url = ((localStorage.getItem(KEYS.pushUrl) || els.pushUrl.value) || "").trim().replace(/\/$/, "");
+    if (!/^https:\/\//.test(url)) { showPushStatus("Enter your push server URL first.", "warn"); return; }
+    if (Notification.permission !== "granted") { showPushStatus("Allow notifications first (toggle background reminders on).", "warn"); return; }
+    try {
+      const sub = await getPushSubscription();
+      if (!sub) { showPushStatus("This device isn't subscribed yet — turn the toggle on first.", "warn"); return; }
+      showPushStatus("Sending test push…");
+      const resp = await fetch(url + "/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subscription: sub.toJSON() }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (resp.ok && data.ok) {
+        showPushStatus("Test sent ✓ — a notification should appear in a few seconds. Try closing the app to confirm background delivery.", "success");
+      } else {
+        showPushStatus(`Server couldn't send (status ${resp.status}${data.result !== undefined ? ", push=" + data.result : ""}${data.error ? ", " + data.error : ""}).`, "warn");
+      }
+    } catch (e) {
+      showPushStatus("Couldn't reach the server: " + (e.message || e), "warn");
+    }
+  }
+
   async function disableBackgroundPush() {
     const url = (localStorage.getItem(KEYS.pushUrl) || "").replace(/\/$/, "");
     localStorage.setItem(KEYS.pushEnabled, "false");
@@ -5890,6 +5918,7 @@
       if (els.pushToggle.checked) enableBackgroundPush();
       else disableBackgroundPush();
     });
+    els.pushTestBtn.addEventListener("click", testBackgroundPush);
     els.quietStart.addEventListener("change", () => {
       if (els.quietStart.value) localStorage.setItem(KEYS.quietStart, els.quietStart.value); else localStorage.removeItem(KEYS.quietStart);
       scheduleReminders();
