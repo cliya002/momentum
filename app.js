@@ -3320,8 +3320,12 @@
     if (navigator.vibrate) { try { navigator.vibrate([40, 30, 40]); } catch (e) {} }
     if (overdue.length === 1) {
       const h = overdue[0];
-      notify(`⏰ ${h.icon || ""} ${h.name}`.trim(), {
-        body: "Still pending from earlier today.",
+      const chip = timeChipLabel(effectiveTime(h, now.getDay()));
+      const bits = [];
+      if (chip) bits.push(`Was due ${chip}`);
+      if (h.notes) bits.push(h.notes);
+      notify(`${h.icon || "⏰"} ${h.name}`, {
+        body: bits.length ? bits.join(" · ") : "Still pending from earlier today.",
         ids: [h.id],
         tag: "ht-catchup",
       });
@@ -3345,8 +3349,12 @@
     if (navigator.vibrate) { try { navigator.vibrate([40, 30, 40]); } catch (e) {} }
     if (pending.length === 1) {
       const h = pending[0];
+      const chip = timeChipLabel(effectiveTime(h, today.getDay()));
+      const body = h.notes
+        ? (chip ? `${chip} · ${h.notes}` : h.notes)
+        : (chip ? `Time for your ${chip} habit` : "Time to check this off");
       notify(`${h.icon || "⏰"} ${h.name}`, {
-        body: h.notes || (h.time ? `Time for your ${h.time.split("·")[0].trim()} habit` : "Time to check this off"),
+        body,
         ids: [h.id],
         tag: "ht-slot-" + (h.reminderTime || h.id),
       });
