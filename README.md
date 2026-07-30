@@ -46,7 +46,9 @@ in Settings → About, and the service worker builds its cache name from it). Bu
 on every deploy so the displayed version and the cache always change:
 
 ```bash
-node bump.js        # increments the patch: 4.0.1 → 4.0.2
+node bump.js         # patch: 4.0.1 → 4.0.2  (default, small changes/fixes)
+node bump.js minor   # minor: 4.0.2 → 4.1.0  (new features)
+node bump.js major   # major: 4.1.0 → 5.0.0  (big releases)
 git add .
 git commit -m "…"
 git push
