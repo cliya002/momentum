@@ -5598,6 +5598,11 @@
       if (document.visibilityState !== "visible") return;
       if (fastingMode() !== "idle") updateFastingProgress();
       if (state.fasting && state.fasting.active) armFastingGoalTimer();
+      // Re-render Today so the date header, NOW highlight, reminders, and the
+      // "Last night" group stay fresh after the tab was backgrounded / crossed
+      // midnight — no manual refresh needed.
+      if (currentView === "today") renderToday();
+      scheduleReminders();
     });
     document.addEventListener("pointerdown", unlockAudioOnce, { once: true });
     document.addEventListener("keydown", unlockAudioOnce, { once: true });
