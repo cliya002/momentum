@@ -11,10 +11,10 @@ crons = ["* * * * *"]
 # then paste the returned id below.
 [[kv_namespaces]]
 binding = "SUBS"
-id = "PASTE_YOUR_KV_NAMESPACE_ID_HERE"
+id = "cbf51b852e1f43169bbc17bbbb993162"
 
 [vars]
 VAPID_SUBJECT = "mailto:you@example.com"
-# VAPID_PUBLIC is public — safe to keep here. Paste your generated public key:
-VAPID_PUBLIC = "PASTE_YOUR_VAPID_PUBLIC_KEY_HERE"
+# VAPID_PUBLIC is public — safe to keep here.
+VAPID_PUBLIC = "BBReZYer2vjuAyAu2fIgfRqbYYtFEoXIJglplLTJ6Wi1nbIdWqpy4pVorgUm7_bhVDt_SuyPDudtYz0wPwJPiBU"
 # VAPID_PRIVATE must be a secret:  wrangler secret put VAPID_PRIVATE
