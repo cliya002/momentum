@@ -402,6 +402,7 @@
       categoriesUpdatedAt: 0,
       workSchedule: { days: {}, notes: "", updatedAt: 0 },
       devices: {},
+      health: { steps: {} },
       deletions: { habits: {} },
     };
   }
@@ -625,6 +626,14 @@
       st.workSchedule.notes = (ws.notes || "").slice(0, 500);
       st.workSchedule.updatedAt = Number(ws.updatedAt) || 0;
     }
+    // Health imports (steps by date)
+    st.health = { steps: {} };
+    if (s.health && s.health.steps && typeof s.health.steps === "object") {
+      for (const [d, v] of Object.entries(s.health.steps)) {
+        const n = Number(v);
+        if (Number.isFinite(n) && n >= 0) st.health.steps[d] = Math.round(n);
+      }
+    }
     // Synced devices
     st.devices = {};
     if (s.devices && typeof s.devices === "object") {
@@ -827,6 +836,14 @@
     const lws = local.workSchedule, rws = remote.workSchedule;
     if (lws && rws) merged.workSchedule = (Number(rws.updatedAt) || 0) > (Number(lws.updatedAt) || 0) ? rws : lws;
     else merged.workSchedule = lws || rws || { days: {}, notes: "", updatedAt: 0 };
+
+    // Health steps: max per date (steps only accumulate through the day)
+    merged.health = { steps: {} };
+    const lSteps = (local.health && local.health.steps) || {};
+    const rSteps = (remote.health && remote.health.steps) || {};
+    for (const d of new Set([...Object.keys(lSteps), ...Object.keys(rSteps)])) {
+      merged.health.steps[d] = Math.max(lSteps[d] || 0, rSteps[d] || 0);
+    }
 
     // Devices: union by id, newest lastSync wins
     merged.devices = {};
@@ -4506,6 +4523,7 @@
     renderSyncStateLine();
     renderDataSummary();
     renderDeviceList();
+    renderHealthCard();
     renderCategoryManager();
   }
 
@@ -4963,6 +4981,13 @@
     els.deletePhotosBtn.addEventListener("click", deleteAllPhotos);
     const fu = document.getElementById("forceUpdateBtn");
     if (fu) fu.addEventListener("click", forceUpdate);
+    const hc = document.getElementById("healthCopyUrlBtn");
+    if (hc) hc.addEventListener("click", () => {
+      const url = healthShortcutUrl();
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(() => showToast("Base URL copied.", "success")).catch(() => prompt("Copy this URL:", url));
+      } else { prompt("Copy this URL:", url); }
+    });
     // Settings — Theme
     els.themeSelect.addEventListener("change", onThemeChange);
     els.unitsSelect.addEventListener("change", () => {
@@ -5053,6 +5078,12 @@
       handleNotifAction(params.get("notif"), { ids });
       history.replaceState(null, "", location.pathname);
     }
+    // Apple Health / Shortcuts import: ?steps=N (optional &d=YYYY-MM-DD)
+    if (params.has("steps")) {
+      const dk = /^\d{4}-\d{2}-\d{2}$/.test(params.get("d") || "") ? params.get("d") : todayKey();
+      importSteps(params.get("steps"), dk);
+      history.replaceState(null, "", location.pathname);
+    }
 
     switchView(currentView);
 
@@ -5079,6 +5110,47 @@
         });
       });
     }
+  }
+
+  // ---- Apple Health (steps) import via a URL param (?steps=N&d=YYYY-MM-DD) ----
+  function importSteps(value, dk) {
+    value = Math.max(0, Math.round(Number(value) || 0));
+    if (!state.health) state.health = { steps: {} };
+    // Keep the highest reading for the day (steps accumulate).
+    state.health.steps[dk] = Math.max(state.health.steps[dk] || 0, value);
+    // Auto-update habits that track steps and are scheduled that day.
+    const d = new Date(dk + "T12:00:00");
+    let updated = 0;
+    for (const h of state.habits) {
+      const isSteps = (h.unit && h.unit.toLowerCase() === "steps") || /\bsteps?\b/i.test(h.name);
+      if (!isSteps) continue;
+      if (!isHabitActiveOn(h, d)) continue;
+      setCompletionValue(h.id, d, value);
+      updated++;
+    }
+    save();
+    if (typeof updateBadge === "function") updateBadge();
+    if (currentView === "today") renderToday();
+    if (currentView === "settings") renderHealthCard();
+    showToast(`Imported ${value.toLocaleString()} steps${updated ? ` · updated ${updated} habit${updated === 1 ? "" : "s"}` : ""}.`, "success");
+  }
+
+  function todaySteps() {
+    return (state.health && state.health.steps && state.health.steps[todayKey()]) || 0;
+  }
+
+  function healthShortcutUrl() {
+    return location.origin + location.pathname + "?steps=";
+  }
+
+  function renderHealthCard() {
+    const el = document.getElementById("healthStepsToday");
+    if (el) {
+      const s = todaySteps();
+      el.textContent = s ? `Today: ${s.toLocaleString()} steps imported` : "No steps imported today yet.";
+    }
+    const urlEl = document.getElementById("healthUrl");
+    if (urlEl) urlEl.textContent = healthShortcutUrl() + "[Steps]";
   }
 
   // Nuke caches + service workers and hard-reload. Escape hatch for stuck updates.
