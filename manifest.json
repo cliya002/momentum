@@ -1,0 +1,25 @@
+{
+  "name": "Momentum",
+  "short_name": "Momentum",
+  "description": "Daily habits, fitness, nutrition, and supplements tracker with weekly reports.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#5b3fb8",
+  "background_color": "#f5f1ea",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

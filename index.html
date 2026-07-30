@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#5b3fb8" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Momentum" />
+  <title>Momentum</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- ===================== Main App ===================== -->
+  <main id="app" class="app">
+
+    <!-- Top bar (mobile) -->
+    <div class="topbar">
+      <button id="menuToggle" class="icon-btn" aria-label="Open menu">☰</button>
+      <div class="brand">
+        <svg class="brand-icon" viewBox="0 0 64 64" aria-hidden="true">
+          <circle cx="32" cy="32" r="28" fill="#5b3fb8"/>
+          <path d="M32 44s-10-6.5-10-14a6 6 0 0 1 10-4.4A6 6 0 0 1 42 30c0 7.5-10 14-10 14z" fill="#fff"/>
+        </svg>
+        <span>Momentum</span>
+      </div>
+      <span id="syncIndicator" class="sync-indicator" title="Sync status" hidden></span>
+    </div>
+
+    <div class="layout">
+      <!-- Sidebar -->
+      <aside id="sidebar" class="sidebar">
+        <div class="sidebar-header">
+          <div class="brand">
+            <svg class="brand-icon" viewBox="0 0 64 64" aria-hidden="true">
+              <circle cx="32" cy="32" r="28" fill="#fff"/>
+              <path d="M32 44s-10-6.5-10-14a6 6 0 0 1 10-4.4A6 6 0 0 1 42 30c0 7.5-10 14-10 14z" fill="#5b3fb8"/>
+            </svg>
+            <span>Momentum</span>
+          </div>
+        </div>
+        <nav class="nav">
+          <button class="nav-item active" data-tab="today">
+            <span class="nav-icon">☀️</span> <span>Today</span>
+          </button>
+          <button class="nav-item" data-tab="habits">
+            <span class="nav-icon">🎯</span> <span>Habits</span>
+          </button>
+          <button class="nav-item" data-tab="progress">
+            <span class="nav-icon">📈</span> <span>Progress</span>
+          </button>
+          <button class="nav-item" data-tab="report">
+            <span class="nav-icon">📊</span> <span>Report</span>
+          </button>
+          <button class="nav-item" data-tab="settings">
+            <span class="nav-icon">⚙️</span> <span>Settings</span>
+          </button>
+        </nav>
+        <div class="sidebar-footer">
+          <span id="syncIndicatorDesktop" class="sync-indicator-desktop" hidden></span>
+        </div>
+      </aside>
+      <div id="sidebarBackdrop" class="sidebar-backdrop"></div>
+
+      <!-- Content -->
+      <section class="content">
+
+        <!-- ============ Today ============ -->
+        <div class="page active" id="page-today">
+          <div class="page-header">
+            <div>
+              <h1 id="todayGreeting">Today</h1>
+              <p class="subtitle" id="todayGreetingSub"></p>
+            </div>
+            <div class="page-actions">
+              <select id="todayCategoryFilter" class="filter-select" aria-label="Filter by category">
+                <option value="all">All categories</option>
+                <option value="Fitness">Fitness</option>
+                <option value="Nutrition">Nutrition</option>
+                <option value="Sleep">Sleep</option>
+                <option value="Supplements">Supplements</option>
+                <option value="Custom">Custom</option>
+              </select>
+              <button id="todayAddBtn" class="btn-primary">+ Add</button>
+              <div class="overflow-wrap">
+                <button id="todayMenuBtn" class="btn-secondary overflow-btn" aria-label="More actions">⋯</button>
+                <div id="todayMenu" class="overflow-menu hidden" role="menu">
+                  <button data-action="copy" role="menuitem">⧉ Copy yesterday</button>
+                  <button data-action="reset" role="menuitem" class="danger">↺ Reset today's check-ins</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card adherence-card" id="adherenceCard">
+            <div class="adherence-ring-wrap">
+              <svg class="adherence-ring" id="adherenceRing" viewBox="0 0 120 120" aria-hidden="true">
+                <circle class="ring-track" cx="60" cy="60" r="52" />
+                <circle class="ring-seg ring-done"    cx="60" cy="60" r="52" />
+                <circle class="ring-seg ring-notdone" cx="60" cy="60" r="52" />
+              </svg>
+              <div class="adherence-ring-center">
+                <span id="adherencePct" class="adherence-pct">0%</span>
+                <span class="adherence-ring-label">done</span>
+              </div>
+            </div>
+            <div class="adherence-info">
+              <div class="card-title">Today's progress</div>
+              <div id="adherenceText" class="adherence-sub">No habits scheduled today.</div>
+              <div id="adherenceUpNext" class="adherence-upnext" hidden></div>
+              <div class="adherence-legend" id="adherenceLegend"></div>
+            </div>
+          </div>
+
+          <div id="todayHint" class="today-hint" hidden>
+            <span>💡 Tap <b>+</b> for done, <b>−</b> for not done, or swipe a row. Tap a habit's text to see more.</span>
+            <button id="todayHintDismiss" class="hint-dismiss" aria-label="Dismiss">✕</button>
+          </div>
+
+          <div id="todayGroups" class="time-groups"></div>
+          <div id="todayEmpty" class="empty-state hidden">
+            <p>No habits yet. Tap <b>+ Add habit</b> in the Habits tab to get started.</p>
+          </div>
+
+          <div class="card journal-card" id="journalCard">
+            <div class="card-title">📔 Today's note</div>
+            <textarea id="journalText" rows="2" placeholder="How did today go? Anything worth remembering…"></textarea>
+            <p id="journalSaved" class="saved-note" hidden>Saved.</p>
+          </div>
+        </div>
+
+        <!-- ============ Habits ============ -->
+        <div class="page" id="page-habits">
+          <div class="page-header">
+            <h1>Habits</h1>
+            <div class="page-actions">
+              <button id="deleteAllBtn" class="btn-secondary btn-danger-outline hidden">Delete all</button>
+              <button id="addBtn" class="btn-primary">+ Add habit</button>
+            </div>
+          </div>
+
+          <div id="habitsGroups" class="category-groups"></div>
+          <div id="habitsEmpty" class="empty-state hidden">
+            <p>No habits yet. Tap <b>+ Add habit</b> to add your first one.</p>
+          </div>
+        </div>
+
+        <!-- ============ Progress ============ -->
+        <div class="page" id="page-progress">
+          <div class="page-header">
+            <div>
+              <h1>Progress</h1>
+              <p class="subtitle">Body measurements, goal &amp; trends</p>
+            </div>
+            <div class="page-actions">
+              <button id="prevWeekP" class="icon-btn" aria-label="Previous week">‹</button>
+              <span id="weekLabelP" class="pill"></span>
+              <button id="nextWeekP" class="icon-btn" aria-label="Next week">›</button>
+            </div>
+          </div>
+
+          <!-- Goal card -->
+          <div class="card goal-card">
+            <div class="card-title">🎯 Weight goal <button id="editGoalBtn" class="detail-edit" style="margin-left:auto">Set goal ›</button></div>
+            <div id="goalBody">
+              <p class="empty-inline">Set a target weight to track progress and see a projected date.</p>
+            </div>
+            <form id="goalForm" class="measurement-form" hidden>
+              <label>
+                Target weight (<span class="unit-w">lb</span>)
+                <input id="goalWeight" type="number" inputmode="decimal" step="0.1" min="0" placeholder="e.g. 210" />
+              </label>
+              <label>
+                Target date <span class="hint">(optional)</span>
+                <input id="goalDate" type="date" />
+              </label>
+              <div class="row-actions full">
+                <button type="button" id="goalClearBtn" class="btn-secondary">Clear goal</button>
+                <button type="button" id="goalCancelBtn" class="btn-secondary">Cancel</button>
+                <button type="submit" class="btn-primary">Save goal</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="card p-order-form">
+            <div class="card-title">This week's numbers</div>
+            <p class="card-sub">Log once a week — same day and time works best.</p>
+            <form id="measurementForm" class="measurement-form">
+              <label>
+                Weight (<span class="unit-w">lb</span>)
+                <input id="mWeight" type="number" inputmode="decimal" step="0.1" min="0" placeholder="e.g. 240" />
+              </label>
+              <label>
+                Waist (<span class="unit-l">in</span>)
+                <input id="mWaist" type="number" inputmode="decimal" step="0.1" min="0" placeholder="e.g. 44" />
+              </label>
+              <label>
+                Energy (1-10)
+                <input id="mEnergy" type="number" inputmode="numeric" step="1" min="1" max="10" placeholder="1-10" />
+              </label>
+              <label>
+                Strength trend
+                <select id="mStrength">
+                  <option value="">—</option>
+                  <option value="Up">Up</option>
+                  <option value="Same">Same</option>
+                  <option value="Down">Down</option>
+                </select>
+              </label>
+              <div id="customMetricFields" class="custom-metric-fields full"></div>
+              <label class="full">
+                Progress photo <span class="hint">(stays on this device)</span>
+                <div class="photo-field">
+                  <input id="mPhoto" type="file" accept="image/*" capture="environment" />
+                  <img id="mPhotoThumb" class="photo-thumb" hidden alt="Progress photo" />
+                  <button type="button" id="mPhotoRemove" class="btn-secondary" hidden>Remove</button>
+                </div>
+              </label>
+              <label class="full">
+                Notes
+                <textarea id="mNotes" rows="2" placeholder="How did the week feel?"></textarea>
+              </label>
+              <div class="row-actions full">
+                <button type="button" id="addMetricBtn" class="btn-secondary" style="margin-right:auto">+ Custom metric</button>
+                <button type="button" id="clearMeasurementBtn" class="btn-secondary">Clear</button>
+                <button type="submit" class="btn-primary">Save</button>
+              </div>
+            </form>
+            <p id="mSaved" class="saved-note" hidden>Saved.</p>
+          </div>
+
+          <div class="card insight-card" id="insightCard" hidden>
+            <div class="insight-icon">💡</div>
+            <div id="insightText" class="insight-text"></div>
+          </div>
+
+          <div class="stat-grid">
+            <div class="stat-card stat-start">
+              <div class="stat-label">Starting weight</div>
+              <div class="stat-value" id="pStartWeight">—</div>
+            </div>
+            <div class="stat-card stat-latest">
+              <div class="stat-label">Latest</div>
+              <div class="stat-value" id="pLatestWeight">—</div>
+              <div class="stat-meta" id="pLatestMeta"></div>
+            </div>
+            <div class="stat-card stat-change">
+              <div class="stat-label">Total change</div>
+              <div class="stat-value" id="pChange">—</div>
+            </div>
+            <div class="stat-card stat-avg">
+              <div class="stat-label">Avg weekly</div>
+              <div class="stat-value" id="pAvgWeekly">—</div>
+            </div>
+            <div class="stat-card stat-waist">
+              <div class="stat-label">Waist change</div>
+              <div class="stat-value" id="pWaistChange">—</div>
+              <div class="stat-meta" id="pWaistMeta"></div>
+            </div>
+            <div class="stat-card stat-energy">
+              <div class="stat-label">Avg energy</div>
+              <div class="stat-value" id="pAvgEnergy">—</div>
+              <div class="stat-meta" id="pEnergyMeta"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">
+              Trend
+              <select id="trendMetric" class="filter-select" style="margin-left:auto" aria-label="Choose metric"></select>
+            </div>
+            <div class="card-sub-inline" id="trendRange" style="margin-bottom:0.5rem"></div>
+            <div id="trendChart" class="trend-chart"></div>
+            <div id="chartLegend" class="chart-legend" hidden></div>
+            <p id="trendEmpty" class="empty-inline">Log data to see the trend line.</p>
+          </div>
+
+          <div class="card p-order-log">
+            <div class="card-title">Weekly log</div>
+            <div id="measurementHistory" class="measurement-history">
+              <p class="empty-inline">No entries yet.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============ Report ============ -->
+        <div class="page" id="page-report">
+          <div class="page-header">
+            <div>
+              <h1>Report</h1>
+              <p class="subtitle">Habit adherence &amp; streaks</p>
+            </div>
+            <div class="page-actions">
+              <select id="reportCategoryFilter" class="filter-select" aria-label="Filter by category">
+                <option value="all">All categories</option>
+                <option value="Fitness">Fitness</option>
+                <option value="Nutrition">Nutrition</option>
+                <option value="Sleep">Sleep</option>
+                <option value="Supplements">Supplements</option>
+                <option value="Custom">Custom</option>
+              </select>
+              <div class="overflow-wrap">
+                <button id="reportMenuBtn" class="btn-secondary overflow-btn" aria-label="Download">⭳</button>
+                <div id="reportMenu" class="overflow-menu hidden" role="menu">
+                  <button data-action="csv-week" role="menuitem">⭳ Download this week (CSV)</button>
+                  <button data-action="csv-all" role="menuitem">⭳ Download all history (CSV)</button>
+                  <button data-action="print" role="menuitem">🖨 Print / Save as PDF</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="report-range-nav">
+            <button id="prevWeek" class="icon-btn" aria-label="Previous week">‹</button>
+            <span id="weekLabel" class="pill"></span>
+            <button id="nextWeek" class="icon-btn" aria-label="Next week">›</button>
+          </div>
+
+          <div class="stat-grid stat-grid-3">
+            <div class="stat-card stat-adherence">
+              <div class="stat-label">Adherence</div>
+              <div class="stat-value" id="statCompletion">0%</div>
+            </div>
+            <div class="stat-card stat-checkins">
+              <div class="stat-label">Check-ins</div>
+              <div class="stat-value" id="statCompleted">0</div>
+            </div>
+            <div class="stat-card stat-streak">
+              <div class="stat-label">Best streak</div>
+              <div class="stat-value" id="statStreak">0</div>
+            </div>
+          </div>
+
+          <div class="insight-card" id="reportInsight" hidden>
+            <div class="insight-icon">📊</div>
+            <div id="reportInsightText" class="insight-text"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Adherence by day</div>
+            <div id="dayAdherence" class="day-adherence"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">By category</div>
+            <div id="categoryBreakdown" class="progress-list">
+              <p class="empty-inline">No data yet.</p>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Habit breakdown</div>
+            <div id="weeklyBreakdown" class="weekly-breakdown">
+              <p class="empty-inline">Add some habits to see your weekly report.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============ Settings ============ -->
+        <div class="page" id="page-settings">
+          <div class="page-header"><h1>Settings</h1></div>
+
+          <div class="card">
+            <div class="card-title">☁️ Sync across devices</div>
+            <p class="card-sub">Sync your data via a private GitHub Gist. Only you (with your token) can access it.</p>
+            <div class="setup-guide">
+              <ol>
+                <li>Create a GitHub Personal Access Token with the <b>gist</b> scope only (<a href="https://github.com/settings/tokens/new" target="_blank" rel="noopener">github.com/settings/tokens/new</a>).</li>
+                <li>Paste the token below and tap <b>Push now</b>. That first push creates a new private Gist and fills in the Gist ID.</li>
+                <li>On your other device, install the app, paste the same token and the Gist ID, and tap <b>Pull</b>.</li>
+              </ol>
+            </div>
+            <div class="field">
+              <label for="syncTokenInput">GitHub Personal Access Token</label>
+              <input type="password" id="syncTokenInput" placeholder="ghp_… or github_pat_…" autocomplete="off" />
+            </div>
+            <div class="field">
+              <label for="syncGistIdInput">Gist ID <span class="hint">(auto-filled after first push)</span></label>
+              <input type="text" id="syncGistIdInput" placeholder="(blank on first setup)" autocomplete="off" />
+            </div>
+            <div class="field">
+              <label for="deviceNameInput">This device's name <span class="hint">(shows in sync status)</span></label>
+              <input type="text" id="deviceNameInput" maxlength="30" placeholder="e.g. iPhone, Laptop" autocomplete="off" />
+            </div>
+            <div class="row-actions">
+              <button id="syncSaveBtn" class="btn-secondary">Save</button>
+              <button id="syncPushBtn" class="btn-primary">⬆️ Push now</button>
+              <button id="syncPullBtn" class="btn-secondary">⬇️ Pull</button>
+              <button id="syncTestBtn" class="btn-secondary">Test connection</button>
+            </div>
+            <div class="field toggle-field">
+              <label class="toggle-row">
+                <span><b>Auto-sync</b><br><span class="hint">Push whenever data changes, pull every few minutes.</span></span>
+                <input type="checkbox" id="autoSyncToggle" />
+              </label>
+            </div>
+            <div id="syncStateLine" class="sync-state-line" hidden></div>
+            <div id="syncStatus" class="sync-status" hidden></div>
+            <div class="row-actions" style="margin-top: 1rem">
+              <button id="pairQrBtn" class="btn-secondary">📷 Show pairing QR</button>
+              <button id="pairDeviceBtn" class="btn-secondary">🔗 Copy pairing link</button>
+              <button id="syncDeleteCloudBtn" class="btn-secondary btn-danger-outline">Delete cloud data</button>
+            </div>
+            <p class="hint" style="margin-top:0.5rem">Pairing link carries your token — only send it to your own device (AirDrop, Notes). It never goes through any server.</p>
+          </div>
+
+          <div class="card">
+            <div class="card-title">📊 Your data</div>
+            <div id="dataSummary" class="data-summary"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">🏷️ Categories</div>
+            <p class="card-sub">Organise habits into groups. Rename or remove any, or add your own.</p>
+            <div id="categoryManager" class="category-manager"></div>
+            <div class="row-actions" style="margin-top:0.75rem">
+              <button id="addCategoryBtn" class="btn-secondary">+ Add category</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">📋 Templates</div>
+            <p class="card-sub">Browse a library of ready-made habits and pick exactly which ones to add. Existing habits are kept.</p>
+            <div class="row-actions">
+              <button id="browseTemplatesBtn" class="btn-primary">📋 Browse template library</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">🔔 Reminders</div>
+            <p class="card-sub">Get a notification at each habit's reminder time. Works best when the app is installed to your home screen and open in the background.</p>
+            <div class="ios-note" id="iosNote" hidden>
+              📱 <b>On iPhone:</b> install Momentum to your Home Screen (Share → Add to Home Screen) on iOS 16.4+, then enable reminders here. Reminders fire while the app is open or recently used; iOS may not deliver them when it's fully closed.
+            </div>
+            <div class="field toggle-field">
+              <label class="toggle-row">
+                <span><b>Enable reminders</b><br><span class="hint">Ask for notification permission and schedule today's reminders.</span></span>
+                <input type="checkbox" id="remindersToggle" />
+              </label>
+            </div>
+            <div class="field toggle-field">
+              <label class="toggle-row">
+                <span><b>Reminder sound</b><br><span class="hint">Play a gentle chime when a reminder fires (while the app is open).</span></span>
+                <input type="checkbox" id="soundToggle" />
+              </label>
+            </div>
+            <div class="field">
+              <label>Default reminder time <span class="hint">(used when adding a habit)</span>
+                <input type="time" id="reminderDefault" />
+              </label>
+            </div>
+            <div class="row-actions">
+              <button id="testReminderBtn" class="btn-secondary">🔔 Test reminder</button>
+            </div>
+            <div class="field">
+              <label>Quiet hours <span class="hint">(no reminders between)</span></label>
+              <div class="quiet-row">
+                <input type="time" id="quietStart" aria-label="Quiet start" />
+                <span>to</span>
+                <input type="time" id="quietEnd" aria-label="Quiet end" />
+              </div>
+            </div>
+
+            <div class="field toggle-field">
+              <label class="toggle-row">
+                <span><b>Morning digest</b><br><span class="hint">One summary of today's habits.</span></span>
+                <input type="time" id="morningDigest" style="width:auto" />
+              </label>
+            </div>
+            <div class="field toggle-field">
+              <label class="toggle-row">
+                <span><b>Evening nudge</b><br><span class="hint">Reminder of anything still pending.</span></span>
+                <input type="time" id="eveningNudge" style="width:auto" />
+              </label>
+            </div>
+
+            <div id="permStatus" class="perm-status"></div>
+            <div id="reminderPreview" class="reminder-preview"></div>
+            <div id="reminderStatus" class="sync-status" hidden></div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">🎨 Appearance</div>
+            <div class="field">
+              <label>Theme
+                <select id="themeSelect">
+                  <option value="auto">Auto (match device)</option>
+                  <option value="light">Light</option>
+                  <option value="dark">Dark</option>
+                </select>
+              </label>
+            </div>
+            <div class="field toggle-field">
+              <label class="toggle-row">
+                <span><b>Compact mode</b><br><span class="hint">Tighter rows, hide secondary info. Good for long habit lists.</span></span>
+                <input type="checkbox" id="compactToggle" />
+              </label>
+            </div>
+            <div class="field">
+              <label>Units
+                <select id="unitsSelect">
+                  <option value="imperial">Imperial (lb / in)</option>
+                  <option value="metric">Metric (kg / cm)</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">💾 Backup</div>
+            <p class="card-sub">Export your data as a JSON file, or restore from a backup.</p>
+            <div class="row-actions">
+              <button id="exportBtn" class="btn-secondary">Export data</button>
+              <button id="importBtn" class="btn-secondary">Import data</button>
+              <input id="fileInput" type="file" accept="application/json" hidden />
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">ℹ️ About</div>
+            <p class="card-sub">Momentum — a private habit, fitness & supplements tracker. Data lives on your device; optional encrypted-free sync via your own GitHub Gist.</p>
+            <div class="about-meta">
+              <span>Version <b id="appVersion">v3.1</b></span>
+              <a href="https://github.com/settings/tokens/new" target="_blank" rel="noopener">Manage GitHub tokens</a>
+            </div>
+          </div>
+
+          <div class="card danger-card">
+            <div class="card-title">⚠️ Danger zone</div>
+            <p class="card-sub">These actions can't be undone.</p>
+            <div class="row-actions" style="flex-direction:column; align-items:stretch; gap:0.5rem">
+              <button id="clearHistoryBtn" class="btn-secondary btn-danger-outline">Clear all check-in history (keep habits)</button>
+              <button id="deletePhotosBtn" class="btn-secondary btn-danger-outline">Delete all progress photos</button>
+              <button id="resetAllBtn" class="btn-danger">Reset everything</button>
+            </div>
+          </div>
+
+          <p class="app-footer">Momentum · v3.1</p>
+        </div>
+
+      </section>
+    </div>
+  </main>
+
+  <!-- ===================== Habit Modal ===================== -->
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-content">
+      <h2 id="modalTitle">New habit</h2>
+      <form id="habitForm">
+        <label>
+          Name
+          <input id="habitName" type="text" maxlength="40" required autocomplete="off" placeholder="e.g. Drink water" />
+        </label>
+
+        <label>
+          Category
+          <select id="habitCategory">
+            <option value="Fitness">Fitness</option>
+            <option value="Nutrition">Nutrition</option>
+            <option value="Sleep">Sleep</option>
+            <option value="Supplements">Supplements</option>
+            <option value="Custom" selected>Custom</option>
+          </select>
+        </label>
+
+        <label>
+          Type
+          <div class="type-picker">
+            <button type="button" data-type="check" class="type-btn selected">
+              <span class="type-icon">✓</span>
+              <span>Yes / no</span>
+              <small>Did I do it?</small>
+            </button>
+            <button type="button" data-type="count" class="type-btn">
+              <span class="type-icon">#</span>
+              <span>Count</span>
+              <small>Track a number</small>
+            </button>
+          </div>
+        </label>
+
+        <div id="countFields" class="count-fields hidden">
+          <label>
+            Target
+            <input id="habitTarget" type="number" inputmode="decimal" step="any" min="0" placeholder="e.g. 10000" />
+          </label>
+          <label>
+            Unit
+            <input id="habitUnit" type="text" maxlength="10" placeholder="steps, g, ml, min, cal" />
+          </label>
+          <label>
+            Step size
+            <input id="habitIncrement" type="number" inputmode="decimal" step="any" min="0" placeholder="e.g. 500" />
+            <small class="hint">How much + and - buttons add or subtract.</small>
+          </label>
+        </div>
+
+        <label>
+          Time of day
+          <input id="habitTime" type="text" maxlength="60" placeholder="e.g. 8:00 AM · with meal 1" list="timeSuggestions" />
+          <datalist id="timeSuggestions">
+            <option value="6:30 AM"></option>
+            <option value="7:30 AM"></option>
+            <option value="8:00 AM · with meal 1"></option>
+            <option value="10:30 AM · alone"></option>
+            <option value="Morning"></option>
+            <option value="All day"></option>
+            <option value="Afternoon"></option>
+            <option value="5:30 PM"></option>
+            <option value="6:00 PM · post-workout"></option>
+            <option value="Evening"></option>
+            <option value="7:30 PM · wind-down"></option>
+            <option value="10:30 PM"></option>
+          </datalist>
+        </label>
+
+        <label>
+          Reminder <span class="hint">(optional — needs notifications on)</span>
+          <input id="habitReminder" type="time" />
+        </label>
+
+        <label>
+          Notes <span class="hint">(optional)</span>
+          <textarea id="habitNotes" maxlength="200" rows="2" placeholder="e.g. dose, brand, prep instructions"></textarea>
+        </label>
+
+        <label>
+          Icon
+          <div id="iconPicker" class="icon-picker"></div>
+        </label>
+        <label>
+          Color
+          <div id="colorPicker" class="color-picker"></div>
+        </label>
+        <label>
+          Frequency
+          <div class="days-picker" id="daysPicker"></div>
+          <small class="hint">Pick which days this habit should happen.</small>
+        </label>
+        <div class="modal-actions">
+          <button type="button" id="deleteBtn" class="btn-danger-link hidden">Delete</button>
+          <button type="button" id="cancelBtn" class="btn-secondary">Cancel</button>
+          <button type="submit" class="btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===================== Template Picker Modal ===================== -->
+  <div id="templateModal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-content template-modal-content">
+      <div class="template-modal-header">
+        <h2>Template library</h2>
+        <button type="button" id="templateCloseBtn" class="icon-btn" aria-label="Close">✕</button>
+      </div>
+      <p class="card-sub">Tick the habits you want, then add them all at once. Tap a section title to toggle the whole group.</p>
+      <div class="template-toolbar">
+        <button type="button" id="templateSelectAll" class="btn-secondary">Select all</button>
+        <button type="button" id="templateClearAll" class="btn-secondary">Clear</button>
+        <span id="templateCount" class="template-count">0 selected</span>
+      </div>
+      <div id="templateList" class="template-list"></div>
+      <div class="template-modal-footer">
+        <button type="button" id="templateCancelBtn" class="btn-secondary">Cancel</button>
+        <button type="button" id="templateAddBtn" class="btn-primary">Add selected</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Photo viewer -->
+  <div id="photoViewer" class="photo-viewer hidden"><img id="photoViewerImg" alt="Progress photo" /></div>
+
+  <!-- Confetti layer -->
+  <div id="confetti" class="confetti-layer" aria-hidden="true"></div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast" hidden></div>
+
+  <!-- QR pairing modal -->
+  <div id="qrModal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-content qr-modal-content">
+      <div class="template-modal-header">
+        <h2>Pair a device</h2>
+        <button type="button" id="qrCloseBtn" class="icon-btn" aria-label="Close">✕</button>
+      </div>
+      <p class="card-sub">On your other device's camera, scan this code to open Momentum with your sync settings pre-filled. Only scan on <b>your own</b> device — this code contains your token.</p>
+      <div id="qrHolder" class="qr-holder"></div>
+      <div class="row-actions" style="justify-content:center; margin-top:0.5rem">
+        <button type="button" id="qrCopyBtn" class="btn-secondary">Copy link instead</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="qrcode.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
