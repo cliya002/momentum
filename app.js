@@ -2354,7 +2354,7 @@
       missed.appendChild(label);
       const listWrap = document.createElement("div");
       listWrap.className = "missed-list";
-      const cap = 8;
+      const cap = 6;
       for (const h of overdue.slice(0, cap)) {
         const chip = document.createElement("button");
         chip.className = "missed-chip";
