@@ -3563,6 +3563,33 @@
     }
   }
 
+  // Read work hours from typed/pasted text (instant, offline — no OCR).
+  function readHoursFromText() {
+    const ta = $("#schedTextInput");
+    const status = $("#schedOcrStatus");
+    const text = (ta && ta.value || "").trim();
+    if (!text) { showToast("Type or paste your schedule first."); return; }
+    const parsed = parseScheduleText(text);
+    const keys = Object.keys(parsed);
+    if (keys.length === 0) {
+      status.hidden = false; status.className = "sync-status warn";
+      status.textContent = "Couldn't find day/time rows. Try one day per line, e.g. 'Mon 9:00-17:00'.";
+      return;
+    }
+    const summary = DAY_DISPLAY.filter((d) => parsed[d.idx])
+      .map((d) => { const p = parsed[d.idx]; return `${d.full}: ${p.off ? "Off" : (p.start + "–" + p.end)}`; })
+      .join("\n");
+    if (!confirm("Found:\n\n" + summary + "\n\nApply these hours? You can still edit them.")) return;
+    for (const [idx, p] of Object.entries(parsed)) {
+      state.workSchedule.days[idx] = { off: !!p.off, start: p.start || "", end: p.end || "" };
+    }
+    state.workSchedule.updatedAt = Date.now();
+    save();
+    renderSchedule();
+    status.hidden = false; status.className = "sync-status success";
+    status.textContent = `Applied ${keys.length} day${keys.length === 1 ? "" : "s"} — review below.`;
+  }
+
   // Compute suggested new time for a habit that clashes with a work block.
   function suggestFit(habitMin, workStart, workEnd) {
     // Move to before work if the habit sits nearer the start, else after work.
@@ -4769,6 +4796,8 @@
     if (schedRefDay) schedRefDay.addEventListener("change", renderConflicts);
     const schedOcrBtn = $("#schedOcrBtn");
     if (schedOcrBtn) schedOcrBtn.addEventListener("click", runScheduleOcr);
+    const schedTextBtn = $("#schedTextBtn");
+    if (schedTextBtn) schedTextBtn.addEventListener("click", readHoursFromText);
     const schedThumb = $("#schedPhotoThumb");
     if (schedThumb) schedThumb.addEventListener("click", () => {
       const src = schedThumb.getAttribute("src"); if (src) openPhotoViewer(src);

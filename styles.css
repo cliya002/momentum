@@ -1406,6 +1406,25 @@ body.compact .habit-list { gap: 0.35rem; }
 }
 
 /* Schedule tab */
+.import-block {
+  padding: 0.85rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.import-block:last-of-type { border-bottom: none; }
+.import-label { font-weight: 700; font-size: 0.85rem; margin-bottom: 0.5rem; }
+.sched-textarea {
+  width: 100%;
+  margin-top: 0.35rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.95rem;
+  resize: vertical;
+}
+.sched-textarea:focus { outline: none; border-color: var(--primary); }
 .schedule-grid { display: flex; flex-direction: column; gap: 0.5rem; }
 .sched-row {
   display: grid;

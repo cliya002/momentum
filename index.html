@@ -376,33 +376,46 @@
           </div>
 
           <div class="card">
-            <div class="card-title">This week's hours</div>
-            <p class="card-sub">Set when you're working each day. Toggle a day off if you're not.</p>
-            <div id="scheduleGrid" class="schedule-grid"></div>
-          </div>
+            <div class="card-title">1 · Import your hours <span class="hint">(or skip and type them below)</span></div>
+            <p class="card-sub">Fastest way to get started: upload a roster photo, or paste your schedule as text. We'll read the day/time rows and fill in the hours for you to review.</p>
 
-          <div class="card">
-            <div class="card-title">📸 Schedule reference <span class="hint">(optional, stays on this device)</span></div>
-            <p class="card-sub">Snap or upload a photo of your roster to refer to while you enter hours.</p>
-            <div class="photo-field">
-              <input id="schedPhoto" type="file" accept="image/*" capture="environment" />
-              <img id="schedPhotoThumb" class="photo-thumb" hidden alt="Schedule photo" />
-              <button type="button" id="schedPhotoRemove" class="btn-secondary" hidden>Remove</button>
+            <div class="import-block">
+              <div class="import-label">📸 From a photo</div>
+              <div class="photo-field">
+                <input id="schedPhoto" type="file" accept="image/*" capture="environment" />
+                <img id="schedPhotoThumb" class="photo-thumb" hidden alt="Schedule photo" />
+                <button type="button" id="schedPhotoRemove" class="btn-secondary" hidden>Remove</button>
+              </div>
+              <div class="row-actions" style="margin-top:0.6rem">
+                <button type="button" id="schedOcrBtn" class="btn-secondary">🔍 Read hours from photo (beta)</button>
+              </div>
+              <div id="schedOcrStatus" class="sync-status" hidden></div>
             </div>
-            <div class="row-actions" style="margin-top:0.6rem">
-              <button type="button" id="schedOcrBtn" class="btn-secondary">🔍 Read hours from photo (beta)</button>
+
+            <div class="import-block">
+              <div class="import-label">⌨️ From text</div>
+              <textarea id="schedTextInput" rows="4" placeholder="Paste or type, one day per line, e.g.&#10;Mon 9:00 - 17:00&#10;Tue 9am-5pm&#10;Wed off&#10;Thu 12:00-20:00" class="sched-textarea"></textarea>
+              <div class="row-actions" style="margin-top:0.6rem">
+                <button type="button" id="schedTextBtn" class="btn-secondary">📖 Read hours from text</button>
+              </div>
             </div>
-            <div id="schedOcrStatus" class="sync-status" hidden></div>
-            <label style="display:block;margin-top:0.75rem;font-size:0.85rem;color:var(--text-dim)">
-              Notes
-              <textarea id="schedNotes" rows="2" placeholder="e.g. Split shift Wed, on-call Sat…" style="width:100%;margin-top:0.35rem;padding:0.7rem 0.9rem;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg-2);color:var(--text);font-family:inherit;resize:vertical"></textarea>
+
+            <label class="import-block" style="display:block;font-size:0.85rem;color:var(--text-dim)">
+              📝 Notes <span class="hint">(reference only)</span>
+              <textarea id="schedNotes" rows="2" placeholder="e.g. Split shift Wed, on-call Sat…" class="sched-textarea"></textarea>
             </label>
             <p id="schedSaved" class="saved-note" hidden>Saved.</p>
           </div>
 
           <div class="card">
+            <div class="card-title">2 · This week's hours</div>
+            <p class="card-sub">Review and tweak. Toggle a day off if you're not working.</p>
+            <div id="scheduleGrid" class="schedule-grid"></div>
+          </div>
+
+          <div class="card">
             <div class="card-title">
-              Auto-fit habits
+              3 · Auto-fit habits
               <select id="schedRefDay" class="filter-select" style="margin-left:auto" aria-label="Reference day"></select>
             </div>
             <p class="card-sub">Habits that clash with your shift on the selected day, with suggested times that dodge work hours.</p>
