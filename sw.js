@@ -82,32 +82,6 @@ self.addEventListener("pushsubscriptionchange", (event) => {
   })());
 });
 
-// ---- Web Push: show a notification pushed by the Momentum push Worker ----
-self.addEventListener("push", (event) => {
-  let data = {};
-  try { data = event.data ? event.data.json() : {}; }
-  catch (e) { data = { title: "Momentum", body: event.data ? event.data.text() : "" }; }
-  const title = data.title || "Momentum";
-  const options = {
-    body: data.body || "",
-    icon: "icons/icon-192.png",
-    badge: "icons/icon-192.png",
-    tag: data.tag || "ht-push",
-    renotify: true,
-    data: { ids: data.ids || [] },
-  };
-  if (data.ids && data.ids.length) {
-    options.actions = [
-      { action: "done", title: "✓ Done" },
-      { action: "snooze", title: "Snooze" },
-    ];
-  }
-  event.waitUntil(self.registration.showNotification(title, options));
-});
-
-// The app re-registers its subscription on next open, so just log here.
-self.addEventListener("pushsubscriptionchange", () => {});
-
 // ---- Notification click handling (action buttons: Done / Snooze) ----
 self.addEventListener("notificationclick", (event) => {
   const action = event.action || "open";
