@@ -238,6 +238,8 @@
   let autoSyncInterval = null;
   let lastSyncedAt = 0;
   let lastSyncedHash = null;
+  let rateLimitResetAt = 0;   // epoch ms until which sync is paused (rate limited)
+  let resumeTimer = null;
 
   /* ================================================================
    * Utility
@@ -822,8 +824,55 @@
    * Sync (GitHub Gist, plain JSON)
    * ================================================================ */
 
+  // Auto-sync is ON by default once a token exists, unless the user turned it off.
   function isAutoSyncEnabled() {
-    return localStorage.getItem(KEYS.syncEnabled) === "true";
+    if (!localStorage.getItem(KEYS.syncToken)) return false;
+    return localStorage.getItem(KEYS.syncEnabled) !== "false";
+  }
+  function isRateLimited() { return rateLimitResetAt > Date.now(); }
+
+  // Called when a rate limit is detected. Pause activity, schedule auto-resume.
+  function pauseForRateLimit(resetMs) {
+    rateLimitResetAt = resetMs && resetMs > Date.now() ? resetMs : Date.now() + 60 * 60 * 1000;
+    stopAutoSync();
+    if (resumeTimer) clearTimeout(resumeTimer);
+    const delay = Math.max(1000, rateLimitResetAt - Date.now() + 2000);
+    resumeTimer = setTimeout(resumeAfterRateLimit, delay);
+    updateSyncIndicator("dirty");
+    const when = new Date(rateLimitResetAt).toLocaleTimeString();
+    showSyncStatus(`GitHub rate limit reached. Auto-sync will resume automatically around ${when}. Your data is safe on this device.`, "warn");
+    renderSyncStateLine();
+  }
+  function resumeAfterRateLimit() {
+    rateLimitResetAt = 0;
+    resumeTimer = null;
+    if (isAutoSyncEnabled() && navigator.onLine) {
+      startAutoSync();
+      updateSyncIndicator("idle");
+      showSyncStatus("Rate limit cleared — auto-sync resumed.", "success");
+      syncPush({ silent: true });
+    }
+    renderSyncStateLine();
+  }
+
+  // GitHub fetch wrapper: detects rate limiting and records the reset time.
+  async function ghFetch(url, opts) {
+    const res = await fetch(url, opts);
+    if (res.status === 403 || res.status === 429) {
+      const remaining = res.headers.get("x-ratelimit-remaining");
+      const reset = res.headers.get("x-ratelimit-reset");
+      const retryAfter = res.headers.get("retry-after");
+      if (res.status === 429 || remaining === "0") {
+        let resetMs = 0;
+        if (reset) resetMs = Number(reset) * 1000;
+        else if (retryAfter) resetMs = Date.now() + Number(retryAfter) * 1000;
+        const err = new Error("API rate limit exceeded");
+        err.rateLimited = true;
+        err.resetMs = resetMs;
+        throw err;
+      }
+    }
+    return res;
   }
 
   function updateSyncIndicator(status) {
@@ -860,16 +909,18 @@
   }
 
   function queueAutoSyncPush() {
+    if (isRateLimited()) return;
     if (syncPushTimer) clearTimeout(syncPushTimer);
     syncPushTimer = setTimeout(() => {
-      if (!syncInFlight && navigator.onLine) syncPush({ silent: true });
+      if (!syncInFlight && navigator.onLine && !isRateLimited()) syncPush({ silent: true });
     }, 3000);
   }
 
   function startAutoSync() {
     stopAutoSync();
+    if (isRateLimited()) return; // will be restarted by resumeAfterRateLimit
     autoSyncInterval = setInterval(() => {
-      if (!syncInFlight && navigator.onLine) syncPull({ skipConfirm: true, silent: true });
+      if (!syncInFlight && navigator.onLine && !isRateLimited()) syncPull({ skipConfirm: true, silent: true });
     }, 5 * 60 * 1000);
     if (dirtyForSync && navigator.onLine) queueAutoSyncPush();
   }
@@ -902,7 +953,7 @@
       // Pull-and-merge first so we don't clobber remote changes.
       if (gistId) {
         try {
-          const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+          const res = await ghFetch(`https://api.github.com/gists/${gistId}`, {
             headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${token}` },
           });
           if (res.ok) {
@@ -916,7 +967,10 @@
               }
             }
           }
-        } catch (e) { console.warn("pre-push merge failed", e); }
+        } catch (e) {
+          if (e && e.rateLimited) throw e; // bubble up so we pause, don't PATCH
+          console.warn("pre-push merge failed", e);
+        }
       }
 
       const stateJson = JSON.stringify(state);
@@ -942,7 +996,7 @@
 
       let res, data;
       if (gistId) {
-        res = await fetch(`https://api.github.com/gists/${gistId}`, {
+        res = await ghFetch(`https://api.github.com/gists/${gistId}`, {
           method: "PATCH",
           headers: {
             Accept: "application/vnd.github+json",
@@ -954,7 +1008,7 @@
         data = await res.json();
         if (!res.ok) throw new Error(data.message || "Update failed");
       } else {
-        res = await fetch("https://api.github.com/gists", {
+        res = await ghFetch("https://api.github.com/gists", {
           method: "POST",
           headers: {
             Accept: "application/vnd.github+json",
@@ -982,14 +1036,11 @@
     } catch (e) {
       updateSyncIndicator("error");
       const msg = String(e.message || "");
-      const rateLimited = /rate limit|secondary rate|abuse detection/i.test(msg);
+      const rateLimited = e.rateLimited || /rate limit|secondary rate|abuse detection/i.test(msg);
       const authErr = !rateLimited && /bad credentials|unauthorized|401|requires authentication|expired|invalid/i.test(msg);
       if (rateLimited) {
-        // Pause auto-sync so we stop hammering the API; user can resume later.
-        stopAutoSync();
-        localStorage.setItem(KEYS.syncEnabled, "false");
-        const toggle = $("#autoSyncToggle"); if (toggle) toggle.checked = false;
-        showSyncStatus("GitHub rate limit reached. Auto-sync paused — wait ~an hour, then tap Push. Your data is safe on this device.", "error");
+        // Pause and auto-resume when the limit resets — keep auto-sync enabled.
+        pauseForRateLimit(e.resetMs);
       } else if (authErr) {
         showSyncStatus("Token rejected. Generate a new one at github.com/settings/tokens.", "error");
         stopAutoSync();
@@ -1018,7 +1069,7 @@
     if (!silent) showSyncStatus("⬇️ Downloading and merging…", "loading");
     updateSyncIndicator("syncing");
     try {
-      const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+      const res = await ghFetch(`https://api.github.com/gists/${gistId}`, {
         headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
@@ -1041,13 +1092,10 @@
     } catch (e) {
       updateSyncIndicator("error");
       const msg = String(e.message || "");
-      const rateLimited = /rate limit|secondary rate|abuse detection/i.test(msg);
+      const rateLimited = e.rateLimited || /rate limit|secondary rate|abuse detection/i.test(msg);
       const authErr = !rateLimited && /bad credentials|unauthorized|401|requires authentication/i.test(msg);
       if (rateLimited) {
-        stopAutoSync();
-        localStorage.setItem(KEYS.syncEnabled, "false");
-        const toggle = $("#autoSyncToggle"); if (toggle) toggle.checked = false;
-        showSyncStatus("GitHub rate limit reached. Auto-sync paused — wait ~an hour, then tap Pull. Your data is safe on this device.", "error");
+        pauseForRateLimit(e.resetMs);
       } else if (authErr) {
         showSyncStatus("Token rejected. Check the token in Settings.", "error");
       } else {
@@ -1146,6 +1194,7 @@
       hydrateSettings();
       showToast("Paired. Pulling your data…", "success");
       switchView("settings");
+      if (isAutoSyncEnabled()) startAutoSync();  // on by default now
       setTimeout(() => syncPull({ skipConfirm: true }), 400);
       return true;
     } catch (e) { return false; }
@@ -3854,7 +3903,8 @@
     const configured = !!localStorage.getItem(KEYS.syncToken);
     if (!configured) { el.hidden = true; return; }
     el.hidden = false;
-    const auto = isAutoSyncEnabled() ? "on" : "off";
+    let auto = isAutoSyncEnabled() ? "on" : "off";
+    if (isRateLimited()) auto = `paused until ${new Date(rateLimitResetAt).toLocaleTimeString()}`;
     el.innerHTML = `☁️ Last synced <b>${timeAgo(lastSyncedAt)}</b> · Device: <b>${escapeHtml(getDeviceName())}</b> · Auto-sync <b>${auto}</b>`;
   }
 
@@ -3989,6 +4039,9 @@
     if (dn) localStorage.setItem(KEYS.deviceName, dn);
     else localStorage.removeItem(KEYS.deviceName);
     updateSyncIndicator("idle");
+    // Auto-sync is on by default once a token exists — start it and reflect in UI.
+    if (token && isAutoSyncEnabled()) { startAutoSync(); }
+    els.autoSyncToggle.checked = isAutoSyncEnabled();
     renderSyncStateLine();
     showSyncStatus("Settings saved.", "success");
   }
@@ -4000,8 +4053,14 @@
       return showSyncStatus("Add a GitHub token first.", "warn");
     }
     localStorage.setItem(KEYS.syncEnabled, on ? "true" : "false");
-    if (on) startAutoSync();
-    else stopAutoSync();
+    if (on) {
+      // Turning it back on clears any rate-limit pause.
+      rateLimitResetAt = 0;
+      if (resumeTimer) { clearTimeout(resumeTimer); resumeTimer = null; }
+      startAutoSync();
+    } else {
+      stopAutoSync();
+    }
     showSyncStatus(on ? "Auto-sync on." : "Auto-sync off.", "success");
   }
 
@@ -4247,6 +4306,12 @@
     lastSyncedAt = parseInt(localStorage.getItem(KEYS.lastSynced) || "0", 10);
     lastSyncedHash = localStorage.getItem(KEYS.lastSyncedHash) || null;
     todayCategoryFilter = localStorage.getItem(KEYS.todayFilter) || "all";
+    // One-time: clear a stale auto-sync "off" that the old rate-limit bug set,
+    // so auto-sync defaults on again for existing installs.
+    if (!localStorage.getItem("ht_sync_migrated_v30")) {
+      if (localStorage.getItem(KEYS.syncEnabled) === "false") localStorage.removeItem(KEYS.syncEnabled);
+      localStorage.setItem("ht_sync_migrated_v30", "1");
+    }
     applyTheme();
     if (localStorage.getItem(KEYS.compact) === "true") document.body.classList.add("compact");
     wireEvents();
