@@ -44,7 +44,7 @@
     "🏋️","🍗","🥩","🍎","🥦","☀️","🐟","💊",
     "🌙","⏰","🧴","🩺","❤️","🥛","🧃","📿"
   ];
-  const COLORS = ["#5b3fb8","#14b8a6","#22c55e","#3b82f6",
+  const COLORS = ["#6366f1","#14b8a6","#22c55e","#3b82f6",
                   "#ec4899","#f59e0b","#ef4444","#a855f7"];
 
   // ---- Template library ----
@@ -58,12 +58,12 @@
         { name: "Treadmill",       icon: "🏃",  color: "#f59e0b", category: "Fitness", time: "6:30 AM · gym", days: [1,2,3,4,5], notes: "30 min treadmill" },
         { name: "Morning walk",    icon: "🚶",  color: "#22c55e", category: "Fitness", time: "7:30 AM", notes: "10k steps" },
         { name: "Evening walk",    icon: "🚶",  color: "#22c55e", category: "Fitness", time: "5:30 PM", notes: "10k steps" },
-        { name: "Strength training", icon: "💪", color: "#5b3fb8", category: "Fitness", time: "Morning", days: [1,3,5], notes: "Push / pull / legs split" },
+        { name: "Strength training", icon: "💪", color: "#6366f1", category: "Fitness", time: "Morning", days: [1,3,5], notes: "Push / pull / legs split" },
         { name: "Stretch / mobility", icon: "🧘", color: "#14b8a6", category: "Fitness", time: "Evening", notes: "10 min mobility flow" },
         { name: "Core / abs",      icon: "🎯",  color: "#ec4899", category: "Fitness", time: "Morning", days: [2,4,6], notes: "" },
         { name: "10,000 steps",    icon: "🚶",  color: "#22c55e", category: "Fitness", time: "All day", notes: "Daily step goal" },
         { name: "Foam rolling",    icon: "🧴",  color: "#a855f7", category: "Fitness", time: "Evening", notes: "" },
-        { name: "Pull-ups",        icon: "🏋️",  color: "#5b3fb8", category: "Fitness", time: "Morning", notes: "Sets to target" },
+        { name: "Pull-ups",        icon: "🏋️",  color: "#6366f1", category: "Fitness", time: "Morning", notes: "Sets to target" },
       ],
     },
     {
@@ -93,7 +93,7 @@
       items: [
         { name: "Bedtime",         icon: "😴",  color: "#a855f7", category: "Sleep", time: "10:30 PM", notes: "Lights out by 10:30 PM" },
         { name: "7-8 hours sleep", icon: "🌙",  color: "#3b82f6", category: "Sleep", time: "Morning", notes: "Log a good night" },
-        { name: "No screens before bed", icon: "📴", color: "#5b3fb8", category: "Sleep", time: "10:00 PM", notes: "30 min before bed" },
+        { name: "No screens before bed", icon: "📴", color: "#6366f1", category: "Sleep", time: "10:00 PM", notes: "30 min before bed" },
         { name: "Wake up on time", icon: "⏰",  color: "#f59e0b", category: "Sleep", time: "6:00 AM", notes: "No snooze" },
         { name: "Morning sunlight", icon: "☀️", color: "#f59e0b", category: "Sleep", time: "Morning", notes: "10 min outdoors" },
       ],
@@ -120,7 +120,7 @@
         { name: "Omega-3 #2 (Alaskan)", icon: "🐟", color: "#38bdf8", category: "Supplements", time: "6:00 PM · post-workout / meal 3", notes: "2nd softgel" },
         { name: "Multi Collagen (Sports Research)", icon: "💊", color: "#ef4444", category: "Supplements", time: "6:00 PM · post-workout / meal 3", notes: "3 caps" },
         { name: "Zinc Picolinate 15mg (Thorne)", icon: "💊", color: "#a855f7", category: "Supplements", time: "6:00 PM · post-workout / meal 3", notes: "" },
-        { name: "Creatine", icon: "💪", color: "#5b3fb8", category: "Supplements", time: "6:00 PM · post-workout / meal 3", notes: "5g" },
+        { name: "Creatine", icon: "💪", color: "#6366f1", category: "Supplements", time: "6:00 PM · post-workout / meal 3", notes: "5g" },
       ],
     },
     {
@@ -159,7 +159,7 @@
         { name: "Gratitude — 3 things", icon: "❤️", color: "#ec4899", category: "Custom", time: "Evening", notes: "" },
         { name: "Read",            icon: "📖",  color: "#14b8a6", category: "Custom", time: "Evening", notes: "20 min" },
         { name: "Breathwork",      icon: "🌬️",  color: "#38bdf8", category: "Custom", time: "Anytime", notes: "" },
-        { name: "Digital detox hour", icon: "📵", color: "#5b3fb8", category: "Custom", time: "Evening", notes: "" },
+        { name: "Digital detox hour", icon: "📵", color: "#6366f1", category: "Custom", time: "Evening", notes: "" },
       ],
     },
     {
@@ -175,7 +175,7 @@
     {
       title: "🎯 Productivity & lifestyle",
       items: [
-        { name: "Plan the day",    icon: "📝",  color: "#5b3fb8", category: "Custom", time: "Morning", notes: "Top 3 priorities" },
+        { name: "Plan the day",    icon: "📝",  color: "#6366f1", category: "Custom", time: "Morning", notes: "Top 3 priorities" },
         { name: "Deep work block", icon: "🧠",  color: "#3b82f6", category: "Custom", time: "Morning", notes: "90 min focused" },
         { name: "Inbox to zero",   icon: "📧",  color: "#14b8a6", category: "Custom", time: "Afternoon", notes: "" },
         { name: "Tidy space",      icon: "🧹",  color: "#22c55e", category: "Custom", time: "Evening", notes: "" },
@@ -1292,7 +1292,7 @@
 
         const icon = document.createElement("div");
         icon.className = "template-icon";
-        icon.style.background = item.color || "#5b3fb8";
+        icon.style.background = item.color || "#6366f1";
         icon.textContent = item.icon || "🎯";
 
         const info = document.createElement("div");
@@ -2070,7 +2070,7 @@
     if (navigator.vibrate) navigator.vibrate(big ? [30, 40, 30] : 20);
     const layer = $("#confetti");
     if (!layer) return;
-    const colors = ["#5b3fb8", "#14b8a6", "#22c55e", "#3b82f6", "#ec4899", "#f59e0b"];
+    const colors = ["#6366f1", "#14b8a6", "#22c55e", "#3b82f6", "#ec4899", "#f59e0b"];
     const count = big ? 90 : 36;
     for (let i = 0; i < count; i++) {
       const p = document.createElement("div");
@@ -2973,7 +2973,7 @@
       wrap.innerHTML = '<p class="empty-inline">No scheduled habits this week.</p>';
       return;
     }
-    const colorFor = { Fitness: "#f59e0b", Nutrition: "#14b8a6", Sleep: "#a855f7", Supplements: "#3b82f6", Custom: "#5b3fb8" };
+    const colorFor = { Fitness: "#f59e0b", Nutrition: "#14b8a6", Sleep: "#a855f7", Supplements: "#3b82f6", Custom: "#6366f1" };
     for (const c of cats) {
       const t = catTotals[c];
       const p = Math.round((t.done / t.scheduled) * 100);
@@ -2981,7 +2981,7 @@
       row.className = "cat-bar-row";
       row.innerHTML =
         `<div class="cat-bar-head"><span class="cat-name">${c}</span><span class="cat-pct">${t.done}/${t.scheduled} · ${p}%</span></div>` +
-        `<div class="cat-bar"><div class="cat-bar-fill" style="width:${p}%;background:${colorFor[c] || "#5b3fb8"}"></div></div>`;
+        `<div class="cat-bar"><div class="cat-bar-fill" style="width:${p}%;background:${colorFor[c] || "#6366f1"}"></div></div>`;
       wrap.appendChild(row);
     }
   }
@@ -3489,11 +3489,11 @@
     grad.setAttribute("x2", "0"); grad.setAttribute("y2", "1");
     const stop1 = document.createElementNS("http://www.w3.org/2000/svg", "stop");
     stop1.setAttribute("offset", "0%");
-    stop1.setAttribute("stop-color", "#5b3fb8");
+    stop1.setAttribute("stop-color", "#6366f1");
     stop1.setAttribute("stop-opacity", "0.55");
     const stop2 = document.createElementNS("http://www.w3.org/2000/svg", "stop");
     stop2.setAttribute("offset", "100%");
-    stop2.setAttribute("stop-color", "#5b3fb8");
+    stop2.setAttribute("stop-color", "#6366f1");
     stop2.setAttribute("stop-opacity", "0");
     grad.appendChild(stop1); grad.appendChild(stop2); defs.appendChild(grad);
     svg.appendChild(defs);
@@ -3510,7 +3510,7 @@
     const linePath = "M " + points.map((p) => `${p.x} ${p.y}`).join(" L ");
     const line = document.createElementNS("http://www.w3.org/2000/svg", "path");
     line.setAttribute("d", linePath);
-    line.setAttribute("stroke", "#5b3fb8");
+    line.setAttribute("stroke", "#6366f1");
     line.setAttribute("stroke-width", "2.5");
     line.setAttribute("fill", "none");
     line.setAttribute("stroke-linecap", "round");
@@ -3520,7 +3520,7 @@
     for (const p of points) {
       const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
       c.setAttribute("cx", p.x); c.setAttribute("cy", p.y);
-      c.setAttribute("r", "3.5"); c.setAttribute("fill", "#5b3fb8");
+      c.setAttribute("r", "3.5"); c.setAttribute("fill", "#6366f1");
       svg.appendChild(c);
     }
 

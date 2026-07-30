@@ -1,20 +1,20 @@
 /* ================ Theme ================ */
 :root {
-  --bg: #f5f1ea;
+  --bg: #f4f5fb;
   --bg-2: #ffffff;
   --card: #ffffff;
-  --card-soft: #faf7f1;
-  --border: #e6e1d5;
-  --text: #2a2a3a;
-  --text-dim: #7a7a8a;
+  --card-soft: #f1f2f9;
+  --border: #e5e7f2;
+  --text: #1f2233;
+  --text-dim: #6b7192;
 
-  --primary: #5b3fb8;
-  --primary-soft: #ede9fb;
-  --primary-hover: #4a32a0;
-  --primary-tint: rgba(91, 63, 184, 0.10);
+  --primary: #6366f1;
+  --primary-soft: #eef2ff;
+  --primary-hover: #4f46e5;
+  --primary-tint: rgba(99, 102, 241, 0.10);
 
-  --sidebar: #b9a4e8;
-  --sidebar-active: #5b3fb8;
+  --sidebar: #c7d2fe;
+  --sidebar-active: #6366f1;
   --sidebar-text: #2a2a3a;
 
   --success: #22c55e;
@@ -46,13 +46,13 @@
   --text: #ece9f5;
   --text-dim: #b3aecf;
 
-  --primary: #a98cff;
-  --primary-soft: #2d2350;
-  --primary-hover: #c0a8ff;
-  --primary-tint: rgba(169, 140, 255, 0.18);
+  --primary: #818cf8;
+  --primary-soft: #312e81;
+  --primary-hover: #a5b4fc;
+  --primary-tint: rgba(129, 140, 248, 0.20);
 
-  --sidebar: #2a2240;
-  --sidebar-active: #8b6dff;
+  --sidebar: #232046;
+  --sidebar-active: #6366f1;
   --sidebar-text: #ece9f5;
 
   --success: #4ade80;
@@ -161,7 +161,7 @@ a { color: var(--primary); }
   align-items: center;
   justify-content: center;
   padding: 1.5rem;
-  background: linear-gradient(135deg, #b9a4e8 0%, #5b3fb8 100%);
+  background: linear-gradient(135deg, #c7d2fe 0%, #6366f1 100%);
   position: relative;
   z-index: 1000;
 }
@@ -478,7 +478,7 @@ a { color: var(--primary); }
 
 /* ================ Adherence card (Today) ================ */
 .adherence-card {
-  background: linear-gradient(135deg, #6a4cc9 0%, var(--primary) 55%, var(--primary-hover) 100%);
+  background: linear-gradient(135deg, #6366f1 0%, var(--primary) 55%, var(--primary-hover) 100%);
   color: #fff;
   display: flex;
   align-items: center;
@@ -1849,7 +1849,7 @@ body.compact .habit-list { gap: 0.35rem; }
   padding: 0.15rem 0.35rem;
   border-radius: 6px;
 }
-.toast .toast-undo { color: #b9a4e8; }
+.toast .toast-undo { color: #c7d2fe; }
 .hidden { display: none !important; }
 
 /* ================ Responsive ================ */

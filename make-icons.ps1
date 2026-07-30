@@ -10,8 +10,8 @@ function New-Icon([int]$size, [string]$path) {
   $rect = New-Object System.Drawing.Rectangle 0, 0, $size, $size
   $grad = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
     $rect,
-    [System.Drawing.ColorTranslator]::FromHtml('#6a4cc9'),
-    [System.Drawing.ColorTranslator]::FromHtml('#4a32a0'),
+    [System.Drawing.ColorTranslator]::FromHtml('#6366f1'),
+    [System.Drawing.ColorTranslator]::FromHtml('#3730a3'),
     [System.Drawing.Drawing2D.LinearGradientMode]::ForwardDiagonal)
   $radius = [int]($size * 0.22)
   $path2 = New-Object System.Drawing.Drawing2D.GraphicsPath
