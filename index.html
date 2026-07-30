@@ -404,6 +404,7 @@
             <div id="syncStatus" class="sync-status" hidden></div>
             <div class="row-actions" style="margin-top: 1rem">
               <button id="pairQrBtn" class="btn-secondary">📷 Show pairing QR</button>
+              <button id="scanQrBtn" class="btn-secondary">📷 Scan QR to pair</button>
               <button id="pairDeviceBtn" class="btn-secondary">🔗 Copy pairing link</button>
               <button id="syncDeleteCloudBtn" class="btn-secondary btn-danger-outline">Delete cloud data</button>
             </div>
@@ -709,7 +710,24 @@
     </div>
   </div>
 
+  <!-- QR scanner modal -->
+  <div id="scanModal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-content qr-modal-content">
+      <div class="template-modal-header">
+        <h2>Scan pairing QR</h2>
+        <button type="button" id="scanCloseBtn" class="icon-btn" aria-label="Close">✕</button>
+      </div>
+      <p class="card-sub">Point your camera at the pairing QR shown in Momentum on your other device.</p>
+      <div class="scanner-wrap">
+        <video id="scanVideo" playsinline muted></video>
+        <div class="scanner-frame"></div>
+      </div>
+      <p id="scanStatus" class="scan-status">Starting camera…</p>
+    </div>
+  </div>
+
   <script src="qrcode.js"></script>
+  <script src="jsQR.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

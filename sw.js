@@ -1,11 +1,12 @@
 // Simple offline-first service worker.
-const CACHE_NAME = "momentum-v25";
+const CACHE_NAME = "momentum-v26";
 const ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
   "./qrcode.js",
+  "./jsQR.js",
   "./manifest.json",
   "./icons/icon-192.png",
   "./icons/icon-512.png",

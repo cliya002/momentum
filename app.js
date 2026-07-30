@@ -1108,26 +1108,106 @@
   }
   function closeQrModal() { $("#qrModal").classList.add("hidden"); }
 
+  // Import token+gist from a pairing payload (base64 of {t,g}). Returns true if imported.
+  function importPairingPayload(b64, opts = {}) {
+    try {
+      const data = JSON.parse(atob(b64));
+      if (!data || !data.t) return false;
+      if (opts.confirm !== false &&
+          !confirm("Import sync settings and connect this device to your cloud data?")) return false;
+      localStorage.setItem(KEYS.syncToken, data.t);
+      if (data.g) localStorage.setItem(KEYS.syncGistId, data.g);
+      hydrateSettings();
+      showToast("Paired. Pulling your data…", "success");
+      switchView("settings");
+      setTimeout(() => syncPull({ skipConfirm: true }), 400);
+      return true;
+    } catch (e) { return false; }
+  }
+
+  // Extract a #pair= payload from a scanned/typed string (full URL or bare hash).
+  function extractPairPayload(text) {
+    const m = /#pair=([A-Za-z0-9+/=]+)/.exec(text || "");
+    return m ? m[1] : null;
+  }
+
   // On load, detect #pair= and offer to import token+gist.
   function checkPairingLink() {
-    const m = /#pair=([^&]+)/.exec(location.hash);
-    if (!m) return;
-    try {
-      const data = JSON.parse(atob(m[1]));
-      if (data && data.t) {
-        if (confirm("Import sync settings from this pairing link? It will connect this device to your cloud data.")) {
-          localStorage.setItem(KEYS.syncToken, data.t);
-          if (data.g) localStorage.setItem(KEYS.syncGistId, data.g);
-          history.replaceState(null, "", location.pathname);
-          hydrateSettings();
-          showToast("Paired. Pull to load your data.", "success");
-          switchView("settings");
-          setTimeout(() => syncPull({ skipConfirm: true }), 400);
-          return;
-        }
-      }
-    } catch (e) { /* ignore malformed */ }
+    const payload = extractPairPayload(location.hash);
+    if (!payload) return;
+    importPairingPayload(payload);
     history.replaceState(null, "", location.pathname);
+  }
+
+  /* ---- QR scanner ---- */
+  let scanStream = null;
+  let scanRAF = null;
+  async function openScanner() {
+    const modal = $("#scanModal");
+    const video = $("#scanVideo");
+    const status = $("#scanStatus");
+    if (typeof jsQR === "undefined") {
+      showSyncStatus("QR scanner library not loaded.", "warn");
+      return;
+    }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      showSyncStatus("Camera not available in this browser.", "warn");
+      return;
+    }
+    modal.classList.remove("hidden");
+    status.className = "scan-status";
+    status.textContent = "Starting camera…";
+    try {
+      scanStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" }, audio: false,
+      });
+      video.srcObject = scanStream;
+      await video.play();
+      status.textContent = "Point at the pairing QR…";
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      const tick = () => {
+        if (!scanStream) return;
+        if (video.readyState === video.HAVE_ENOUGH_DATA) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          try {
+            const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const code = jsQR(img.data, img.width, img.height, { inversionAttempts: "dontInvert" });
+            if (code && code.data) {
+              const payload = extractPairPayload(code.data);
+              if (payload) {
+                status.className = "scan-status success";
+                status.textContent = "QR found. Pairing…";
+                closeScanner();
+                importPairingPayload(payload, { confirm: false });
+                return;
+              } else {
+                status.textContent = "That QR isn't a Momentum pairing code.";
+              }
+            }
+          } catch (e) { /* keep scanning */ }
+        }
+        scanRAF = requestAnimationFrame(tick);
+      };
+      scanRAF = requestAnimationFrame(tick);
+    } catch (e) {
+      status.className = "scan-status error";
+      status.textContent = /denied|NotAllowed/i.test(String(e.name || e.message))
+        ? "Camera permission denied. Allow camera access and try again."
+        : "Couldn't start the camera: " + (e.message || e.name);
+    }
+  }
+  function closeScanner() {
+    if (scanRAF) { cancelAnimationFrame(scanRAF); scanRAF = null; }
+    if (scanStream) {
+      scanStream.getTracks().forEach((t) => t.stop());
+      scanStream = null;
+    }
+    const v = $("#scanVideo");
+    if (v) v.srcObject = null;
+    $("#scanModal").classList.add("hidden");
   }
 
   async function deleteCloudData() {
@@ -1453,6 +1533,7 @@
       syncDeleteCloudBtn: $("#syncDeleteCloudBtn"),
       pairDeviceBtn: $("#pairDeviceBtn"),
       pairQrBtn: $("#pairQrBtn"),
+      scanQrBtn: $("#scanQrBtn"),
       deviceNameInput: $("#deviceNameInput"),
       autoSyncToggle: $("#autoSyncToggle"),
       addCategoryBtn: $("#addCategoryBtn"),
@@ -4050,6 +4131,9 @@
     els.syncDeleteCloudBtn.addEventListener("click", deleteCloudData);
     els.pairDeviceBtn.addEventListener("click", copyPairingLink);
     els.pairQrBtn.addEventListener("click", showPairingQr);
+    els.scanQrBtn.addEventListener("click", openScanner);
+    $("#scanCloseBtn").addEventListener("click", closeScanner);
+    $("#scanModal").addEventListener("click", (e) => { if (e.target === $("#scanModal")) closeScanner(); });
     $("#qrCloseBtn").addEventListener("click", closeQrModal);
     $("#qrCopyBtn").addEventListener("click", copyPairingLink);
     $("#qrModal").addEventListener("click", (e) => { if (e.target === $("#qrModal")) closeQrModal(); });
