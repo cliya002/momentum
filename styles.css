@@ -178,7 +178,7 @@ a { color: var(--primary); }
   text-align: center;
 }
 .lock-logo { display: flex; justify-content: center; margin-bottom: 0.75rem; }
-.lock-logo svg { filter: drop-shadow(0 4px 8px rgba(91, 63, 184, 0.3)); }
+.lock-logo svg { filter: drop-shadow(0 4px 8px rgba(99, 102, 241, 0.3)); }
 .lock-card h1 {
   margin: 0 0 0.5rem;
   font-size: 1.75rem;
@@ -484,7 +484,7 @@ a { color: var(--primary); }
   align-items: center;
   gap: 1.5rem;
   padding: 1.5rem 1.5rem;
-  box-shadow: 0 10px 30px rgba(91, 63, 184, 0.28);
+  box-shadow: 0 10px 30px rgba(99, 102, 241, 0.28);
 }
 .adherence-card .card-title {
   color: #fff;
