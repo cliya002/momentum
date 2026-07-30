@@ -2109,10 +2109,13 @@
     const showHint = state.habits.length > 0 && localStorage.getItem(KEYS.hintSeen) !== "true";
     els.todayHint.hidden = !showHint;
 
-    // Night habits (bedtime, no-screens) log against the previous day — you
-    // usually tick them off the next morning.
+    // Night habits (bedtime, no-screens) span midnight, so attribute them to
+    // the night they belong to based on the time of day: before noon you're
+    // logging last night (yesterday); from noon on you're logging tonight.
     const yesterday = addDays(today, -1);
-    const nightHabits = state.habits.filter((h) => h.nightPrevDay && isHabitActiveOn(h, yesterday));
+    const nightIsPrev = today.getHours() < 12;
+    const nightDate = nightIsPrev ? yesterday : today;
+    const nightHabits = state.habits.filter((h) => h.nightPrevDay && isHabitActiveOn(h, nightDate));
     const scheduled = state.habits.filter((h) => !h.nightPrevDay && isHabitActiveOn(h, today));
     // Adherence reflects everything scheduled today, regardless of the filter.
     renderTodayAdherence(scheduled, today);
@@ -2156,8 +2159,8 @@
     }
     els.todayEmpty.classList.add("hidden");
 
-    // Last night's night-habits, logged against yesterday.
-    renderLastNightGroup(nightActive, yesterday, els);
+    // Night habits, attributed to the correct night (last night or tonight).
+    renderLastNightGroup(nightActive, nightDate, els, nightIsPrev);
 
     // Bucket habits into day parts
     const buckets = new Map(DAY_PARTS.map((p) => [p.id, []]));
@@ -2323,7 +2326,7 @@
 
   // Renders the "Last night" group for night-prev-day habits, logged against
   // the given date (yesterday). Uses renderTodayItem so all toggles/swipes work.
-  function renderLastNightGroup(list, date, els) {
+  function renderLastNightGroup(list, date, els, isPrev) {
     if (!list || list.length === 0) return;
     const dIdx = date.getDay();
     const byOrderTime = (a, b) => {
@@ -2342,19 +2345,19 @@
     const heading = document.createElement("div");
     heading.className = "time-group-title";
     const left = document.createElement("span");
-    left.textContent = `🌙 Last night · ${date.toLocaleDateString(undefined, { weekday: "long" })}`;
+    left.textContent = `${isPrev ? "🌙 Last night" : "🌙 Tonight"} · ${date.toLocaleDateString(undefined, { weekday: "long" })}`;
     const right = document.createElement("span");
     right.className = "group-right";
     if (pending.length > 0) {
       const markAll = document.createElement("button");
       markAll.className = "mark-all-btn";
       markAll.textContent = "✓ all";
-      markAll.title = "Log all as done for last night";
+      markAll.title = isPrev ? "Log all as done for last night" : "Log all as done for tonight";
       markAll.addEventListener("click", (e) => {
         e.stopPropagation();
         for (const h of pending) setCompletionValue(h.id, date, h.target);
         renderToday();
-        showToast(`Logged ${pending.length} for last night.`, "success");
+        showToast(`Logged ${pending.length} night habit${pending.length === 1 ? "" : "s"}.`, "success");
       });
       right.appendChild(markAll);
     }
