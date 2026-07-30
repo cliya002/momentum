@@ -5023,7 +5023,7 @@
 
   // Expose internals for the automated test harness (harmless in the browser).
   if (typeof self !== "undefined") {
-    self.__momentumTest = { mergeStates, normalizeState, defaultState, currentStreak, startOfWeekMonday, dateKey, addDays };
+    self.__momentumTest = { mergeStates, normalizeState, defaultState, currentStreak, startOfWeekMonday, dateKey, addDays, parseScheduleText, effectiveTime, suggestFit };
   }
 
   // Only boot in a real browser (guarded so the file can be loaded in Node for tests).
