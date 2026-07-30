@@ -93,9 +93,9 @@
     {
       title: "😴 Sleep & recovery",
       items: [
-        { name: "Bedtime",         icon: "😴",  color: "#a855f7", category: "Sleep", time: "10:30 PM", notes: "Lights out by 10:30 PM" },
+        { name: "Bedtime",         icon: "😴",  color: "#a855f7", category: "Sleep", time: "10:30 PM", notes: "Lights out by 10:30 PM", nightPrevDay: true },
         { name: "7-8 hours sleep", icon: "🌙",  color: "#3b82f6", category: "Sleep", time: "Morning", notes: "Log a good night" },
-        { name: "No screens before bed", icon: "📴", color: "#6366f1", category: "Sleep", time: "10:00 PM", notes: "30 min before bed" },
+        { name: "No screens before bed", icon: "📴", color: "#6366f1", category: "Sleep", time: "10:00 PM", notes: "30 min before bed", nightPrevDay: true },
         { name: "Wake up on time", icon: "⏰",  color: "#f59e0b", category: "Sleep", time: "6:00 AM", notes: "No snooze" },
         { name: "Morning sunlight", icon: "☀️", color: "#f59e0b", category: "Sleep", time: "Morning", notes: "10 min outdoors" },
       ],
@@ -278,7 +278,7 @@
         { name: "No vaping",       icon: "💨",  color: "#ef4444", category: "Custom", time: "All day", notes: "" },
         { name: "No nail biting",  icon: "💅",  color: "#ec4899", category: "Custom", time: "All day", notes: "" },
         { name: "No soda",         icon: "🥤",  color: "#f59e0b", category: "Nutrition", time: "All day", notes: "" },
-        { name: "Screen curfew",   icon: "🌙",  color: "#6366f1", category: "Sleep", time: "10:00 PM", notes: "No screens after" },
+        { name: "Screen curfew",   icon: "🌙",  color: "#6366f1", category: "Sleep", time: "10:00 PM", notes: "No screens after", nightPrevDay: true },
       ],
     },
     {
@@ -565,6 +565,7 @@
       })(),
       notes: (h.notes || "").slice(0, 500),
       reminderTime: /^\d{2}:\d{2}$/.test(h.reminderTime) ? h.reminderTime : "",
+      nightPrevDay: !!h.nightPrevDay,
       days: Array.isArray(h.days) && h.days.length ? h.days : [0,1,2,3,4,5,6],
       order: Number.isFinite(Number(h.order)) ? Number(h.order) : idx,
       createdAt: h.createdAt || new Date(now).toISOString(),
@@ -1902,6 +1903,7 @@
       iconPicker: $("#iconPicker"),
       colorPicker: $("#colorPicker"),
       daysPicker: $("#daysPicker"),
+      habitNightPrevDay: $("#habitNightPrevDay"),
       advancedToggle: $("#advancedToggle"),
       dayTimesWrap: $("#dayTimesWrap"),
       dayTimesGrid: $("#dayTimesGrid"),
@@ -2107,7 +2109,11 @@
     const showHint = state.habits.length > 0 && localStorage.getItem(KEYS.hintSeen) !== "true";
     els.todayHint.hidden = !showHint;
 
-    const scheduled = state.habits.filter((h) => isHabitActiveOn(h, today));
+    // Night habits (bedtime, no-screens) log against the previous day — you
+    // usually tick them off the next morning.
+    const yesterday = addDays(today, -1);
+    const nightHabits = state.habits.filter((h) => h.nightPrevDay && isHabitActiveOn(h, yesterday));
+    const scheduled = state.habits.filter((h) => !h.nightPrevDay && isHabitActiveOn(h, today));
     // Adherence reflects everything scheduled today, regardless of the filter.
     renderTodayAdherence(scheduled, today);
 
@@ -2132,13 +2138,16 @@
     const active = todayCategoryFilter === "all"
       ? scheduled
       : scheduled.filter((h) => h.category === todayCategoryFilter);
+    const nightActive = todayCategoryFilter === "all"
+      ? nightHabits
+      : nightHabits.filter((h) => h.category === todayCategoryFilter);
 
     if (state.habits.length === 0) {
       els.todayEmpty.classList.remove("hidden");
       els.todayEmpty.innerHTML = '<p>No habits yet. Head to the Habits tab and tap <b>+ Add habit</b> to get started.</p>';
       return;
     }
-    if (active.length === 0) {
+    if (active.length === 0 && nightActive.length === 0) {
       els.todayEmpty.classList.remove("hidden");
       els.todayEmpty.innerHTML = todayCategoryFilter === "all"
         ? '<p>Nothing scheduled for today. Enjoy the break.</p>'
@@ -2146,6 +2155,9 @@
       return;
     }
     els.todayEmpty.classList.add("hidden");
+
+    // Last night's night-habits, logged against yesterday.
+    renderLastNightGroup(nightActive, yesterday, els);
 
     // Bucket habits into day parts
     const buckets = new Map(DAY_PARTS.map((p) => [p.id, []]));
@@ -2307,6 +2319,59 @@
       `<span class="upnext-label">Up next</span>` +
       (chip ? `<span>🕒 ${escapeHtml(chip)}</span>` : "") +
       `<span class="upnext-name">${escapeHtml(next.icon + " " + next.name)}</span>`;
+  }
+
+  // Renders the "Last night" group for night-prev-day habits, logged against
+  // the given date (yesterday). Uses renderTodayItem so all toggles/swipes work.
+  function renderLastNightGroup(list, date, els) {
+    if (!list || list.length === 0) return;
+    const dIdx = date.getDay();
+    const byOrderTime = (a, b) => {
+      const ta = parseTimeToMinutes(effectiveTime(a, dIdx)) ?? 9999;
+      const tb = parseTimeToMinutes(effectiveTime(b, dIdx)) ?? 9999;
+      if (ta !== tb) return ta - tb;
+      return (a.order ?? 0) - (b.order ?? 0);
+    };
+    const sorted = list.slice().sort(byOrderTime);
+    const pending = sorted.filter((h) => habitStatus(h, date) === "pending");
+    const doneCount = sorted.filter((h) => isCompleted(h, date)).length;
+
+    const wrap = document.createElement("div");
+    wrap.className = "time-group last-night-group";
+
+    const heading = document.createElement("div");
+    heading.className = "time-group-title";
+    const left = document.createElement("span");
+    left.textContent = `🌙 Last night · ${date.toLocaleDateString(undefined, { weekday: "long" })}`;
+    const right = document.createElement("span");
+    right.className = "group-right";
+    if (pending.length > 0) {
+      const markAll = document.createElement("button");
+      markAll.className = "mark-all-btn";
+      markAll.textContent = "✓ all";
+      markAll.title = "Log all as done for last night";
+      markAll.addEventListener("click", (e) => {
+        e.stopPropagation();
+        for (const h of pending) setCompletionValue(h.id, date, h.target);
+        renderToday();
+        showToast(`Logged ${pending.length} for last night.`, "success");
+      });
+      right.appendChild(markAll);
+    }
+    const count = document.createElement("span");
+    count.className = "time-group-count";
+    count.textContent = `${doneCount}/${sorted.length} done`;
+    right.appendChild(count);
+    heading.appendChild(left);
+    heading.appendChild(right);
+    wrap.appendChild(heading);
+
+    const ul = document.createElement("ul");
+    ul.className = "habit-list";
+    for (const habit of sorted) ul.appendChild(renderTodayItem(habit, date));
+    wrap.appendChild(ul);
+
+    els.todayGroups.appendChild(wrap);
   }
 
   function renderTodayAdherence(active, today) {
@@ -3449,6 +3514,7 @@
     els.habitTime.value = habit ? habit.time : "";
     els.habitReminder.value = habit ? (habit.reminderTime || "") : (localStorage.getItem(KEYS.reminderDefault) || "");
     els.habitNotes.value = habit ? (habit.notes || "") : "";
+    els.habitNightPrevDay.checked = habit ? !!habit.nightPrevDay : false;
     els.habitTarget.value = habit && habit.type === "count" ? habit.target : "";
     els.habitUnit.value = habit ? habit.unit : "";
     els.habitIncrement.value = habit && habit.type === "count" ? habit.increment : "";
@@ -3557,6 +3623,7 @@
       time: els.habitTime.value.trim(),
       dayTimes,
       reminderTime: /^\d{2}:\d{2}$/.test(els.habitReminder.value) ? els.habitReminder.value : "",
+      nightPrevDay: !!els.habitNightPrevDay.checked,
       notes: (els.habitNotes.value || "").trim().slice(0, 500),
       days: days.length ? days : [0,1,2,3,4,5,6],
       updatedAt: now,

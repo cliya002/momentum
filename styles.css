@@ -2141,3 +2141,15 @@ body.compact .habit-list { gap: 0.35rem; }
   box-shadow: none;
 }
 .fasting-card.embedded .fasting-head .card-title { font-size: 0.9rem; }
+
+/* "Last night" group — night habits logged against the previous day */
+.last-night-group .time-group-title {
+  color: var(--text);
+}
+.last-night-group {
+  background: var(--card-soft);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.75rem;
+  border: 1px dashed var(--border);
+}
+.night-prev-row { align-items: flex-start; }
