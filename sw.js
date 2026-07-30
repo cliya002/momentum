@@ -1,10 +1,12 @@
 // Simple offline-first service worker.
-const CACHE_NAME = "momentum-v31";
+importScripts("./version.js"); // sets self.APP_VERSION
+const CACHE_NAME = "momentum-v" + (self.APP_VERSION || "0");
 const ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
+  "./version.js",
   "./qrcode.js",
   "./jsQR.js",
   "./manifest.json",

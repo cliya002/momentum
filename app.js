@@ -4306,6 +4306,12 @@
     lastSyncedAt = parseInt(localStorage.getItem(KEYS.lastSynced) || "0", 10);
     lastSyncedHash = localStorage.getItem(KEYS.lastSyncedHash) || null;
     todayCategoryFilter = localStorage.getItem(KEYS.todayFilter) || "all";
+    // Display the app version (single source of truth: version.js)
+    const ver = (self.APP_VERSION ? "v" + self.APP_VERSION : "");
+    const av = document.getElementById("appVersion");
+    if (av) av.textContent = ver;
+    const afv = document.getElementById("appFooterVersion");
+    if (afv) afv.textContent = ver;
     // One-time: clear a stale auto-sync "off" that the old rate-limit bug set,
     // so auto-sync defaults on again for existing installs.
     if (!localStorage.getItem("ht_sync_migrated_v30")) {

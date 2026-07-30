@@ -39,6 +39,19 @@ Note: Data is stored as plain JSON in a **private** Gist. Only requests with you
 2. Repo → **Settings → Pages → Deploy from a branch**, select `main` / `/ (root)`.
 3. Live at `https://<user>.github.io/<repo>/` in a minute. Open in Safari on iPhone to install.
 
+## Versioning (bump on every push)
+
+The app version lives in `version.js` (single source of truth — the page shows it
+in Settings → About, and the service worker builds its cache name from it). Bump it
+on every deploy so the displayed version and the cache always change:
+
+```bash
+node bump.js        # increments the patch: 4.0.1 → 4.0.2
+git add .
+git commit -m "…"
+git push
+```
+
 ## Storage
 
 All app data lives in `localStorage` under `ht_data` as plain JSON. Sync setup:
