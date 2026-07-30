@@ -487,28 +487,7 @@
             <div id="deviceList" class="device-list"></div>
           </div>
 
-          <div class="card">
-            <div class="card-title">🩺 Apple Health — steps</div>
-            <p class="card-sub">iOS PWAs can't read Health directly, so use a <b>Shortcut</b> that reads today's steps and hands them to Momentum. It auto-updates any habit that tracks steps.</p>
-            <div id="healthStepsToday" class="perm-status"></div>
-            <div class="setup-guide">
-              <b>Set up the Shortcut (one time):</b>
-              <ol>
-                <li>Open the <b>Shortcuts</b> app → <b>+</b> → add action <b>“Find Health Samples”</b>: Sample type <b>Steps</b>, filter <b>Start Date is Today</b>.</li>
-                <li>Add <b>“Calculate Statistics”</b> → <b>Sum</b> of the health samples.</li>
-                <li>Add <b>“Open URLs”</b> and set the URL to the address below with the Sum result on the end.</li>
-                <li>(Optional) In the Shortcuts <b>Automation</b> tab, run it daily at, say, 10:30 PM so it imports automatically.</li>
-              </ol>
-            </div>
-            <div class="field">
-              <label>URL to open (add the step count on the end)</label>
-              <code id="healthUrl" class="health-url"></code>
-            </div>
-            <div class="row-actions">
-              <button id="healthCopyUrlBtn" class="btn-secondary">Copy base URL</button>
-            </div>
-            <p class="hint" style="margin-top:0.5rem">Example: opening <code>…?steps=8500</code> imports 8,500 steps for today.</p>
-          </div>
+
 
           <div class="card">
             <div class="card-title">🏷️ Categories</div>

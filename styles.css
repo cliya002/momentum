@@ -1471,17 +1471,6 @@ body.compact .habit-list { gap: 0.35rem; }
 .conflict-ok { color: var(--success); font-size: 0.85rem; padding: 0.5rem 0; }
 
 /* Category manager */
-.health-url {
-  display: block;
-  background: var(--card-soft);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 0.6rem 0.75rem;
-  font-size: 0.8rem;
-  word-break: break-all;
-  color: var(--primary);
-  margin-top: 0.35rem;
-}
 .device-list { display: flex; flex-direction: column; gap: 0.5rem; }
 .device-row {
   display: flex; align-items: center; gap: 0.6rem;
