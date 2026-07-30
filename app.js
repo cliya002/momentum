@@ -469,12 +469,20 @@
     saveTimer = null;
     try {
       localStorage.setItem(KEYS.data, JSON.stringify(state));
+      // A save that happens *during* a sync (e.g. the merge step) must not
+      // schedule another sync, or we get an infinite push loop.
+      if (syncInFlight) return;
       dirtyForSync = true;
       if (isAutoSyncEnabled()) queueAutoSyncPush();
     } catch (e) {
       console.error("save failed", e);
       showToast("Save failed", "error");
     }
+  }
+  // Write to localStorage only — no dirty flag, no auto-sync trigger.
+  // Used by sync merge steps so pulling/merging never re-triggers a push.
+  function persistRaw() {
+    try { localStorage.setItem(KEYS.data, JSON.stringify(state)); } catch (e) {}
   }
   function saveNow() {
     if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
@@ -904,7 +912,7 @@
               const remoteState = readRemotePayload(file.content);
               if (remoteState) {
                 state = mergeStates(state, remoteState);
-                saveNow();
+                persistRaw();
               }
             }
           }
@@ -973,8 +981,16 @@
       showSyncStatus(`✓ Pushed ${kb} KB · ${new Date().toLocaleTimeString()}`, "success");
     } catch (e) {
       updateSyncIndicator("error");
-      const authErr = /401|403|bad credentials|unauthorized|expired|invalid/i.test(String(e.message));
-      if (authErr) {
+      const msg = String(e.message || "");
+      const rateLimited = /rate limit|secondary rate|abuse detection/i.test(msg);
+      const authErr = !rateLimited && /bad credentials|unauthorized|401|requires authentication|expired|invalid/i.test(msg);
+      if (rateLimited) {
+        // Pause auto-sync so we stop hammering the API; user can resume later.
+        stopAutoSync();
+        localStorage.setItem(KEYS.syncEnabled, "false");
+        const toggle = $("#autoSyncToggle"); if (toggle) toggle.checked = false;
+        showSyncStatus("GitHub rate limit reached. Auto-sync paused — wait ~an hour, then tap Push. Your data is safe on this device.", "error");
+      } else if (authErr) {
         showSyncStatus("Token rejected. Generate a new one at github.com/settings/tokens.", "error");
         stopAutoSync();
         localStorage.removeItem(KEYS.syncEnabled);
@@ -1013,7 +1029,7 @@
       if (!remoteState) throw new Error("Couldn't read remote state");
 
       state = mergeStates(state, remoteState);
-      saveNow();
+      persistRaw();
 
       lastSyncedAt = Date.now();
       localStorage.setItem(KEYS.lastSynced, String(lastSyncedAt));
@@ -1024,9 +1040,19 @@
       switchView(currentView);
     } catch (e) {
       updateSyncIndicator("error");
-      const authErr = /401|403|bad credentials|unauthorized/i.test(String(e.message));
-      if (authErr) showSyncStatus("Token rejected. Check the token in Settings.", "error");
-      else showSyncStatus("Pull error: " + e.message, "error");
+      const msg = String(e.message || "");
+      const rateLimited = /rate limit|secondary rate|abuse detection/i.test(msg);
+      const authErr = !rateLimited && /bad credentials|unauthorized|401|requires authentication/i.test(msg);
+      if (rateLimited) {
+        stopAutoSync();
+        localStorage.setItem(KEYS.syncEnabled, "false");
+        const toggle = $("#autoSyncToggle"); if (toggle) toggle.checked = false;
+        showSyncStatus("GitHub rate limit reached. Auto-sync paused — wait ~an hour, then tap Pull. Your data is safe on this device.", "error");
+      } else if (authErr) {
+        showSyncStatus("Token rejected. Check the token in Settings.", "error");
+      } else {
+        showSyncStatus("Pull error: " + e.message, "error");
+      }
     } finally {
       syncInFlight = false;
     }
