@@ -122,6 +122,63 @@
             </div>
           </div>
 
+          <div class="card fasting-card" id="fastingCard">
+            <div class="fasting-head">
+              <div class="card-title">⏱️ Fasting</div>
+              <button id="fastingSchedBtn" class="btn-link" type="button">Daily schedule ›</button>
+            </div>
+
+            <!-- Active fast: ring + countdown -->
+            <div id="fastingActive" class="fasting-active hidden">
+              <div class="fasting-ring-wrap">
+                <svg class="fasting-ring" viewBox="0 0 120 120" aria-hidden="true">
+                  <circle class="fring-track" cx="60" cy="60" r="52" />
+                  <circle class="fring-seg" id="fastingRingSeg" cx="60" cy="60" r="52" />
+                </svg>
+                <div class="fasting-ring-center">
+                  <span id="fastingElapsed" class="fasting-elapsed">0:00</span>
+                  <span id="fastingRingLabel" class="fasting-ring-label">elapsed</span>
+                </div>
+              </div>
+              <div class="fasting-info">
+                <div id="fastingStatus" class="fasting-status">Fasting</div>
+                <div id="fastingRemaining" class="fasting-remaining"></div>
+                <div id="fastingWindow" class="fasting-window meta-muted"></div>
+                <button id="fastingStopBtn" class="btn-secondary">End fast</button>
+              </div>
+            </div>
+
+            <!-- Idle: pick a target and start -->
+            <div id="fastingIdle" class="fasting-idle">
+              <p class="fasting-idle-sub" id="fastingIdleSub">Start a fast and track the time left to your goal.</p>
+              <div class="fasting-presets" id="fastingPresets" role="group" aria-label="Fasting goal">
+                <button type="button" data-hrs="13" class="preset-chip">13:11</button>
+                <button type="button" data-hrs="16" class="preset-chip is-sel">16:8</button>
+                <button type="button" data-hrs="18" class="preset-chip">18:6</button>
+                <button type="button" data-hrs="20" class="preset-chip">20:4</button>
+                <button type="button" data-hrs="24" class="preset-chip">24h</button>
+              </div>
+              <button id="fastingStartBtn" class="btn-primary">Start fasting</button>
+            </div>
+
+            <!-- Daily schedule (collapsible) -->
+            <div id="fastingSchedule" class="fasting-schedule hidden">
+              <label class="toggle-row">
+                <span><b>Daily reminders</b><br><span class="hint">Get notified when to start fasting and when you can eat.</span></span>
+                <input type="checkbox" id="fastingSchedToggle" />
+              </label>
+              <div class="fasting-sched-times">
+                <label>Start fasting at
+                  <input type="time" id="fastingStartTime" value="20:00" />
+                </label>
+                <label>Eating window opens
+                  <input type="time" id="fastingEatTime" value="12:00" />
+                </label>
+              </div>
+              <p class="hint" id="fastingSchedHint"></p>
+            </div>
+          </div>
+
           <div id="todayHint" class="today-hint" hidden>
             <span>💡 Tap <b>+</b> for done, <b>−</b> for not done, or swipe a row. Tap a habit's text to see more.</span>
             <button id="todayHintDismiss" class="hint-dismiss" aria-label="Dismiss">✕</button>

@@ -403,6 +403,16 @@
       categoriesUpdatedAt: 0,
       workSchedule: { days: {}, notes: "", updatedAt: 0 },
       devices: {},
+      fasting: {
+        active: false,
+        startTs: 0,
+        targetHours: 16,
+        scheduleEnabled: false,
+        startTime: "20:00",  // eating window closes → begin fast
+        eatTime: "12:00",    // eating window opens → break fast
+        history: [],         // [{ start, end, targetHours, goalMet }]
+        updatedAt: 0,
+      },
       deletions: { habits: {} },
     };
   }
@@ -635,6 +645,28 @@
         }
       }
     }
+    // Fasting
+    st.fasting = { active: false, startTs: 0, targetHours: 16, scheduleEnabled: false, startTime: "20:00", eatTime: "12:00", history: [], updatedAt: 0 };
+    if (s.fasting && typeof s.fasting === "object") {
+      const f = s.fasting;
+      st.fasting.active = !!f.active;
+      st.fasting.startTs = Number(f.startTs) || 0;
+      const th = Number(f.targetHours);
+      st.fasting.targetHours = Number.isFinite(th) && th > 0 && th <= 72 ? th : 16;
+      st.fasting.scheduleEnabled = !!f.scheduleEnabled;
+      st.fasting.startTime = /^\d{2}:\d{2}$/.test(f.startTime) ? f.startTime : "20:00";
+      st.fasting.eatTime = /^\d{2}:\d{2}$/.test(f.eatTime) ? f.eatTime : "12:00";
+      st.fasting.updatedAt = Number(f.updatedAt) || 0;
+      if (!st.fasting.startTs) st.fasting.active = false;
+      if (Array.isArray(f.history)) {
+        for (const h of f.history.slice(-200)) {
+          const start = Number(h && h.start), end = Number(h && h.end);
+          if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+            st.fasting.history.push({ start, end, targetHours: Number(h.targetHours) || 0, goalMet: !!h.goalMet });
+          }
+        }
+      }
+    }
     // Custom metric definitions
     st.customMetrics = [];
     if (Array.isArray(s.customMetrics)) {
@@ -837,6 +869,27 @@
           merged.devices[id] = d;
         }
       }
+    }
+
+    // Fasting: config from newer updatedAt; history unioned by start timestamp
+    const lf = local.fasting, rf = remote.fasting;
+    if (lf || rf) {
+      const base = (rf && (Number(rf.updatedAt) || 0) > (Number((lf && lf.updatedAt)) || 0)) ? rf : (lf || rf);
+      merged.fasting = {
+        active: !!base.active,
+        startTs: Number(base.startTs) || 0,
+        targetHours: Number(base.targetHours) || 16,
+        scheduleEnabled: !!base.scheduleEnabled,
+        startTime: base.startTime || "20:00",
+        eatTime: base.eatTime || "12:00",
+        updatedAt: Number(base.updatedAt) || 0,
+        history: [],
+      };
+      const seen = new Map();
+      for (const h of [...((lf && lf.history) || []), ...((rf && rf.history) || [])]) {
+        if (h && Number.isFinite(Number(h.start))) seen.set(Number(h.start), h);
+      }
+      merged.fasting.history = [...seen.values()].sort((a, b) => a.start - b.start).slice(-200);
     }
 
     // Custom metrics: union by id
@@ -1800,6 +1853,25 @@
       adherenceText: $("#adherenceText"),
       adherenceUpNext: $("#adherenceUpNext"),
       todayGroups: $("#todayGroups"),
+      fastingCard: $("#fastingCard"),
+      fastingSchedBtn: $("#fastingSchedBtn"),
+      fastingActive: $("#fastingActive"),
+      fastingIdle: $("#fastingIdle"),
+      fastingIdleSub: $("#fastingIdleSub"),
+      fastingSchedule: $("#fastingSchedule"),
+      fastingRingSeg: $("#fastingRingSeg"),
+      fastingElapsed: $("#fastingElapsed"),
+      fastingRingLabel: $("#fastingRingLabel"),
+      fastingStatus: $("#fastingStatus"),
+      fastingRemaining: $("#fastingRemaining"),
+      fastingWindow: $("#fastingWindow"),
+      fastingStopBtn: $("#fastingStopBtn"),
+      fastingPresets: $("#fastingPresets"),
+      fastingStartBtn: $("#fastingStartBtn"),
+      fastingSchedToggle: $("#fastingSchedToggle"),
+      fastingStartTime: $("#fastingStartTime"),
+      fastingEatTime: $("#fastingEatTime"),
+      fastingSchedHint: $("#fastingSchedHint"),
       todayEmpty: $("#todayEmpty"),
       todayHint: $("#todayHint"),
       todayHintDismiss: $("#todayHintDismiss"),
@@ -2040,6 +2112,7 @@
     }
     els.todayGreetingSub.textContent = `${dateStr} · ${leftMsg}`;
 
+    renderFasting();
     renderJournal(today);
 
     const active = todayCategoryFilter === "all"
@@ -2653,6 +2726,160 @@
     }
   }
 
+  /* ---- Fasting ---- */
+  let selectedFastGoal = 16;
+  let fastingTickTimer = null;
+  let fastingGoalTimer = null;
+  const FRING_CIRC = 2 * Math.PI * 52;
+
+  function fastingState() {
+    if (!state.fasting) state.fasting = defaultState().fasting;
+    return state.fasting;
+  }
+  function fmtDur(ms) {
+    if (ms < 0) ms = 0;
+    const totalMin = Math.floor(ms / 60000);
+    const h = Math.floor(totalMin / 60);
+    const m = totalMin % 60;
+    return h > 0 ? `${h}h ${String(m).padStart(2, "0")}m` : `${m}m`;
+  }
+  function fmtClock(ms) {
+    if (ms < 0) ms = 0;
+    const s = Math.floor(ms / 1000);
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+  }
+  function fmtTimeOfDay(ts) {
+    return new Date(ts).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  }
+
+  function startFast(hours) {
+    const f = fastingState();
+    f.active = true;
+    f.startTs = Date.now();
+    f.targetHours = hours;
+    f.updatedAt = Date.now();
+    selectedFastGoal = hours;
+    save();
+    armFastingGoalTimer();
+    startFastingTick();
+    renderFasting();
+    if (navigator.vibrate) { try { navigator.vibrate(30); } catch (e) {} }
+    showToast(`Fast started · ${hours}h goal (until ${fmtTimeOfDay(f.startTs + hours * 3600000)})`);
+  }
+
+  function endFast() {
+    const f = fastingState();
+    if (!f.active || !f.startTs) return;
+    const start = f.startTs;
+    const end = Date.now();
+    const durMs = end - start;
+    f.history.push({ start, end, targetHours: f.targetHours, goalMet: durMs >= f.targetHours * 3600000 });
+    f.history = f.history.slice(-200);
+    f.active = false;
+    f.startTs = 0;
+    f.updatedAt = Date.now();
+    save();
+    if (fastingGoalTimer) { clearTimeout(fastingGoalTimer); fastingGoalTimer = null; }
+    stopFastingTick();
+    els && els.fastingCard && els.fastingCard.classList.remove("goal-reached");
+    renderFasting();
+    showToast(`Fast ended · ${fmtDur(durMs)} logged`);
+  }
+
+  function armFastingGoalTimer() {
+    if (fastingGoalTimer) { clearTimeout(fastingGoalTimer); fastingGoalTimer = null; }
+    const f = fastingState();
+    if (!f.active || !f.startTs) return;
+    const delay = f.startTs + f.targetHours * 3600000 - Date.now();
+    if (delay > 0 && delay <= 24 * 60 * 60 * 1000) {
+      fastingGoalTimer = setTimeout(() => {
+        if (soundEnabled()) { try { playChime(); } catch (e) {} }
+        if (navigator.vibrate) { try { navigator.vibrate([60, 40, 60]); } catch (e) {} }
+        notify("🎉 Fast complete", { body: `You hit your ${f.targetHours}h goal. You can eat now.`, tag: "ht-fast-goal" });
+        renderFasting();
+      }, delay);
+    }
+  }
+
+  function startFastingTick() {
+    stopFastingTick();
+    if (!fastingState().active) return;
+    fastingTickTimer = setInterval(updateFastingProgress, 1000);
+  }
+  function stopFastingTick() {
+    if (fastingTickTimer) { clearInterval(fastingTickTimer); fastingTickTimer = null; }
+  }
+
+  function updateFastingProgress() {
+    const e = getEls();
+    const f = fastingState();
+    if (!f.active || !f.startTs || !e.fastingRingSeg) return;
+    const elapsed = Date.now() - f.startTs;
+    const goalMs = f.targetHours * 3600000;
+    const pct = Math.max(0, Math.min(1, elapsed / goalMs));
+    e.fastingRingSeg.style.strokeDasharray = FRING_CIRC.toFixed(1);
+    e.fastingRingSeg.style.strokeDashoffset = (FRING_CIRC * (1 - pct)).toFixed(1);
+    e.fastingElapsed.textContent = fmtClock(elapsed);
+    const reached = elapsed >= goalMs;
+    e.fastingCard.classList.toggle("goal-reached", reached);
+    if (reached) {
+      e.fastingRingLabel.textContent = "goal met 🎉";
+      e.fastingStatus.textContent = "Goal reached — you can eat";
+      e.fastingRemaining.textContent = `${fmtDur(elapsed - goalMs)} past your ${f.targetHours}h goal`;
+    } else {
+      e.fastingRingLabel.textContent = "elapsed";
+      e.fastingStatus.textContent = `Fasting · ${f.targetHours}h goal`;
+      e.fastingRemaining.textContent = `${fmtDur(goalMs - elapsed)} left`;
+    }
+    e.fastingWindow.textContent = `Started ${fmtTimeOfDay(f.startTs)} · goal ${fmtTimeOfDay(f.startTs + goalMs)}`;
+  }
+
+  function renderFastingSchedHint() {
+    const e = getEls();
+    if (!e.fastingSchedHint) return;
+    const f = fastingState();
+    if (!f.scheduleEnabled) {
+      e.fastingSchedHint.textContent = "Turn on to get a daily nudge to start fasting and to eat.";
+      return;
+    }
+    const [sh, sm] = f.startTime.split(":").map(Number);
+    const [eh, em] = f.eatTime.split(":").map(Number);
+    let fastMin = (eh * 60 + em) - (sh * 60 + sm);
+    if (fastMin <= 0) fastMin += 24 * 60;
+    const h = Math.floor(fastMin / 60), m = fastMin % 60;
+    e.fastingSchedHint.textContent = `Fasting window ≈ ${h}h${m ? " " + m + "m" : ""}. Reminders at ${f.startTime} (start) and ${f.eatTime} (eat).`;
+  }
+
+  function renderFasting() {
+    const e = getEls();
+    if (!e.fastingCard) return;
+    const f = fastingState();
+    e.fastingSchedToggle.checked = !!f.scheduleEnabled;
+    e.fastingStartTime.value = f.startTime || "20:00";
+    e.fastingEatTime.value = f.eatTime || "12:00";
+    renderFastingSchedHint();
+
+    if (f.active && f.startTs) {
+      e.fastingActive.classList.remove("hidden");
+      e.fastingIdle.classList.add("hidden");
+      updateFastingProgress();
+    } else {
+      e.fastingActive.classList.add("hidden");
+      e.fastingIdle.classList.remove("hidden");
+      e.fastingCard.classList.remove("goal-reached");
+      for (const btn of e.fastingPresets.querySelectorAll(".preset-chip")) {
+        btn.classList.toggle("is-sel", Number(btn.dataset.hrs) === selectedFastGoal);
+      }
+      const last = f.history[f.history.length - 1];
+      e.fastingIdleSub.textContent = last
+        ? `Last fast: ${fmtDur(last.end - last.start)}${last.goalMet ? " ✓ goal met" : ""}. Start another?`
+        : "Start a fast and track the time left to your goal.";
+    }
+  }
+
   /* ---- Reminders ---- */
   let reminderTimers = [];
   function clearReminderTimers() {
@@ -2683,8 +2910,8 @@
 
   function scheduleReminders() {
     clearReminderTimers();
-    if (!remindersEnabled()) return;
     if (!("Notification" in window) || Notification.permission !== "granted") return;
+    if (!remindersEnabled()) { scheduleFastingReminders(); updateBadge(); return; }
     const now = new Date();
 
     // ---- Group per-habit reminders by time slot ----
@@ -2723,7 +2950,33 @@
         reminderTimers.push(setTimeout(fireEveningNudge, delay));
       }
     }
+    scheduleFastingReminders();
     updateBadge();
+  }
+
+  function scheduleFastingReminders() {
+    const f = state.fasting;
+    if (!f || !f.scheduleEnabled) return;
+    if (/^\d{2}:\d{2}$/.test(f.startTime)) {
+      const [hh, mm] = f.startTime.split(":").map(Number);
+      const delay = msUntilToday(hh, mm);
+      if (delay > 0 && delay < 24 * 60 * 60 * 1000) reminderTimers.push(setTimeout(fireFastStartReminder, delay));
+    }
+    if (/^\d{2}:\d{2}$/.test(f.eatTime)) {
+      const [hh, mm] = f.eatTime.split(":").map(Number);
+      const delay = msUntilToday(hh, mm);
+      if (delay > 0 && delay < 24 * 60 * 60 * 1000) reminderTimers.push(setTimeout(fireFastEatReminder, delay));
+    }
+  }
+
+  function fireFastStartReminder() {
+    const f = state.fasting;
+    if (soundEnabled()) { try { playChime(); } catch (e) {} }
+    notify("🍽️ Time to start fasting", { body: `Eating window closed. Plan to break your fast around ${f.eatTime}.`, tag: "ht-fast-start" });
+  }
+  function fireFastEatReminder() {
+    if (soundEnabled()) { try { playChime(); } catch (e) {} }
+    notify("🥗 Eating window open", { body: "You can break your fast now.", tag: "ht-fast-eat" });
   }
 
   function fireGroupReminder(ids) {
@@ -4846,6 +5099,45 @@
       renderToday();
     });
 
+    // Fasting
+    if (els.fastingPresets) {
+      els.fastingPresets.addEventListener("click", (e) => {
+        const btn = e.target.closest(".preset-chip");
+        if (!btn) return;
+        selectedFastGoal = Number(btn.dataset.hrs) || 16;
+        renderFasting();
+      });
+      els.fastingStartBtn.addEventListener("click", () => startFast(selectedFastGoal));
+      els.fastingStopBtn.addEventListener("click", () => endFast());
+      els.fastingSchedBtn.addEventListener("click", () => {
+        els.fastingSchedule.classList.toggle("hidden");
+      });
+      els.fastingSchedToggle.addEventListener("change", () => {
+        const f = fastingState();
+        f.scheduleEnabled = els.fastingSchedToggle.checked;
+        f.updatedAt = Date.now();
+        save();
+        if (f.scheduleEnabled && "Notification" in window && Notification.permission === "default") {
+          Notification.requestPermission().then(() => scheduleReminders());
+        } else {
+          scheduleReminders();
+        }
+        renderFastingSchedHint();
+      });
+      els.fastingStartTime.addEventListener("change", () => {
+        const f = fastingState();
+        f.startTime = /^\d{2}:\d{2}$/.test(els.fastingStartTime.value) ? els.fastingStartTime.value : "20:00";
+        f.updatedAt = Date.now();
+        save(); scheduleReminders(); renderFastingSchedHint();
+      });
+      els.fastingEatTime.addEventListener("change", () => {
+        const f = fastingState();
+        f.eatTime = /^\d{2}:\d{2}$/.test(els.fastingEatTime.value) ? els.fastingEatTime.value : "12:00";
+        f.updatedAt = Date.now();
+        save(); scheduleReminders(); renderFastingSchedHint();
+      });
+    }
+
     // Habits
     els.addBtn.addEventListener("click", () => openHabitModal(null));
     els.deleteAllBtn.addEventListener("click", deleteAllHabits);
@@ -5043,7 +5335,22 @@
     checkPairingLink();
     updateSyncIndicator(navigator.onLine ? "idle" : "offline");
     if (isAutoSyncEnabled()) startAutoSync();
-    if (remindersEnabled()) scheduleReminders();
+    scheduleReminders();
+
+    // Fasting: resume any in-progress fast and re-arm its goal notification.
+    selectedFastGoal = (state.fasting && state.fasting.targetHours) || 16;
+    if (state.fasting && state.fasting.active && state.fasting.startTs) {
+      armFastingGoalTimer();
+      startFastingTick();
+    }
+    // Keep the countdown + goal timer honest after the tab was backgrounded.
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState !== "visible") return;
+      if (state.fasting && state.fasting.active) {
+        updateFastingProgress();
+        armFastingGoalTimer();
+      }
+    });
     document.addEventListener("pointerdown", unlockAudioOnce, { once: true });
     document.addEventListener("keydown", unlockAudioOnce, { once: true });
     updateBadge();

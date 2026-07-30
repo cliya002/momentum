@@ -2050,3 +2050,65 @@ body.compact .habit-list { gap: 0.35rem; }
   .content { padding-bottom: calc(var(--safe-bottom) + 5.5rem); }
 }
 @media print { .bottom-nav { display: none !important; } }
+
+/* ===== Fasting card ===== */
+.fasting-card { display: flex; flex-direction: column; gap: 0.9rem; }
+.fasting-head { display: flex; align-items: center; justify-content: space-between; }
+.btn-link {
+  background: none; border: none; color: var(--primary);
+  font-size: 0.82rem; font-weight: 600; cursor: pointer; padding: 0.2rem 0;
+}
+.btn-link:hover { text-decoration: underline; }
+
+.fasting-active { display: flex; align-items: center; gap: 1.1rem; }
+.fasting-ring-wrap { position: relative; width: 120px; height: 120px; flex-shrink: 0; }
+.fasting-ring { width: 120px; height: 120px; transform: rotate(-90deg); }
+.fring-track { fill: none; stroke: var(--card-soft); stroke-width: 9; }
+.fring-seg {
+  fill: none; stroke: var(--primary); stroke-width: 9; stroke-linecap: round;
+  stroke-dasharray: 326.7; stroke-dashoffset: 326.7;
+  transition: stroke-dashoffset 0.5s ease;
+}
+.fasting-card.goal-reached .fring-seg { stroke: var(--success); }
+.fasting-ring-center {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; text-align: center;
+}
+.fasting-elapsed { font-size: 1.35rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.fasting-ring-label { font-size: 0.72rem; color: var(--text-dim); }
+.fasting-info { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
+.fasting-status { font-weight: 600; }
+.fasting-remaining { font-size: 0.95rem; color: var(--primary); font-weight: 600; }
+.fasting-card.goal-reached .fasting-remaining { color: var(--success); }
+.fasting-window { font-size: 0.78rem; }
+.fasting-info .btn-secondary { align-self: flex-start; margin-top: 0.3rem; }
+
+.fasting-idle { display: flex; flex-direction: column; gap: 0.7rem; }
+.fasting-idle-sub { font-size: 0.9rem; color: var(--text-dim); margin: 0; }
+.fasting-presets { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.preset-chip {
+  border: 1px solid var(--border); background: var(--card-soft);
+  border-radius: 999px; padding: 0.4rem 0.85rem; font-size: 0.85rem;
+  font-weight: 600; cursor: pointer; color: var(--text);
+}
+.preset-chip.is-sel { background: var(--primary); border-color: var(--primary); color: #fff; }
+.fasting-idle .btn-primary { align-self: flex-start; }
+
+.fasting-schedule {
+  border-top: 1px solid var(--border); padding-top: 0.8rem;
+  display: flex; flex-direction: column; gap: 0.7rem;
+}
+.fasting-sched-times { display: flex; flex-wrap: wrap; gap: 0.8rem; }
+.fasting-sched-times label {
+  display: flex; flex-direction: column; gap: 0.25rem;
+  font-size: 0.82rem; font-weight: 600; flex: 1; min-width: 130px;
+}
+.fasting-sched-times input[type="time"] {
+  padding: 0.5rem; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--card-soft); color: var(--text); font-size: 0.9rem;
+}
+@media (max-width: 480px) {
+  .fasting-active { gap: 0.8rem; }
+  .fasting-ring-wrap, .fasting-ring { width: 96px; height: 96px; }
+  .fasting-elapsed { font-size: 1.1rem; }
+}
