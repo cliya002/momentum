@@ -2085,6 +2085,17 @@
     els.todayGroups.innerHTML = "";
     const today = new Date();
 
+    // Reset fasting-card placement: default it back to the top anchor. If an
+    // "Intermittent fasting" habit is rendered below, the card is moved into
+    // that row instead (see renderTodayItem).
+    fastingCardPlacedThisRender = false;
+    if (els.fastingCard) {
+      els.fastingCard.classList.remove("embedded");
+      if (els.todayHint && els.todayHint.parentNode) {
+        els.todayHint.parentNode.insertBefore(els.fastingCard, els.todayHint);
+      }
+    }
+
     // Greeting
     const hour = today.getHours();
     els.todayGreeting.textContent = greetingForHour(hour) + " 👋";
@@ -2492,6 +2503,18 @@
     controls.appendChild(plus);
 
     li.appendChild(controls);
+
+    // Embed the fasting tracker inline within the intermittent-fasting habit.
+    if (isFastingHabit(habit) && !fastingCardPlacedThisRender) {
+      const e = getEls();
+      if (e.fastingCard) {
+        fastingCardPlacedThisRender = true;
+        e.fastingCard.classList.add("embedded");
+        li.classList.add("has-fasting");
+        li.appendChild(e.fastingCard);
+        renderFasting();
+      }
+    }
     return li;
   }
 
@@ -2730,7 +2753,11 @@
   let selectedFastGoal = 16;
   let fastingTickTimer = null;
   let fastingGoalTimer = null;
+  let fastingCardPlacedThisRender = false;
   const FRING_CIRC = 2 * Math.PI * 52;
+
+  // A habit named like "Intermittent fasting" hosts the fasting tracker inline.
+  function isFastingHabit(h) { return !!h && /fasting/i.test(h.name || ""); }
 
   function fastingState() {
     if (!state.fasting) state.fasting = defaultState().fasting;
@@ -5192,6 +5219,10 @@
 
     // Fasting
     if (els.fastingPresets) {
+      // When embedded in a habit row, keep card interactions from triggering
+      // the row's tap/swipe gestures.
+      ["click", "pointerdown", "touchstart"].forEach((ev) =>
+        els.fastingCard.addEventListener(ev, (e) => e.stopPropagation()));
       els.fastingPresets.addEventListener("click", (e) => {
         const btn = e.target.closest(".preset-chip");
         if (!btn) return;
