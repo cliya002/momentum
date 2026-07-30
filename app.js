@@ -18,6 +18,7 @@
     remindersEnabled: "ht_reminders_enabled",
     compact: "ht_compact",
     showDetails: "ht_show_details",
+    fastingCollapsed: "ht_fasting_collapsed",
     hintSeen: "ht_hint_seen",
     units: "ht_units",
     deviceName: "ht_device_name",
@@ -1854,6 +1855,8 @@
       adherenceUpNext: $("#adherenceUpNext"),
       todayGroups: $("#todayGroups"),
       fastingCard: $("#fastingCard"),
+      fastingToggle: $("#fastingToggle"),
+      fastingHeadSummary: $("#fastingHeadSummary"),
       fastingSchedBtn: $("#fastingSchedBtn"),
       fastingActive: $("#fastingActive"),
       fastingIdle: $("#fastingIdle"),
@@ -2811,7 +2814,8 @@
     save();
     if (fastingGoalTimer) { clearTimeout(fastingGoalTimer); fastingGoalTimer = null; }
     stopFastingTick();
-    els && els.fastingCard && els.fastingCard.classList.remove("goal-reached");
+    const e = getEls();
+    if (e.fastingCard) e.fastingCard.classList.remove("goal-reached");
     renderFasting();
     showToast(`Fast ended · ${fmtDur(durMs)} logged`);
   }
@@ -2921,10 +2925,12 @@
         e.fastingRingLabel.textContent = "goal met 🎉";
         e.fastingStatus.textContent = "Goal reached — you can eat";
         e.fastingRemaining.textContent = `${fmtDur(elapsed - goalMs)} past your ${f.targetHours}h goal`;
+        e.fastingHeadSummary.textContent = "Goal met 🎉";
       } else {
         e.fastingRingLabel.textContent = "elapsed";
         e.fastingStatus.textContent = `Fasting · ${f.targetHours}h goal`;
         e.fastingRemaining.textContent = `${fmtDur(goalMs - elapsed)} left`;
+        e.fastingHeadSummary.textContent = `${fmtDur(goalMs - elapsed)} left`;
       }
       e.fastingWindow.textContent = `Started ${fmtTimeOfDay(f.startTs)} · goal ${fmtTimeOfDay(f.startTs + goalMs)}`;
       return;
@@ -2942,11 +2948,13 @@
       e.fastingStatus.textContent = `Fasting · ${phase.label}`;
       e.fastingRemaining.textContent = `${fmtDur(phase.end - now)} until eating window`;
       e.fastingWindow.textContent = `Eat at ${f.eatTime} · fast again ${f.startTime}`;
+      e.fastingHeadSummary.textContent = `${fmtDur(phase.end - now)} to eat`;
     } else {
       e.fastingRingLabel.textContent = "eating";
       e.fastingStatus.textContent = "Eating window open";
       e.fastingRemaining.textContent = `${fmtDur(phase.end - now)} until fast starts`;
       e.fastingWindow.textContent = `Start fasting at ${f.startTime}`;
+      e.fastingHeadSummary.textContent = `${fmtDur(phase.end - now)} to fast`;
     }
   }
 
@@ -2975,6 +2983,11 @@
     e.fastingEatTime.value = f.eatTime || "12:00";
     renderFastingSchedHint();
 
+    // Collapsed (hidden) state
+    const collapsed = localStorage.getItem(KEYS.fastingCollapsed) === "true";
+    e.fastingCard.classList.toggle("collapsed", collapsed);
+    if (e.fastingToggle) e.fastingToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+
     const mode = fastingMode();
     if (mode === "idle") {
       e.fastingActive.classList.add("hidden");
@@ -2987,6 +3000,7 @@
       e.fastingIdleSub.textContent = last
         ? `Last fast: ${fmtDur(last.end - last.start)}${last.goalMet ? " ✓ goal met" : ""}. Start another, or tap “Daily schedule” for automatic intermittent fasting.`
         : "Start a one-off fast, or tap “Daily schedule” to track intermittent fasting automatically each day.";
+      e.fastingHeadSummary.textContent = "Not fasting";
       stopFastingTick();
     } else {
       e.fastingActive.classList.remove("hidden");
@@ -5231,7 +5245,17 @@
       });
       els.fastingStartBtn.addEventListener("click", () => startFast(selectedFastGoal));
       els.fastingStopBtn.addEventListener("click", () => endFast());
+      els.fastingToggle.addEventListener("click", () => {
+        const collapsed = localStorage.getItem(KEYS.fastingCollapsed) === "true";
+        localStorage.setItem(KEYS.fastingCollapsed, collapsed ? "false" : "true");
+        renderFasting();
+      });
       els.fastingSchedBtn.addEventListener("click", () => {
+        // Expand the card first if it's collapsed, so the schedule is visible.
+        if (localStorage.getItem(KEYS.fastingCollapsed) === "true") {
+          localStorage.setItem(KEYS.fastingCollapsed, "false");
+          renderFasting();
+        }
         els.fastingSchedule.classList.toggle("hidden");
       });
       els.fastingSchedToggle.addEventListener("change", () => {

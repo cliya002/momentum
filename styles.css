@@ -2053,7 +2053,21 @@ body.compact .habit-list { gap: 0.35rem; }
 
 /* ===== Fasting card ===== */
 .fasting-card { display: flex; flex-direction: column; gap: 0.9rem; }
-.fasting-head { display: flex; align-items: center; justify-content: space-between; }
+.fasting-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.fasting-toggle {
+  display: flex; align-items: center; gap: 0.4rem;
+  background: none; border: none; padding: 0; cursor: pointer; color: var(--text);
+}
+.fasting-caret { font-size: 0.75rem; color: var(--text-dim); transition: transform 0.2s ease; }
+.fasting-card.collapsed .fasting-caret { transform: rotate(-90deg); }
+.fasting-head-summary {
+  margin-left: auto; font-size: 0.82rem; color: var(--primary); font-weight: 600; white-space: nowrap;
+}
+.fasting-card:not(.collapsed) .fasting-head-summary { display: none; }
+.fasting-card.collapsed { gap: 0; }
+.fasting-card.collapsed .fasting-active,
+.fasting-card.collapsed .fasting-idle,
+.fasting-card.collapsed .fasting-schedule { display: none !important; }
 .btn-link {
   background: none; border: none; color: var(--primary);
   font-size: 0.82rem; font-weight: 600; cursor: pointer; padding: 0.2rem 0;

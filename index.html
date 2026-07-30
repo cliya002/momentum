@@ -124,7 +124,11 @@
 
           <div class="card fasting-card" id="fastingCard">
             <div class="fasting-head">
-              <div class="card-title">⏱️ Fasting</div>
+              <button id="fastingToggle" class="fasting-toggle" type="button" aria-expanded="true" aria-label="Show or hide fasting">
+                <span class="fasting-caret" aria-hidden="true">▾</span>
+                <span class="card-title">⏱️ Fasting</span>
+              </button>
+              <span id="fastingHeadSummary" class="fasting-head-summary"></span>
               <button id="fastingSchedBtn" class="btn-link" type="button">Daily schedule ›</button>
             </div>
 
