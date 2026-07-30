@@ -2804,37 +2804,123 @@
     }
   }
 
+  // "manual" = a one-off fast the user started; "auto" = intermittent fasting
+  // driven purely by the daily schedule (no start button needed); "idle" = neither.
+  function fastingMode() {
+    const f = fastingState();
+    if (f.active && f.startTs) return "manual";
+    if (f.scheduleEnabled) return "auto";
+    return "idle";
+  }
+
   function startFastingTick() {
     stopFastingTick();
-    if (!fastingState().active) return;
+    if (fastingMode() === "idle") return;
     fastingTickTimer = setInterval(updateFastingProgress, 1000);
   }
   function stopFastingTick() {
     if (fastingTickTimer) { clearInterval(fastingTickTimer); fastingTickTimer = null; }
   }
 
-  function updateFastingProgress() {
+  function setFastingRing(frac) {
     const e = getEls();
-    const f = fastingState();
-    if (!f.active || !f.startTs || !e.fastingRingSeg) return;
-    const elapsed = Date.now() - f.startTs;
-    const goalMs = f.targetHours * 3600000;
-    const pct = Math.max(0, Math.min(1, elapsed / goalMs));
+    if (!e.fastingRingSeg) return;
+    const pct = Math.max(0, Math.min(1, frac));
     e.fastingRingSeg.style.strokeDasharray = FRING_CIRC.toFixed(1);
     e.fastingRingSeg.style.strokeDashoffset = (FRING_CIRC * (1 - pct)).toFixed(1);
-    e.fastingElapsed.textContent = fmtClock(elapsed);
-    const reached = elapsed >= goalMs;
-    e.fastingCard.classList.toggle("goal-reached", reached);
-    if (reached) {
-      e.fastingRingLabel.textContent = "goal met 🎉";
-      e.fastingStatus.textContent = "Goal reached — you can eat";
-      e.fastingRemaining.textContent = `${fmtDur(elapsed - goalMs)} past your ${f.targetHours}h goal`;
-    } else {
-      e.fastingRingLabel.textContent = "elapsed";
-      e.fastingStatus.textContent = `Fasting · ${f.targetHours}h goal`;
-      e.fastingRemaining.textContent = `${fmtDur(goalMs - elapsed)} left`;
+  }
+
+  function occurrenceNear(totalMin, refMs) {
+    const d = new Date(refMs);
+    d.setHours(Math.floor(totalMin / 60), totalMin % 60, 0, 0);
+    return d.getTime();
+  }
+  function nextOccur(totalMin, refMs) {
+    let t = occurrenceNear(totalMin, refMs);
+    if (t <= refMs) t += 86400000;
+    return t;
+  }
+  function prevOccur(totalMin, refMs) {
+    let t = occurrenceNear(totalMin, refMs);
+    if (t > refMs) t -= 86400000;
+    return t;
+  }
+  function fastLabel(fastMin, eatMin) {
+    const fh = fastMin / 60, eh = eatMin / 60;
+    if (Number.isInteger(fh) && Number.isInteger(eh)) return `${fh}:${eh}`;
+    return `${(fastMin / 60).toFixed(1)}h fast`;
+  }
+
+  // Derive the current phase (fasting vs eating) from the daily schedule.
+  function computeSchedulePhase() {
+    const f = fastingState();
+    const now = Date.now();
+    const [sh, sm] = f.startTime.split(":").map(Number); // fast begins
+    const [eh, em] = f.eatTime.split(":").map(Number);   // eating begins (fast ends)
+    const SF = sh * 60 + sm;
+    const ES = eh * 60 + em;
+    const d = new Date(now);
+    const m = d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60;
+
+    let eating;
+    if (ES === SF) eating = false;
+    else if (ES < SF) eating = (m >= ES && m < SF);
+    else eating = (m >= ES || m < SF);
+    const fasting = !eating;
+
+    let fastLen = ES - SF; if (fastLen <= 0) fastLen += 1440;
+    const eatLen = 1440 - fastLen;
+
+    const start = fasting ? prevOccur(SF, now) : prevOccur(ES, now);
+    const end = fasting ? nextOccur(ES, now) : nextOccur(SF, now);
+    return { fasting, start, end, label: fastLabel(fastLen, eatLen) };
+  }
+
+  function updateFastingProgress() {
+    const e = getEls();
+    if (!e.fastingRingSeg) return;
+    const f = fastingState();
+    const mode = fastingMode();
+    if (mode === "idle") return;
+
+    if (mode === "manual") {
+      const elapsed = Date.now() - f.startTs;
+      const goalMs = f.targetHours * 3600000;
+      setFastingRing(elapsed / goalMs);
+      e.fastingElapsed.textContent = fmtClock(elapsed);
+      const reached = elapsed >= goalMs;
+      e.fastingCard.classList.toggle("goal-reached", reached);
+      if (reached) {
+        e.fastingRingLabel.textContent = "goal met 🎉";
+        e.fastingStatus.textContent = "Goal reached — you can eat";
+        e.fastingRemaining.textContent = `${fmtDur(elapsed - goalMs)} past your ${f.targetHours}h goal`;
+      } else {
+        e.fastingRingLabel.textContent = "elapsed";
+        e.fastingStatus.textContent = `Fasting · ${f.targetHours}h goal`;
+        e.fastingRemaining.textContent = `${fmtDur(goalMs - elapsed)} left`;
+      }
+      e.fastingWindow.textContent = `Started ${fmtTimeOfDay(f.startTs)} · goal ${fmtTimeOfDay(f.startTs + goalMs)}`;
+      return;
     }
-    e.fastingWindow.textContent = `Started ${fmtTimeOfDay(f.startTs)} · goal ${fmtTimeOfDay(f.startTs + goalMs)}`;
+
+    // Auto (intermittent) mode — follows the daily schedule automatically.
+    const phase = computeSchedulePhase();
+    const now = Date.now();
+    const total = phase.end - phase.start;
+    setFastingRing(total > 0 ? (now - phase.start) / total : 0);
+    e.fastingElapsed.textContent = fmtClock(now - phase.start);
+    e.fastingCard.classList.toggle("goal-reached", !phase.fasting);
+    if (phase.fasting) {
+      e.fastingRingLabel.textContent = "fasting";
+      e.fastingStatus.textContent = `Fasting · ${phase.label}`;
+      e.fastingRemaining.textContent = `${fmtDur(phase.end - now)} until eating window`;
+      e.fastingWindow.textContent = `Eat at ${f.eatTime} · fast again ${f.startTime}`;
+    } else {
+      e.fastingRingLabel.textContent = "eating";
+      e.fastingStatus.textContent = "Eating window open";
+      e.fastingRemaining.textContent = `${fmtDur(phase.end - now)} until fast starts`;
+      e.fastingWindow.textContent = `Start fasting at ${f.startTime}`;
+    }
   }
 
   function renderFastingSchedHint() {
@@ -2862,11 +2948,8 @@
     e.fastingEatTime.value = f.eatTime || "12:00";
     renderFastingSchedHint();
 
-    if (f.active && f.startTs) {
-      e.fastingActive.classList.remove("hidden");
-      e.fastingIdle.classList.add("hidden");
-      updateFastingProgress();
-    } else {
+    const mode = fastingMode();
+    if (mode === "idle") {
       e.fastingActive.classList.add("hidden");
       e.fastingIdle.classList.remove("hidden");
       e.fastingCard.classList.remove("goal-reached");
@@ -2875,8 +2958,16 @@
       }
       const last = f.history[f.history.length - 1];
       e.fastingIdleSub.textContent = last
-        ? `Last fast: ${fmtDur(last.end - last.start)}${last.goalMet ? " ✓ goal met" : ""}. Start another?`
-        : "Start a fast and track the time left to your goal.";
+        ? `Last fast: ${fmtDur(last.end - last.start)}${last.goalMet ? " ✓ goal met" : ""}. Start another, or tap “Daily schedule” for automatic intermittent fasting.`
+        : "Start a one-off fast, or tap “Daily schedule” to track intermittent fasting automatically each day.";
+      stopFastingTick();
+    } else {
+      e.fastingActive.classList.remove("hidden");
+      e.fastingIdle.classList.add("hidden");
+      // Manual fasts can be ended; auto (schedule) mode runs itself.
+      e.fastingStopBtn.style.display = (mode === "manual") ? "" : "none";
+      updateFastingProgress();
+      startFastingTick();
     }
   }
 
@@ -5122,19 +5213,19 @@
         } else {
           scheduleReminders();
         }
-        renderFastingSchedHint();
+        renderFasting();
       });
       els.fastingStartTime.addEventListener("change", () => {
         const f = fastingState();
         f.startTime = /^\d{2}:\d{2}$/.test(els.fastingStartTime.value) ? els.fastingStartTime.value : "20:00";
         f.updatedAt = Date.now();
-        save(); scheduleReminders(); renderFastingSchedHint();
+        save(); scheduleReminders(); renderFasting();
       });
       els.fastingEatTime.addEventListener("change", () => {
         const f = fastingState();
         f.eatTime = /^\d{2}:\d{2}$/.test(els.fastingEatTime.value) ? els.fastingEatTime.value : "12:00";
         f.updatedAt = Date.now();
-        save(); scheduleReminders(); renderFastingSchedHint();
+        save(); scheduleReminders(); renderFasting();
       });
     }
 
@@ -5337,19 +5428,16 @@
     if (isAutoSyncEnabled()) startAutoSync();
     scheduleReminders();
 
-    // Fasting: resume any in-progress fast and re-arm its goal notification.
+    // Fasting: resume an in-progress manual fast (re-arm its goal alert) and
+    // start the ticking countdown for either manual or scheduled (auto) mode.
     selectedFastGoal = (state.fasting && state.fasting.targetHours) || 16;
-    if (state.fasting && state.fasting.active && state.fasting.startTs) {
-      armFastingGoalTimer();
-      startFastingTick();
-    }
+    if (state.fasting && state.fasting.active && state.fasting.startTs) armFastingGoalTimer();
+    startFastingTick();
     // Keep the countdown + goal timer honest after the tab was backgrounded.
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState !== "visible") return;
-      if (state.fasting && state.fasting.active) {
-        updateFastingProgress();
-        armFastingGoalTimer();
-      }
+      if (fastingMode() !== "idle") updateFastingProgress();
+      if (state.fasting && state.fasting.active) armFastingGoalTimer();
     });
     document.addEventListener("pointerdown", unlockAudioOnce, { once: true });
     document.addEventListener("keydown", unlockAudioOnce, { once: true });
