@@ -2109,6 +2109,24 @@
     return "Winding down";
   }
 
+  // A "night" habit spans midnight. Before noon you're logging last night
+  // (yesterday); from noon on you're logging tonight (today).
+  function nightLogInfo(now) {
+    const isPrev = now.getHours() < 12;
+    return { isPrev, date: isPrev ? addDays(now, -1) : now };
+  }
+  // Splits habits into the night group (attributed to the right night) and the
+  // regular "scheduled today" set. Pure — used by renderToday and tested.
+  function splitNightHabits(habits, now) {
+    const info = nightLogInfo(now);
+    return {
+      isPrev: info.isPrev,
+      date: info.date,
+      nightHabits: habits.filter((h) => h.nightPrevDay && isHabitActiveOn(h, info.date)),
+      scheduled: habits.filter((h) => !h.nightPrevDay && isHabitActiveOn(h, now)),
+    };
+  }
+
   function renderToday() {
     const els = getEls();
     resetRenderCaches();
@@ -2139,13 +2157,8 @@
     els.todayHint.hidden = !showHint;
 
     // Night habits (bedtime, no-screens) span midnight, so attribute them to
-    // the night they belong to based on the time of day: before noon you're
-    // logging last night (yesterday); from noon on you're logging tonight.
-    const yesterday = addDays(today, -1);
-    const nightIsPrev = today.getHours() < 12;
-    const nightDate = nightIsPrev ? yesterday : today;
-    const nightHabits = state.habits.filter((h) => h.nightPrevDay && isHabitActiveOn(h, nightDate));
-    const scheduled = state.habits.filter((h) => !h.nightPrevDay && isHabitActiveOn(h, today));
+    // the night they belong to based on time of day (see splitNightHabits).
+    const { isPrev: nightIsPrev, date: nightDate, nightHabits, scheduled } = splitNightHabits(state.habits, today);
     // Adherence reflects everything scheduled today, regardless of the filter.
     renderTodayAdherence(scheduled, today);
 
@@ -6353,7 +6366,7 @@
 
   // Expose internals for the automated test harness (harmless in the browser).
   if (typeof self !== "undefined") {
-    self.__momentumTest = { mergeStates, normalizeState, defaultState, currentStreak, startOfWeekMonday, dateKey, addDays, parseScheduleText, effectiveTime, suggestFit };
+    self.__momentumTest = { mergeStates, normalizeState, defaultState, currentStreak, startOfWeekMonday, dateKey, addDays, parseScheduleText, effectiveTime, suggestFit, nightLogInfo, splitNightHabits, isHabitActiveOn };
   }
 
   // Only boot in a real browser (guarded so the file can be loaded in Node for tests).
