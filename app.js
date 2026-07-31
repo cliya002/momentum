@@ -2430,6 +2430,18 @@
     const sorted = list.slice().sort(byOrderTime);
     const pending = sorted.filter((h) => habitStatus(h, date) === "pending");
     const doneCount = sorted.filter((h) => isCompleted(h, date)).length;
+    const label = `${isPrev ? "🌙 Last night" : "🌙 Tonight"} · ${date.toLocaleDateString(undefined, { weekday: "long" })}`;
+    const foldKey = "__lastnight";
+
+    // Fully logged → collapse into a strip (tap to expand), like the day parts.
+    if (pending.length === 0 && sorted.length > 0 && !reopenedDoneSections.has(foldKey)) {
+      const strip = document.createElement("div");
+      strip.className = "daypart-done-strip";
+      strip.innerHTML = `<span>${escapeHtml(label)} · all done ✓</span><span class="strip-reopen">${sorted.length} item${sorted.length === 1 ? "" : "s"} · tap to show</span>`;
+      strip.addEventListener("click", () => { reopenedDoneSections.add(foldKey); renderToday(); });
+      els.todayGroups.appendChild(strip);
+      return;
+    }
 
     const wrap = document.createElement("div");
     wrap.className = "time-group last-night-group";
@@ -2437,7 +2449,7 @@
     const heading = document.createElement("div");
     heading.className = "time-group-title";
     const left = document.createElement("span");
-    left.textContent = `${isPrev ? "🌙 Last night" : "🌙 Tonight"} · ${date.toLocaleDateString(undefined, { weekday: "long" })}`;
+    left.textContent = label;
     const right = document.createElement("span");
     right.className = "group-right";
     if (pending.length > 0) {
