@@ -372,6 +372,134 @@
         { name: "Declutter one thing", icon: "📦", color: "#a855f7", category: "Custom", time: "Anytime", notes: "" },
       ],
     },
+    {
+      title: "💧 Gut & digestion",
+      items: [
+        { name: "Probiotic",       icon: "🦠",  color: "#22c55e", category: "Supplements", time: "Morning", notes: "With breakfast" },
+        { name: "Fiber intake",    icon: "🌾",  color: "#84cc16", category: "Nutrition", time: "All day", notes: "25-35 g" },
+        { name: "Fermented foods", icon: "🥬",  color: "#14b8a6", category: "Nutrition", time: "All day", notes: "Yogurt, kimchi, kefir" },
+        { name: "Digestive enzymes", icon: "💊", color: "#3b82f6", category: "Supplements", time: "With meals", notes: "" },
+        { name: "Chew slowly",     icon: "🍽️",  color: "#f59e0b", category: "Nutrition", time: "All day", notes: "" },
+        { name: "No late-night eating", icon: "🌙", color: "#a855f7", category: "Nutrition", time: "Evening", notes: "Stop 3h before bed" },
+      ],
+    },
+    {
+      title: "🧴 Hair & scalp care",
+      items: [
+        { name: "Scalp massage",   icon: "💆",  color: "#a855f7", category: "Custom", time: "Evening", notes: "5 min" },
+        { name: "Hair oil",        icon: "🧴",  color: "#f59e0b", category: "Custom", time: "Evening", days: [0,3], notes: "Amla / rosemary" },
+        { name: "Rosemary spray",  icon: "🌿",  color: "#22c55e", category: "Custom", time: "Morning", notes: "" },
+        { name: "Biotin",          icon: "💊",  color: "#3b82f6", category: "Supplements", time: "Morning", notes: "" },
+        { name: "Silk pillowcase", icon: "🛏️",  color: "#ec4899", category: "Custom", time: "Night", notes: "" },
+        { name: "Trim reminder",   icon: "✂️",  color: "#6366f1", category: "Custom", time: "Morning", days: [0], notes: "Every 6-8 weeks" },
+      ],
+    },
+    {
+      title: "🦷 Oral care",
+      items: [
+        { name: "Brush (AM)",      icon: "🪥",  color: "#3b82f6", category: "Custom", time: "Morning", notes: "2 min" },
+        { name: "Brush (PM)",      icon: "🪥",  color: "#6366f1", category: "Custom", time: "10:00 PM", notes: "2 min" },
+        { name: "Floss",           icon: "🧵",  color: "#22c55e", category: "Custom", time: "10:00 PM", notes: "" },
+        { name: "Tongue scraper",  icon: "👅",  color: "#ec4899", category: "Custom", time: "Morning", notes: "" },
+        { name: "Mouthwash",       icon: "💧",  color: "#38bdf8", category: "Custom", time: "10:00 PM", notes: "" },
+      ],
+    },
+    {
+      title: "🧠 Focus & productivity",
+      items: [
+        { name: "Deep work block", icon: "🎯",  color: "#6366f1", category: "Custom", time: "Morning", days: [1,2,3,4,5], notes: "90 min, no distractions" },
+        { name: "Plan the day",    icon: "🗒️",  color: "#3b82f6", category: "Custom", time: "Morning", notes: "Top 3 priorities" },
+        { name: "Inbox zero",      icon: "📧",  color: "#f59e0b", category: "Custom", time: "Afternoon", days: [1,2,3,4,5], notes: "" },
+        { name: "Pomodoro sessions", icon: "🍅", color: "#ef4444", category: "Custom", time: "All day", notes: "" },
+        { name: "No phone first hour", icon: "📵", color: "#a855f7", category: "Custom", time: "Morning", notes: "" },
+        { name: "Shutdown ritual", icon: "🔚",  color: "#14b8a6", category: "Custom", time: "Evening", days: [1,2,3,4,5], notes: "Review + close out" },
+      ],
+    },
+    {
+      title: "💰 Finance & admin",
+      items: [
+        { name: "Log expenses",    icon: "🧾",  color: "#22c55e", category: "Custom", time: "Evening", notes: "" },
+        { name: "Check budget",    icon: "📊",  color: "#3b82f6", category: "Custom", time: "Evening", days: [0], notes: "Weekly review" },
+        { name: "No-spend day",    icon: "🚫",  color: "#ef4444", category: "Custom", time: "All day", days: [2,4], notes: "" },
+        { name: "Save / invest",   icon: "🏦",  color: "#14b8a6", category: "Custom", time: "Morning", days: [5], notes: "" },
+        { name: "Pack lunch",      icon: "🥡",  color: "#f59e0b", category: "Nutrition", time: "Morning", days: [1,2,3,4,5], notes: "Save money" },
+      ],
+    },
+    {
+      title: "🏃 Marathon / running plan",
+      items: [
+        { name: "Easy run",        icon: "🏃",  color: "#22c55e", category: "Fitness", time: "Morning", days: [1,3], notes: "Zone 2" },
+        { name: "Long run",        icon: "🏅",  color: "#f59e0b", category: "Fitness", time: "Morning", days: [6], notes: "Build distance" },
+        { name: "Intervals / speed", icon: "⚡", color: "#ef4444", category: "Fitness", time: "Morning", days: [4], notes: "" },
+        { name: "Rest day",        icon: "😌",  color: "#a855f7", category: "Fitness", time: "All day", days: [0], notes: "Recovery" },
+        { name: "Foam roll + stretch", icon: "🧘", color: "#14b8a6", category: "Fitness", time: "Evening", notes: "" },
+        { name: "Electrolytes",    icon: "🧂",  color: "#38bdf8", category: "Nutrition", time: "All day", notes: "" },
+      ],
+    },
+    {
+      title: "🧘 Yoga & flexibility",
+      items: [
+        { name: "Sun salutations", icon: "🌅",  color: "#f59e0b", category: "Fitness", time: "Morning", notes: "5 rounds" },
+        { name: "Hip openers",     icon: "🧘",  color: "#a855f7", category: "Fitness", time: "Evening", notes: "" },
+        { name: "Hamstring stretch", icon: "🦵", color: "#14b8a6", category: "Fitness", time: "Evening", notes: "" },
+        { name: "Breathwork",      icon: "🌬️",  color: "#38bdf8", category: "Custom", time: "Morning", notes: "5 min" },
+        { name: "Balance practice", icon: "🤸", color: "#ec4899", category: "Fitness", time: "All day", notes: "" },
+      ],
+    },
+    {
+      title: "🕌 Faith & gratitude",
+      items: [
+        { name: "Prayer / meditation", icon: "🙏", color: "#a855f7", category: "Custom", time: "Morning", notes: "" },
+        { name: "Read scripture",  icon: "📖",  color: "#f59e0b", category: "Custom", time: "Morning", notes: "" },
+        { name: "Gratitude (3 things)", icon: "🙌", color: "#22c55e", category: "Custom", time: "Evening", notes: "" },
+        { name: "Acts of kindness", icon: "💛",  color: "#eab308", category: "Custom", time: "All day", notes: "" },
+        { name: "Reflect / examen", icon: "🕯️",  color: "#6366f1", category: "Custom", time: "10:00 PM", notes: "" },
+      ],
+    },
+    {
+      title: "🎨 Hobbies & creativity",
+      items: [
+        { name: "Practice instrument", icon: "🎸", color: "#ef4444", category: "Custom", time: "Evening", notes: "" },
+        { name: "Draw / sketch",   icon: "✏️",  color: "#6366f1", category: "Custom", time: "Evening", notes: "" },
+        { name: "Write / journal", icon: "✍️",  color: "#3b82f6", category: "Custom", time: "Evening", notes: "" },
+        { name: "Read for fun",    icon: "📚",  color: "#f59e0b", category: "Custom", time: "Night", notes: "20 min" },
+        { name: "Learn a language", icon: "🗣️", color: "#14b8a6", category: "Custom", time: "All day", notes: "Duolingo / Anki" },
+        { name: "Photography walk", icon: "📷",  color: "#a855f7", category: "Custom", time: "Afternoon", days: [6], notes: "" },
+      ],
+    },
+    {
+      title: "🩺 Health monitoring",
+      items: [
+        { name: "Weigh in",        icon: "⚖️",  color: "#3b82f6", category: "Custom", time: "Morning", days: [1], notes: "Same time weekly" },
+        { name: "Blood pressure",  icon: "🩸",  color: "#ef4444", category: "Custom", time: "Morning", notes: "" },
+        { name: "Take medication", icon: "💊",  color: "#6366f1", category: "Supplements", time: "Morning", notes: "" },
+        { name: "Log symptoms",    icon: "📝",  color: "#f59e0b", category: "Custom", time: "Evening", notes: "" },
+        { name: "Steps / activity ring", icon: "🚶", color: "#22c55e", category: "Fitness", time: "All day", notes: "" },
+        { name: "Stretch breaks",  icon: "⏰",  color: "#14b8a6", category: "Fitness", time: "All day", days: [1,2,3,4,5], notes: "Every 2 hrs" },
+      ],
+    },
+    {
+      title: "☀️ Morning routine",
+      items: [
+        { name: "Wake at set time", icon: "⏰", color: "#f59e0b", category: "Sleep", time: "6:00 AM", notes: "No snooze" },
+        { name: "Make the bed",    icon: "🛏️",  color: "#6366f1", category: "Custom", time: "Morning", notes: "" },
+        { name: "Big glass of water", icon: "💧", color: "#38bdf8", category: "Nutrition", time: "Morning", notes: "" },
+        { name: "Morning sunlight", icon: "🌞",  color: "#f59e0b", category: "Sleep", time: "Morning", notes: "10 min" },
+        { name: "Movement / stretch", icon: "🤸", color: "#22c55e", category: "Fitness", time: "Morning", notes: "" },
+        { name: "Cold shower",     icon: "🧊",  color: "#38bdf8", category: "Custom", time: "Morning", notes: "" },
+      ],
+    },
+    {
+      title: "🌙 Evening wind-down",
+      items: [
+        { name: "Dim the lights",  icon: "🕯️",  color: "#a855f7", category: "Sleep", time: "9:00 PM", notes: "" },
+        { name: "Herbal tea",      icon: "🍵",  color: "#22c55e", category: "Nutrition", time: "9:00 PM", notes: "Caffeine-free" },
+        { name: "Tomorrow's to-do list", icon: "🗒️", color: "#3b82f6", category: "Custom", time: "Evening", notes: "" },
+        { name: "Lay out clothes", icon: "👕",  color: "#f59e0b", category: "Custom", time: "Evening", notes: "" },
+        { name: "Screens off",     icon: "📴",  color: "#6366f1", category: "Sleep", time: "10:00 PM", notes: "", nightPrevDay: true },
+        { name: "Lights out",      icon: "😴",  color: "#a855f7", category: "Sleep", time: "10:30 PM", notes: "", nightPrevDay: true },
+      ],
+    },
   ];
 
   const TEMPLATE_ITEM_DEFAULTS = {
