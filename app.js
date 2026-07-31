@@ -2109,11 +2109,10 @@
     return "Winding down";
   }
 
-  // A "night" habit spans midnight. Before noon you're logging last night
-  // (yesterday); from noon on you're logging tonight (today).
+  // Night habits (bedtime, no-screens) always log against the previous day —
+  // you review "last night" the next day. Kept as a helper for testing.
   function nightLogInfo(now) {
-    const isPrev = now.getHours() < 12;
-    return { isPrev, date: isPrev ? addDays(now, -1) : now };
+    return { isPrev: true, date: addDays(now, -1) };
   }
   // Splits habits into the night group (attributed to the right night) and the
   // regular "scheduled today" set. Pure — used by renderToday and tested.
@@ -2471,6 +2470,19 @@
     right.appendChild(count);
     heading.appendChild(left);
     heading.appendChild(right);
+
+    // When fully logged, the header toggles the group closed again (tap to hide).
+    const allDone = pending.length === 0 && sorted.length > 0;
+    if (allDone) {
+      heading.classList.add("fold-toggle");
+      heading.style.cursor = "pointer";
+      heading.title = "Tap to collapse";
+      const caret = document.createElement("span");
+      caret.className = "fold-caret";
+      caret.textContent = "▾";
+      left.appendChild(caret);
+      heading.addEventListener("click", () => { reopenedDoneSections.delete(foldKey); renderToday(); });
+    }
     wrap.appendChild(heading);
 
     const ul = document.createElement("ul");

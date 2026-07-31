@@ -2235,3 +2235,8 @@ body.compact .habit-list { gap: 0.35rem; }
 .habit-item.selectable { user-select: none; }
 .habit-item.selected { outline: 2px solid var(--primary); outline-offset: -2px; }
 .bulk-check { width: 20px; height: 20px; flex-shrink: 0; accent-color: var(--primary); }
+
+/* Last-night collapse toggle caret */
+.last-night-group .fold-toggle .fold-caret {
+  margin-left: 0.4rem; font-size: 0.75rem; color: var(--text-dim);
+}

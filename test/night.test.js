@@ -37,13 +37,13 @@ console.log("Night-habit attribution");
 {
   const now = new Date(2025, 0, 15, 22, 0, 0); // Wed evening
   const r = T.splitNightHabits(habits, now);
-  assert(r.isPrev === false, "from noon on → tonight (today)");
-  assert(T.dateKey(r.date) === T.dateKey(now), "logs against today");
+  assert(r.isPrev === true, "evening still logs the previous day");
+  assert(T.dateKey(r.date) === T.dateKey(T.addDays(now, -1)), "evening logs against yesterday");
 }
 {
   const now = new Date(2025, 0, 15, 1, 0, 0); // Wed 1am (after midnight)
   const r = T.splitNightHabits(habits, now);
-  assert(r.isPrev === true && T.dateKey(r.date) === T.dateKey(T.addDays(now, -1)), "1am counts for the night that just ended (yesterday)");
+  assert(r.isPrev === true && T.dateKey(r.date) === T.dateKey(T.addDays(now, -1)), "1am logs against yesterday");
 }
 {
   // Tue morning → nightDate = Mon → the Monday-only night habit applies
