@@ -1873,6 +1873,37 @@ body.compact .habit-list { gap: 0.35rem; }
 }
 .weekly-chip.on-pace { color: var(--success); border-color: var(--success); }
 
+/* Daily mood / energy quick-log strip (Today) */
+.mood-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.5rem 0.8rem;
+  margin-bottom: 0.85rem;
+  border-radius: 14px;
+  background: var(--card-soft);
+  border: 1px solid var(--border);
+}
+.mood-strip:empty { display: none; }
+.mood-q { font-size: 0.85rem; color: var(--text-dim); font-weight: 600; }
+.mood-opts { display: flex; gap: 0.15rem; }
+.mood-btn {
+  background: transparent;
+  border: none;
+  font-size: 1.35rem;
+  line-height: 1;
+  padding: 0.2rem 0.25rem;
+  border-radius: 8px;
+  filter: grayscale(0.7);
+  opacity: 0.7;
+  transition: transform 0.08s, filter 0.12s, opacity 0.12s;
+  cursor: pointer;
+}
+.mood-btn:hover { transform: scale(1.1); }
+.mood-btn.on { filter: none; opacity: 1; transform: scale(1.15); background: var(--primary-soft); }
+
 /* Weekly review prompt card (Today tab) */
 .review-prompt {
   display: flex;

@@ -571,6 +571,8 @@
       reviews: {},
       // Unlocked achievements: achievementId -> earnedAt (ms). Permanent once earned.
       achievements: {},
+      // Daily mood/energy: dateKey -> { mood: 1-5, updatedAt }
+      moods: {},
     };
   }
 
@@ -736,6 +738,8 @@
       days: Array.isArray(h.days) && h.days.length ? h.days : [0,1,2,3,4,5,6],
       freqType: h.freqType === "weekly" ? "weekly" : "days",
       weeklyTarget: (function () { const n = Math.round(Number(h.weeklyTarget)); return n >= 1 && n <= 14 ? n : 3; })(),
+      // Habit stacking: fire a cue for this habit when its anchor is completed.
+      anchorId: (typeof h.anchorId === "string" && h.anchorId) ? h.anchorId : "",
       order: Number.isFinite(Number(h.order)) ? Number(h.order) : idx,
       createdAt: h.createdAt || new Date(now).toISOString(),
       updatedAt: Number(h.updatedAt) || now,
@@ -913,6 +917,15 @@
       for (const [id, ts] of Object.entries(s.achievements)) {
         const t = Number(ts);
         if (Number.isFinite(t) && t > 0) st.achievements[id] = t;
+      }
+    }
+    // Daily mood/energy log: dateKey -> { mood 1-5, updatedAt }
+    st.moods = {};
+    if (s.moods && typeof s.moods === "object") {
+      for (const [day, m] of Object.entries(s.moods)) {
+        if (!m || typeof m !== "object") continue;
+        const mood = Math.round(Number(m.mood));
+        if (mood >= 1 && mood <= 5) st.moods[day] = { mood, updatedAt: Number(m.updatedAt) || now };
       }
     }
     return st;
@@ -1182,6 +1195,16 @@
         const t = Number(ts) || 0;
         if (!t) continue;
         if (!merged.achievements[id] || t < merged.achievements[id]) merged.achievements[id] = t;
+      }
+    }
+
+    // Daily moods: union by day, newest updatedAt wins.
+    merged.moods = {};
+    for (const src of [local.moods || {}, remote.moods || {}]) {
+      for (const [day, m] of Object.entries(src)) {
+        if (!m || typeof m !== "object") continue;
+        const ex = merged.moods[day];
+        if (!ex || (Number(m.updatedAt) || 0) > (Number(ex.updatedAt) || 0)) merged.moods[day] = m;
       }
     }
 
@@ -2607,6 +2630,7 @@
       habitNoPush: $("#habitNoPush"),
       habitQuit: $("#habitQuit"),
       habitReminderMsg: $("#habitReminderMsg"),
+      habitAnchor: $("#habitAnchor"),
       advancedToggle: $("#advancedToggle"),
       dayTimesWrap: $("#dayTimesWrap"),
       dayTimesGrid: $("#dayTimesGrid"),
@@ -2618,6 +2642,7 @@
       detailArchiveBtn: $("#detailArchiveBtn"),
       detailCloseBtn: $("#detailCloseBtn"),
       detailEditBtn: $("#detailEditBtn"),
+      moodStrip: $("#moodStrip"),
       // weekly review
       reviewPrompt: $("#reviewPrompt"),
       reviewModal: $("#reviewModal"),
@@ -2907,6 +2932,7 @@
     els.todayGreetingSub.textContent = `${dateStr} · ${leftMsg}`;
 
     renderReviewPrompt();
+    renderMoodStrip();
     renderFasting();
     renderJournal(today);
 
@@ -3403,6 +3429,15 @@
     catBadge.style.borderColor = cm.color;
     catBadge.style.color = cm.color;
     chips.appendChild(catBadge);
+    if (habit.anchorId) {
+      const anchor = state.habits.find((h) => h.id === habit.anchorId);
+      if (anchor) {
+        const chain = document.createElement("span");
+        chain.className = "detail-chip";
+        chain.textContent = `⛓️ after ${anchor.icon || ""} ${anchor.name}`.trim();
+        chips.appendChild(chain);
+      }
+    }
     if (streak > 0) {
       const st = document.createElement("span");
       st.className = "detail-chip";
@@ -3589,11 +3624,37 @@
 
   // Detect if a state change just completed a whole day-part block or the day,
   // and celebrate. Call after a completion change and re-render.
+  // Habit stacking: when an anchor habit is completed, surface the habits
+  // stacked onto it that are still pending today as a "next cue".
+  function fireStackCues(habit, date) {
+    if (!sameDay(date, new Date())) return;
+    const stacked = state.habits.filter((h) =>
+      !h.archived && h.anchorId === habit.id &&
+      isHabitActiveOn(h, date) && !isCompleted(h, date) && !isSkipped(h, date));
+    if (stacked.length === 0) return;
+    const names = stacked.map((h) => `${h.icon || "•"} ${h.name}`).join(", ");
+    showToast(`Next: ${names}`, "info");
+    if (navigator.vibrate) { try { navigator.vibrate(20); } catch (e) {} }
+    // Also fire an OS notification when reminders are on (helps when it lands
+    // on the lock screen right after you check the anchor off).
+    try {
+      if (remindersEnabled() && "Notification" in window && Notification.permission === "granted") {
+        const first = stacked[0];
+        notify(`${first.icon || "⛓️"} Next: ${first.name}`, {
+          body: `You just did ${habit.name} — ${stacked.length > 1 ? `${stacked.length} habits stacked next` : first.name} is your cue.`,
+          ids: stacked.map((h) => h.id),
+          tag: "ht-stack",
+        });
+      }
+    } catch (e) {}
+  }
+
   function maybeCelebrate(habit, date) {
     const today = new Date();
     if (!sameDay(date, today)) return;
     checkStreakMilestone(habit);
     checkAchievements();
+    fireStackCues(habit, date);
     const scheduled = state.habits.filter((h) => isHabitActiveOn(h, today));
     if (scheduled.length === 0) return;
     const allDone = scheduled.every((h) => isCompleted(h, today));
@@ -5131,6 +5192,14 @@
     renderReminderTimeInputs(initTimes);
     els.habitReminderMsg.value = habit ? (habit.reminderMsg || "") : "";
     els.habitNotes.value = habit ? (habit.notes || "") : "";
+    // Habit-stacking anchor: any other habit can be the trigger (exclude self).
+    const anchorOpts = ['<option value="">— On its own —</option>'].concat(
+      state.habits
+        .filter((h) => (!editingId || h.id !== editingId) && !h.archived)
+        .map((h) => `<option value="${escapeHtml(h.id)}">${escapeHtml((h.icon || "•") + " " + h.name)}</option>`)
+    );
+    els.habitAnchor.innerHTML = anchorOpts.join("");
+    els.habitAnchor.value = habit && habit.anchorId ? habit.anchorId : "";
     els.habitNightPrevDay.checked = habit ? !!habit.nightPrevDay : false;
     els.habitNoPush.checked = habit ? !!habit.noPush : false;
     els.habitQuit.checked = habit ? !!habit.quit : false;
@@ -5263,6 +5332,7 @@
       days: days.length ? days : [0,1,2,3,4,5,6],
       freqType,
       weeklyTarget: weeklyTargetVal,
+      anchorId: els.habitAnchor.value || "",
       updatedAt: now,
     };
 
@@ -5351,6 +5421,58 @@
       localStorage.setItem("ht_review_dismissed", wk);
       el.classList.add("hidden");
     });
+  }
+
+  /* ---- Daily mood / energy quick-log ---- */
+  const MOODS = [
+    { v: 1, icon: "😫", label: "Drained" },
+    { v: 2, icon: "😕", label: "Low" },
+    { v: 3, icon: "😐", label: "Okay" },
+    { v: 4, icon: "🙂", label: "Good" },
+    { v: 5, icon: "🤩", label: "Great" },
+  ];
+  function setMood(v) {
+    if (!state.moods) state.moods = {};
+    const k = todayKey();
+    if (state.moods[k] && state.moods[k].mood === v) {
+      delete state.moods[k]; // tap again to clear
+    } else {
+      state.moods[k] = { mood: v, updatedAt: Date.now() };
+    }
+    save();
+    renderMoodStrip();
+  }
+  function renderMoodStrip() {
+    const el = getEls().moodStrip;
+    if (!el) return;
+    if (state.habits.length === 0) { el.innerHTML = ""; return; }
+    const cur = state.moods && state.moods[todayKey()] ? state.moods[todayKey()].mood : 0;
+    el.innerHTML =
+      `<span class="mood-q">${cur ? "Energy today" : "How's your energy?"}</span>` +
+      `<span class="mood-opts">` +
+      MOODS.map((m) => `<button type="button" class="mood-btn${cur === m.v ? " on" : ""}" data-mood="${m.v}" title="${m.label}" aria-label="${m.label}">${m.icon}</button>`).join("") +
+      `</span>`;
+    el.querySelectorAll(".mood-btn").forEach((b) => b.addEventListener("click", () => setMood(Number(b.dataset.mood))));
+  }
+
+  // Daily mood vs daily completion rate — for the insights feed.
+  function moodCompletionInsight() {
+    const rows = [];
+    for (const [day, m] of Object.entries(state.moods || {})) {
+      const parts = day.split("-").map(Number);
+      if (parts.length !== 3) continue;
+      const d = new Date(parts[0], parts[1] - 1, parts[2]);
+      const sched = state.habits.filter((h) => !h.archived && !h.nightPrevDay && countsForAdherence(h, d));
+      if (!sched.length) continue;
+      const done = sched.filter((h) => isCompleted(h, d)).length;
+      rows.push({ mood: m.mood, rate: done / sched.length });
+    }
+    if (rows.length < 5) return null;
+    const r = pearson(rows.map((x) => x.mood), rows.map((x) => x.rate));
+    if (r == null || Math.abs(r) < 0.35) return null;
+    return r > 0
+      ? { icon: "🔋", text: "You complete more on days you feel higher energy." }
+      : { icon: "🔎", text: "Your check-ins hold up even on lower-energy days — nice resilience." };
   }
 
   let reviewingWeek = null;
@@ -5867,7 +5989,11 @@
       }
     }
 
-    // 8. Milestone-ish total
+    // 8. Daily mood vs completion
+    const mi = moodCompletionInsight();
+    if (mi) out.push(mi);
+
+    // 9. Milestone-ish total
     const total = totalCheckins();
     if (total >= 50) out.push({ icon: "🎉", text: `${total} check-ins logged all-time. That's a lot of small wins.` });
 
@@ -8077,6 +8203,7 @@
       aiTodayInsight, weekdayAvgAdherence,
       buildInsights, timeOfDayStats, slotForHabit, perfectDayCount, totalCheckins,
       evaluateAchievements, checkAchievements, maxLongestStreak, hasPerfectWeek,
+      setMood, moodCompletionInsight, fireStackCues,
       getState: () => state, setState: (s) => { state = s; },
     };
   }
