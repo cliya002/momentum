@@ -508,7 +508,18 @@ a { color: var(--primary); }
   margin-bottom: 0.2rem;
   font-size: 1.05rem;
 }
-.adherence-sub { color: rgba(255,255,255,0.82); font-size: 0.85rem; }
+.adherence-sub { color: rgba(255,255,255,0.82); font-size: 0.85rem; line-height: 1.35; }
+.adherence-sub .ai-spark {
+  display: inline-block;
+  font-size: 0.78rem;
+  transform: translateY(-1px);
+  animation: aiSparkPulse 3s ease-in-out infinite;
+}
+@keyframes aiSparkPulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) { .adherence-sub .ai-spark { animation: none; } }
 .adherence-info { flex: 1; min-width: 0; }
 
 .adherence-ring-wrap {

@@ -3204,6 +3204,67 @@
     els.todayGroups.appendChild(wrap);
   }
 
+  // Average completion rate for this weekday over the last ~8 occurrences —
+  // the baseline the coach line compares "today" against.
+  function weekdayAvgAdherence(today) {
+    let sum = 0, n = 0;
+    for (let w = 1; w <= 8; w++) {
+      const d = addDays(today, -7 * w);
+      const sched = state.habits.filter((h) => !h.archived && !h.nightPrevDay && isHabitActiveOn(h, d));
+      if (!sched.length) continue;
+      const done = sched.filter((h) => isCompleted(h, d)).length;
+      sum += done / sched.length; n++;
+    }
+    return n ? Math.round((sum / n) * 100) : null;
+  }
+  function dayNameOf(d) { return d.toLocaleDateString(undefined, { weekday: "long" }); }
+
+  // A personalized, data-driven "coach" line for the Today card. Picks the
+  // single most relevant signal (streak at risk, pace vs your usual weekday,
+  // time of day, momentum) instead of a static count.
+  function aiTodayInsight(active, today, done, pending, skipped, pct) {
+    const hour = today.getHours();
+    const total = active.length;
+    const partOfDay = hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
+    let bestStreak = 0;
+    const atRisk = [];
+    for (const h of active) {
+      const s = currentStreak(h);
+      if (s > bestStreak) bestStreak = s;
+      if (!isCompleted(h, today) && isStreakAtRisk(h, today)) atRisk.push(h);
+    }
+    const dow = weekdayAvgAdherence(today);
+
+    if (pending === 0 && skipped === 0) {
+      if (bestStreak >= 7) return `🔥 Perfect day — with a ${bestStreak}-day streak riding on it. This is what consistency looks like.`;
+      if (dow != null && pct >= dow) return `✅ All ${total} done — above your usual ${dow}% for a ${dayNameOf(today)}. Strong finish.`;
+      return `✅ Clean sweep — all ${total} logged. Enjoy the rest of your day.`;
+    }
+    if (pending === 0) return `Everything's settled for today. ${skipped} skipped — no guilt, tomorrow's a fresh slate.`;
+
+    if (atRisk.length) {
+      const h = atRisk.slice().sort((a, b) => currentStreak(b) - currentStreak(a))[0];
+      const s = currentStreak(h);
+      if (s >= 2) return `⚠️ Your ${s}-day "${h.name}" streak is on the line today. Knock it out before the day gets away.`;
+    }
+
+    if (done === 0) {
+      if (hour >= 18) return `🌙 Day's winding down and nothing's logged yet. Pick the one that matters most and start there.`;
+      if (hour >= 12) return `Half the day's gone, ${total} still waiting. Momentum beats motivation — start with the easiest.`;
+      return `🌅 Fresh ${partOfDay}, clean slate. ${total} on the list — your first win sets the tone.`;
+    }
+
+    if (dow != null) {
+      if (pct >= dow + 5) return `📈 ${done}/${total} done — ahead of your typical ${dayNameOf(today)} (${dow}%). Keep rolling.`;
+      if (pct >= dow - 15) return `${done}/${total} done, tracking right with your usual ${dayNameOf(today)}. ${pending} to go.`;
+      return `${done}/${total} so far — a touch behind your ${dayNameOf(today)} average (${dow}%). One quick win closes the gap.`;
+    }
+
+    if (pct >= 67) return `💪 ${done}/${total} — you're in the home stretch. ${pending} left.`;
+    if (pct >= 34) return `Good rhythm — ${done} down, ${pending} to go.`;
+    return `${done} done, ${pending} to go. One at a time.`;
+  }
+
   function renderTodayAdherence(active, today) {
     const els = getEls();
     if (!active || active.length === 0) {
@@ -3222,9 +3283,8 @@
     const pct = Math.round((done / active.length) * 100);
     els.adherencePct.textContent = pct + "%";
     setRing(active.length, done, skipped);
-    els.adherenceText.textContent = pending === 0
-      ? "All done for today. Nice work."
-      : `${pending} habit${pending === 1 ? "" : "s"} still to go`;
+    const insight = aiTodayInsight(active, today, done, pending, skipped, pct);
+    els.adherenceText.innerHTML = `<span class="ai-spark">✨</span> <span class="ai-coach-text">${escapeHtml(insight)}</span>`;
     renderUpNext(active, today);
     $("#adherenceLegend").innerHTML =
       `<span class="leg"><span class="leg-num">${done}</span>Done</span>` +
@@ -7681,6 +7741,7 @@
       isWeekly, weeklyTarget, weeklyDoneCount, weeklyMet, todayStatus, weekAdherencePct,
       weekKeyOf, computeWeekReview, reviewTargetWeek,
       categoryMeta, getCategories,
+      aiTodayInsight, weekdayAvgAdherence,
       getState: () => state, setState: (s) => { state = s; },
     };
   }
