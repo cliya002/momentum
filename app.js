@@ -2919,6 +2919,7 @@
       clearHistoryBtn: $("#clearHistoryBtn"),
       deletePhotosBtn: $("#deletePhotosBtn"),
       themeSelect: $("#themeSelect"),
+      langSelect: $("#langSelect"),
       accentPicker: $("#accentPicker"),
       textSizeSelect: $("#textSizeSelect"),
       contrastToggle: $("#contrastToggle"),
@@ -8226,6 +8227,10 @@
     els.syncGistIdInput.value = localStorage.getItem(KEYS.syncGistId) || "";
     els.autoSyncToggle.checked = isAutoSyncEnabled();
     els.themeSelect.value = localStorage.getItem(KEYS.theme) || "auto";
+    if (els.langSelect) {
+      els.langSelect.innerHTML = availableLangs().map((l) => `<option value="${l}">${LANG_NAMES[l] || l}</option>`).join("");
+      els.langSelect.value = currentLang();
+    }
     renderAccentPicker();
     if (els.textSizeSelect) els.textSizeSelect.value = localStorage.getItem(KEYS.textSize) || "normal";
     if (els.contrastToggle) els.contrastToggle.checked = localStorage.getItem(KEYS.contrast) === "true";
@@ -8608,6 +8613,46 @@
   function onThemeChange() {
     localStorage.setItem(KEYS.theme, getEls().themeSelect.value);
     applyTheme();
+  }
+
+  /* ---- Localization scaffolding ----
+   * English is authored inline in the HTML (the base). Other locales provide a
+   * dictionary keyed by data-i18n keys; applyTranslations() swaps text in/out.
+   * Add a locale by dropping another entry into I18N — no code changes needed.
+   */
+  const I18N = {
+    es: {
+      "nav.today": "Hoy", "nav.habits": "Hábitos", "nav.progress": "Progreso",
+      "nav.report": "Informe", "nav.schedule": "Horario", "nav.settings": "Ajustes",
+      "page.today": "Hoy", "page.habits": "Hábitos", "page.progress": "Progreso",
+      "page.report": "Informe", "page.settings": "Ajustes",
+    },
+    // Add more locales here, e.g. fr: { ... }
+  };
+  function availableLangs() { return ["en", ...Object.keys(I18N)]; }
+  const LANG_NAMES = { en: "English", es: "Español", fr: "Français", de: "Deutsch", pt: "Português" };
+  function currentLang() {
+    const l = localStorage.getItem("ht_lang") || "en";
+    return availableLangs().includes(l) ? l : "en";
+  }
+  // Pure lookup (no storage): returns the translation or null.
+  function translate(lang, key) {
+    return (lang && lang !== "en" && I18N[lang] && I18N[lang][key]) || null;
+  }
+  // Translate a key for the current language, or null if untranslated.
+  function t(key) { return translate(currentLang(), key); }
+  function applyTranslations() {
+    const lang = currentLang();
+    document.documentElement.lang = lang;
+    document.querySelectorAll("[data-i18n]").forEach((el) => {
+      if (el.dataset.i18nBase == null) el.dataset.i18nBase = el.textContent; // cache English base
+      const tr = t(el.dataset.i18n);
+      el.textContent = tr != null ? tr : el.dataset.i18nBase;
+    });
+  }
+  function setLang(lang) {
+    localStorage.setItem("ht_lang", availableLangs().includes(lang) ? lang : "en");
+    applyTranslations();
   }
 
   /* ---- Accent color, text size, high contrast ---- */
@@ -9001,6 +9046,7 @@
 
     // Settings — Theme
     els.themeSelect.addEventListener("change", onThemeChange);
+    if (els.langSelect) els.langSelect.addEventListener("change", () => setLang(els.langSelect.value));
     if (els.textSizeSelect) els.textSizeSelect.addEventListener("change", () => {
       localStorage.setItem(KEYS.textSize, els.textSizeSelect.value); applyTextSize();
     });
@@ -9071,6 +9117,7 @@
     applyAccent();
     applyTextSize();
     applyContrast();
+    applyTranslations();
     if (localStorage.getItem(KEYS.compact) === "true") document.body.classList.add("compact");
     wireEvents();
     populateCategorySelects();
@@ -9228,6 +9275,7 @@
       keystoneId, getKeystoneHabit, setKeystone,
       logActivity, moveHabitToCategory, prunePhotosOlderThan,
       shade, hexToRgb,
+      translate, availableLangs,
       getState: () => state, setState: (s) => { state = s; },
     };
   }

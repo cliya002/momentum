@@ -48,22 +48,22 @@
         </div>
         <nav class="nav">
           <button class="nav-item active" data-tab="today">
-            <span class="nav-icon">☀️</span> <span>Today</span>
+            <span class="nav-icon">☀️</span> <span data-i18n="nav.today">Today</span>
           </button>
           <button class="nav-item" data-tab="habits">
-            <span class="nav-icon">🎯</span> <span>Habits</span>
+            <span class="nav-icon">🎯</span> <span data-i18n="nav.habits">Habits</span>
           </button>
           <button class="nav-item" data-tab="progress">
-            <span class="nav-icon">📈</span> <span>Progress</span>
+            <span class="nav-icon">📈</span> <span data-i18n="nav.progress">Progress</span>
           </button>
           <button class="nav-item" data-tab="report">
-            <span class="nav-icon">📊</span> <span>Report</span>
+            <span class="nav-icon">📊</span> <span data-i18n="nav.report">Report</span>
           </button>
           <button class="nav-item" data-tab="schedule">
-            <span class="nav-icon">💼</span> <span>Schedule</span>
+            <span class="nav-icon">💼</span> <span data-i18n="nav.schedule">Schedule</span>
           </button>
           <button class="nav-item" data-tab="settings">
-            <span class="nav-icon">⚙️</span> <span>Settings</span>
+            <span class="nav-icon">⚙️</span> <span data-i18n="nav.settings">Settings</span>
           </button>
         </nav>
         <div class="sidebar-footer">
@@ -211,7 +211,7 @@
         <!-- ============ Habits ============ -->
         <div class="page" id="page-habits">
           <div class="page-header">
-            <h1>Habits</h1>
+            <h1 data-i18n="page.habits">Habits</h1>
             <div class="page-actions">
               <button id="bulkToggleBtn" class="btn-secondary hidden">Select</button>
               <button id="deleteAllBtn" class="btn-secondary btn-danger-outline hidden">Delete all</button>
@@ -242,7 +242,7 @@
         <div class="page" id="page-progress">
           <div class="page-header">
             <div>
-              <h1>Progress</h1>
+              <h1 data-i18n="page.progress">Progress</h1>
               <p class="subtitle">Body measurements, goal &amp; trends</p>
             </div>
             <div class="page-actions">
@@ -380,7 +380,7 @@
         <div class="page" id="page-report">
           <div class="page-header">
             <div>
-              <h1>Report</h1>
+              <h1 data-i18n="page.report">Report</h1>
               <p class="subtitle">Habit adherence &amp; streaks</p>
             </div>
             <div class="page-actions">
@@ -558,7 +558,7 @@
 
         <!-- ============ Settings ============ -->
         <div class="page" id="page-settings">
-          <div class="page-header"><h1>Settings</h1></div>
+          <div class="page-header"><h1 data-i18n="page.settings">Settings</h1></div>
 
           <div class="card">
             <div class="card-title">☁️ Sync across devices</div>
@@ -783,6 +783,11 @@
                   <option value="light">Light</option>
                   <option value="dark">Dark</option>
                 </select>
+              </label>
+            </div>
+            <div class="field">
+              <label>Language <span class="hint">(more coming — translations are community-extensible)</span>
+                <select id="langSelect"></select>
               </label>
             </div>
             <div class="field">
