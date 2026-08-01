@@ -3278,11 +3278,13 @@
     const times = (habit.reminderTimes && habit.reminderTimes.length)
       ? habit.reminderTimes.filter((t) => /^\d{2}:\d{2}$/.test(t)).slice().sort()
       : [];
-    // Treat as per-dose ("N times a day") when the step is 1, OR when the
-    // reminder times line up with the target (e.g. 2 reminders + target 2 —
-    // even if the step size was left at 2). Measurable counts like Water 4 L
-    // (fractional step, no per-time reminders) keep the +/- stepper.
-    const eligible = inc === 1 || times.length === tgt;
+    // Treat as per-dose ("N times a day") unless it's a *measurable* count.
+    // A measurable count has a real unit (L, g, ml, steps…) AND doesn't line up
+    // one-reminder-per-dose. Dose habits are step 1, or unit-less, or have a
+    // reminder time for each dose — regardless of the step size.
+    const unit = (habit.unit || "").trim().toLowerCase();
+    const doseUnit = unit === "" || ["x", "×", "time", "times", "dose", "doses", "rep", "reps"].includes(unit);
+    const eligible = inc === 1 || doseUnit || times.length === tgt;
     if (!eligible) return null;
     const slots = [];
     for (let i = 0; i < tgt; i++) {
