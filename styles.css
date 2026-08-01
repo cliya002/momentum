@@ -1091,6 +1091,37 @@ body.compact .habit-list { gap: 0.35rem; }
 .tod-fill.best { background: var(--success); }
 .tod-pct { font-size: 0.78rem; font-weight: 600; color: var(--text-dim); text-align: right; }
 
+/* Achievements */
+.badge-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 0.6rem;
+}
+.badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.7rem 0.4rem;
+  border-radius: 12px;
+  background: var(--card-soft);
+  border: 1px solid var(--border);
+  text-align: center;
+  opacity: 0.6;
+}
+.badge.earned {
+  opacity: 1;
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+.badge-icon { font-size: 1.6rem; line-height: 1; filter: grayscale(1); }
+.badge.earned .badge-icon { filter: none; }
+.badge-title { font-size: 0.72rem; font-weight: 600; line-height: 1.2; }
+.badge-status { font-size: 0.62rem; color: var(--primary); font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; }
+.badge-progress { width: 100%; height: 5px; background: var(--bg-2); border-radius: 999px; overflow: hidden; }
+.badge-progress-fill { display: block; height: 100%; background: var(--text-dim); border-radius: 999px; }
+.badge-count { font-size: 0.62rem; color: var(--text-dim); }
+
 .day-adherence {
   display: grid;
   grid-template-columns: repeat(7, 1fr);

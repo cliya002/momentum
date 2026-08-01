@@ -569,6 +569,8 @@
       deletions: { habits: {} },
       // Guided weekly review: weekKey (Monday dateKey) -> { focus, adherence, updatedAt }
       reviews: {},
+      // Unlocked achievements: achievementId -> earnedAt (ms). Permanent once earned.
+      achievements: {},
     };
   }
 
@@ -905,6 +907,14 @@
         };
       }
     }
+    // Unlocked achievements: id -> earnedAt.
+    st.achievements = {};
+    if (s.achievements && typeof s.achievements === "object") {
+      for (const [id, ts] of Object.entries(s.achievements)) {
+        const t = Number(ts);
+        if (Number.isFinite(t) && t > 0) st.achievements[id] = t;
+      }
+    }
     return st;
   }
 
@@ -1162,6 +1172,16 @@
         if (!r || typeof r !== "object") continue;
         const ex = merged.reviews[wk];
         if (!ex || (Number(r.updatedAt) || 0) > (Number(ex.updatedAt) || 0)) merged.reviews[wk] = r;
+      }
+    }
+
+    // Achievements: union of unlocked ids, keep the earliest earnedAt.
+    merged.achievements = {};
+    for (const src of [local.achievements || {}, remote.achievements || {}]) {
+      for (const [id, ts] of Object.entries(src)) {
+        const t = Number(ts) || 0;
+        if (!t) continue;
+        if (!merged.achievements[id] || t < merged.achievements[id]) merged.achievements[id] = t;
       }
     }
 
@@ -3573,6 +3593,7 @@
     const today = new Date();
     if (!sameDay(date, today)) return;
     checkStreakMilestone(habit);
+    checkAchievements();
     const scheduled = state.habits.filter((h) => isHabitActiveOn(h, today));
     if (scheduled.length === 0) return;
     const allDone = scheduled.every((h) => isCompleted(h, today));
@@ -5459,6 +5480,9 @@
     // Auto-generated insights feed + time-of-day breakdown
     renderInsightsFeed();
     renderTimeOfDay();
+    // Achievements (check for newly-earned, then render the grid)
+    checkAchievements();
+    renderAchievements();
     // 5-week heatmap
     renderReportHeatmap(habitsInScope);
     // Adherence trend line
@@ -5880,6 +5904,101 @@
         <span class="tod-label">${s.icon} ${s.label}</span>
         <span class="tod-bar"><span class="tod-fill${isBest ? " best" : ""}" style="width:${pct}%"></span></span>
         <span class="tod-pct">${pct}%</span>
+      </div>`;
+    }).join("");
+  }
+
+  /* ---- Achievements ---- */
+  function maxLongestStreak() {
+    let m = 0;
+    for (const h of state.habits) { if (h.archived) continue; const s = longestStreak(h); if (s > m) m = s; }
+    return m;
+  }
+  // Any fully-complete Mon-Sun week in the last ~16 weeks?
+  function hasPerfectWeek() {
+    const today = new Date();
+    for (let w = 1; w <= 16; w++) {
+      const ws = addDays(startOfWeekMonday(today), -7 * w);
+      let sched = 0, ok = true;
+      for (let i = 0; i < 7 && ok; i++) {
+        const d = addDays(ws, i);
+        for (const h of state.habits) {
+          if (h.archived) continue;
+          if (countsForAdherence(h, d)) { sched++; if (!isCompleted(h, d)) { ok = false; break; } }
+        }
+      }
+      if (ok && sched > 0) return true;
+    }
+    return false;
+  }
+
+  const ACHIEVEMENTS = [
+    { id: "first_checkin", icon: "👟", title: "First step", desc: "Log your first check-in", progress: () => ({ cur: totalCheckins(), target: 1 }) },
+    { id: "ten_checkins", icon: "🌱", title: "Warming up", desc: "10 check-ins", progress: () => ({ cur: totalCheckins(), target: 10 }) },
+    { id: "hundred_checkins", icon: "💯", title: "Century", desc: "100 check-ins", progress: () => ({ cur: totalCheckins(), target: 100 }) },
+    { id: "fivehundred_checkins", icon: "🏅", title: "Devoted", desc: "500 check-ins", progress: () => ({ cur: totalCheckins(), target: 500 }) },
+    { id: "streak_7", icon: "🔥", title: "Week warrior", desc: "A 7-day streak", progress: () => ({ cur: maxLongestStreak(), target: 7 }) },
+    { id: "streak_30", icon: "🗓️", title: "Monthly master", desc: "A 30-day streak", progress: () => ({ cur: maxLongestStreak(), target: 30 }) },
+    { id: "streak_100", icon: "🚀", title: "Unstoppable", desc: "A 100-day streak", progress: () => ({ cur: maxLongestStreak(), target: 100 }) },
+    { id: "perfect_day", icon: "✨", title: "Flawless day", desc: "One perfect day", progress: () => ({ cur: perfectDayCount(730) >= 1 ? 1 : 0, target: 1 }) },
+    { id: "perfect_day_10", icon: "🎯", title: "Perfectionist", desc: "10 perfect days", progress: () => ({ cur: Math.min(perfectDayCount(730), 10), target: 10 }) },
+    { id: "perfect_week", icon: "🏆", title: "Perfect week", desc: "Every habit, all week", progress: () => ({ cur: hasPerfectWeek() ? 1 : 0, target: 1 }) },
+    { id: "collector", icon: "🧩", title: "Habit builder", desc: "Track 5 habits", progress: () => ({ cur: state.habits.filter((h) => !h.archived).length, target: 5 }) },
+    { id: "reviewer", icon: "📋", title: "Reflective", desc: "Complete a weekly review", progress: () => ({ cur: state.reviews ? Object.keys(state.reviews).length : 0, target: 1 }) },
+  ];
+
+  function evaluateAchievements() {
+    return ACHIEVEMENTS.map((a) => {
+      const p = a.progress();
+      const unlocked = p.cur >= p.target;
+      return { def: a, unlocked, cur: Math.min(p.cur, p.target), target: p.target, earnedAt: state.achievements && state.achievements[a.id] };
+    });
+  }
+
+  // Persist any newly-earned achievements and celebrate them. Safe to call often
+  // — it only reacts to achievements not already recorded.
+  function checkAchievements() {
+    if (!state.achievements) state.achievements = {};
+    const now = Date.now();
+    const fresh = [];
+    for (const a of ACHIEVEMENTS) {
+      const p = a.progress();
+      if (p.cur >= p.target && !state.achievements[a.id]) {
+        state.achievements[a.id] = now;
+        fresh.push(a);
+      }
+    }
+    if (fresh.length === 0) return [];
+    // Browser-only side effects (guarded so the test sandbox can call this).
+    if (typeof document !== "undefined") {
+      saveNow();
+      if (fresh.length === 1) {
+        showToast(`${fresh[0].icon} Achievement unlocked: ${fresh[0].title}!`, "success");
+      } else {
+        showToast(`🎉 ${fresh.length} achievements unlocked!`, "success");
+      }
+      try { celebrate(true); } catch (e) {}
+    }
+    return fresh;
+  }
+
+  function renderAchievements() {
+    const card = $("#achievementsCard");
+    const wrap = $("#achievementsGrid");
+    const sub = $("#achievementsSub");
+    if (!card || !wrap) return;
+    const list = evaluateAchievements();
+    const earned = list.filter((a) => a.unlocked).length;
+    card.hidden = false;
+    if (sub) sub.textContent = `${earned} of ${list.length} unlocked`;
+    wrap.innerHTML = list.map((a) => {
+      const pct = a.target > 1 ? Math.round((a.cur / a.target) * 100) : (a.unlocked ? 100 : 0);
+      return `<div class="badge${a.unlocked ? " earned" : ""}" title="${escapeHtml(a.def.desc)}">
+        <span class="badge-icon">${a.def.icon}</span>
+        <span class="badge-title">${escapeHtml(a.def.title)}</span>
+        ${a.unlocked ? `<span class="badge-status">Unlocked</span>`
+          : `<span class="badge-progress"><span class="badge-progress-fill" style="width:${pct}%"></span></span>
+             <span class="badge-count">${a.cur}/${a.target}</span>`}
       </div>`;
     }).join("");
   }
@@ -7957,6 +8076,7 @@
       categoryMeta, getCategories,
       aiTodayInsight, weekdayAvgAdherence,
       buildInsights, timeOfDayStats, slotForHabit, perfectDayCount, totalCheckins,
+      evaluateAchievements, checkAchievements, maxLongestStreak, hasPerfectWeek,
       getState: () => state, setState: (s) => { state = s; },
     };
   }
