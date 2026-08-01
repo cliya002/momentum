@@ -907,9 +907,22 @@
         </label>
         <label>
           Frequency
+          <div class="freq-type" id="freqType" role="tablist">
+            <button type="button" class="freq-opt active" data-freq="days">Specific days</button>
+            <button type="button" class="freq-opt" data-freq="weekly">N times / week</button>
+          </div>
+        </label>
+        <div id="daysWrap">
           <div class="days-picker" id="daysPicker"></div>
           <small class="hint">Pick which days this habit should happen.</small>
-        </label>
+        </div>
+        <div id="weeklyWrap" class="hidden">
+          <label>
+            Times per week
+            <input type="number" id="habitWeeklyTarget" min="1" max="14" step="1" value="3" inputmode="numeric" />
+            <small class="hint">Do it any days — the streak counts weeks you hit this target.</small>
+          </label>
+        </div>
 
         <div class="advanced-block">
           <button type="button" id="advancedToggle" class="advanced-toggle"><span class="chevron">›</span> Advanced: different time per day</button>

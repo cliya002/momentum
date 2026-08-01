@@ -1726,6 +1726,38 @@ body.compact .habit-list { gap: 0.35rem; }
 }
 .days-picker button.selected { background: var(--primary); color: #fff; border-color: var(--primary); }
 
+/* Frequency-type toggle (Specific days vs N times/week) */
+.freq-type {
+  display: flex;
+  gap: 6px;
+  margin-top: 0.35rem;
+}
+.freq-opt {
+  flex: 1;
+  padding: 0.5rem 0;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--card-soft);
+  color: var(--text-dim);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.freq-opt.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+#weeklyWrap input[type="number"] { width: 100%; }
+
+/* Weekly progress chip on the Today row meta line */
+.weekly-chip {
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--card-soft);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.weekly-chip.on-pace { color: var(--success); border-color: var(--success); }
+
 .advanced-block { margin-bottom: 0.85rem; }
 .advanced-toggle {
   background: transparent; border: none; color: var(--primary);

@@ -717,6 +717,8 @@
       archived: !!h.archived,
       quit: !!h.quit,
       days: Array.isArray(h.days) && h.days.length ? h.days : [0,1,2,3,4,5,6],
+      freqType: h.freqType === "weekly" ? "weekly" : "days",
+      weeklyTarget: (function () { const n = Math.round(Number(h.weeklyTarget)); return n >= 1 && n <= 14 ? n : 3; })(),
       order: Number.isFinite(Number(h.order)) ? Number(h.order) : idx,
       createdAt: h.createdAt || new Date(now).toISOString(),
       updatedAt: Number(h.updatedAt) || now,
@@ -1126,8 +1128,34 @@
    * ================================================================ */
 
   function isHabitActiveOn(habit, date) {
+    if (habit.freqType === "weekly") return true; // eligible any day; quota tracked weekly
     if (!habit.days || habit.days.length === 0) return true;
     return habit.days.includes(date.getDay());
+  }
+
+  /* ---- Weekly-quota ("N times per week") helpers ---- */
+  function isWeekly(h) { return h && h.freqType === "weekly"; }
+  function weeklyTarget(h) { return Math.max(1, Math.round(Number(h.weeklyTarget)) || 1); }
+  function weeklyDoneCount(habit, refDate) {
+    const ws = startOfWeekMonday(refDate || new Date());
+    const today = new Date();
+    let done = 0;
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(ws, i);
+      if (d > today && !sameDay(d, today)) break;
+      if (isCompleted(habit, d)) done++;
+    }
+    return done;
+  }
+  function weeklyMet(habit, refDate) { return weeklyDoneCount(habit, refDate) >= weeklyTarget(habit); }
+  // Today-tab status: weekly habits read "done" once the weekly quota is met.
+  function todayStatus(habit, date) {
+    if (isWeekly(habit)) {
+      if (isCompleted(habit, date) || weeklyMet(habit, date)) return "done";
+      if (isSkipped(habit, date)) return "skipped";
+      return "pending";
+    }
+    return habitStatus(habit, date);
   }
 
   // The habit's time for a specific weekday — per-day override if set, else base.
@@ -1206,6 +1234,18 @@
   function currentStreak(habit) {
     if (streakCache.has(habit.id)) return streakCache.get(habit.id);
     let streak = 0;
+    if (isWeekly(habit)) {
+      // Weekly quota → streak counts consecutive weeks the target was met.
+      let ws = startOfWeekMonday(new Date());
+      for (let i = 0; i < 104; i++) {
+        if (weeklyDoneCount(habit, ws) >= weeklyTarget(habit)) streak++;
+        else if (i !== 0) break; // a past week missed the quota → stop
+        // current week not yet met → don't count, don't break (grace)
+        ws = addDays(ws, -7);
+      }
+      streakCache.set(habit.id, streak);
+      return streak;
+    }
     let d = new Date();
     for (let i = 0; i < 365; i++) {
       if (isHabitActiveOn(habit, d)) {
@@ -1311,6 +1351,19 @@
     let scheduled = 0, done = 0;
     for (const habit of state.habits) {
       if (habit.archived) continue;
+      if (isWeekly(habit)) {
+        // Count the week as `weeklyTarget` slots; credit completed days up to target.
+        const tgt = weeklyTarget(habit);
+        let wd = 0;
+        for (let i = 0; i < 7; i++) {
+          const d = addDays(weekStart, i);
+          if (d > now && !sameDay(d, now)) break;
+          if (isCompleted(habit, d)) wd++;
+        }
+        scheduled += tgt;
+        done += Math.min(wd, tgt);
+        continue;
+      }
       for (let i = 0; i < 7; i++) {
         const d = addDays(weekStart, i);
         if (d > now && !sameDay(d, now)) continue;
@@ -2475,6 +2528,10 @@
       iconPicker: $("#iconPicker"),
       colorPicker: $("#colorPicker"),
       daysPicker: $("#daysPicker"),
+      freqType: $("#freqType"),
+      daysWrap: $("#daysWrap"),
+      weeklyWrap: $("#weeklyWrap"),
+      habitWeeklyTarget: $("#habitWeeklyTarget"),
       habitNightPrevDay: $("#habitNightPrevDay"),
       habitNoPush: $("#habitNoPush"),
       habitQuit: $("#habitQuit"),
@@ -2813,9 +2870,9 @@
         if (ta !== tb) return ta - tb;
         return (a.order ?? 0) - (b.order ?? 0);
       };
-      const pending = list.filter((h) => habitStatus(h, today) === "pending").sort(byOrderTime);
-      const settled = list.filter((h) => habitStatus(h, today) !== "pending").sort(byOrderTime);
-      const doneCount = list.filter((h) => isCompleted(h, today)).length;
+      const pending = list.filter((h) => todayStatus(h, today) === "pending").sort(byOrderTime);
+      const settled = list.filter((h) => todayStatus(h, today) !== "pending").sort(byOrderTime);
+      const doneCount = list.filter((h) => todayStatus(h, today) === "done").length;
 
       // Fully-settled block → collapse into a single strip unless reopened.
       if (pending.length === 0 && settled.length > 0 && !reopenedDoneSections.has(part.id)) {
@@ -3117,7 +3174,10 @@
   function renderTodayItem(habit, date) {
     const li = document.createElement("li");
     li.className = "habit-item";
-    const status = habitStatus(habit, date); // "done" | "skipped" | "pending"
+    // Row/grouping status is weekly-aware; the +/- buttons act on today only.
+    const status = todayStatus(habit, date); // "done" | "skipped" | "pending"
+    const dayDone = isCompleted(habit, date);
+    const daySkipped = isSkipped(habit, date);
     if (status === "done") li.classList.add("done");
     if (status === "skipped") li.classList.add("not-done");
     const atRisk = isStreakAtRisk(habit, date);
@@ -3158,6 +3218,14 @@
       timeEl.className = "time-chip";
       timeEl.textContent = timeChip + ((habit.dayTimes && habit.dayTimes[date.getDay()]) ? " ✎" : "");
       meta.appendChild(timeEl);
+    }
+    if (isWeekly(habit)) {
+      const wd = weeklyDoneCount(habit, date);
+      const wt = weeklyTarget(habit);
+      const wc = document.createElement("span");
+      wc.className = "weekly-chip" + (wd >= wt ? " on-pace" : "");
+      wc.textContent = `${Math.min(wd, wt)}/${wt} this week`;
+      meta.appendChild(wc);
     }
     if (habit.quit && streak > 0) {
       const s = document.createElement("span");
@@ -3245,16 +3313,16 @@
     const minus = document.createElement("button");
     minus.className = "stepper-btn minus";
     minus.setAttribute("aria-label", `Mark ${habit.name} not done`);
-    if (status === "skipped") {
+    if (daySkipped) {
       minus.classList.add("active");
       minus.textContent = "✕";
     } else {
       minus.textContent = "−";
-      if (status === "pending") minus.classList.add("muted");
+      if (!dayDone) minus.classList.add("muted");
     }
     minus.addEventListener("click", (e) => {
       e.stopPropagation();
-      if (status === "skipped") {
+      if (daySkipped) {
         setCompletionValue(habit.id, date, 0);
         renderToday();
       } else {
@@ -3266,7 +3334,7 @@
     const plus = document.createElement("button");
     plus.className = "stepper-btn plus";
     plus.setAttribute("aria-label", `Mark ${habit.name} done`);
-    if (status === "done") {
+    if (dayDone) {
       plus.classList.add("done");
       plus.style.background = habit.color;
       plus.style.borderColor = habit.color;
@@ -3277,7 +3345,7 @@
     }
     plus.addEventListener("click", (e) => {
       e.stopPropagation();
-      if (status === "done") {
+      if (dayDone) {
         setCompletionValue(habit.id, date, 0);
         renderToday();
       } else {
@@ -3917,6 +3985,7 @@
     for (const h of state.habits) {
       if (h.archived) continue;
       if (!isHabitActiveOn(h, now)) continue;
+      if (isWeekly(h) && weeklyMet(h, now)) continue; // weekly quota already hit — no nagging
       for (const rt of habitReminderTimes(h, now)) {
         const [hh, mm] = rt.split(":").map(Number);
         if (inQuietHours(hh, mm)) continue;
@@ -4024,7 +4093,7 @@
     for (const h of state.habits) {
       if (h.archived) continue;
       if (!isHabitActiveOn(h, now)) continue;
-      if (habitStatus(h, now) !== "pending") continue; // already done/skipped
+      if (todayStatus(h, now) !== "pending") continue; // done/skipped or weekly quota met
       if (notified.has(h.id)) continue;                // already pinged today
       // Overdue if the earliest non-quiet reminder time has passed.
       const due = habitReminderTimes(h, now).some((rt) => {
@@ -4833,6 +4902,16 @@
   }
 
   /* ---- Habit modal ---- */
+  function applyFreqType(freq) {
+    const els = getEls();
+    const weekly = freq === "weekly";
+    els.freqType.querySelectorAll(".freq-opt").forEach((b) =>
+      b.classList.toggle("active", b.dataset.freq === freq));
+    els.daysWrap.classList.toggle("hidden", weekly);
+    els.weeklyWrap.classList.toggle("hidden", !weekly);
+    els.freqType.dataset.value = freq;
+  }
+
   function openHabitModal(habit) {
     const els = getEls();
     editingId = habit ? habit.id : null;
@@ -4911,6 +4990,14 @@
       els.daysPicker.appendChild(b);
     }
 
+    // Frequency type: "days" (specific weekdays) vs "weekly" (N times/week)
+    const freq = habit && habit.freqType === "weekly" ? "weekly" : "days";
+    els.habitWeeklyTarget.value = habit && habit.weeklyTarget ? habit.weeklyTarget : 3;
+    applyFreqType(freq);
+    els.freqType.querySelectorAll(".freq-opt").forEach((b) => {
+      b.onclick = () => applyFreqType(b.dataset.freq);
+    });
+
     // Advanced: per-day time overrides
     els.dayTimesGrid.innerHTML = "";
     const dt = (habit && habit.dayTimes) ? habit.dayTimes : {};
@@ -4946,6 +5033,10 @@
     const icon = els.iconPicker.querySelector(".selected")?.dataset.icon || ICONS[0];
     const color = els.colorPicker.querySelector(".selected")?.dataset.color || COLORS[0];
     const days = Array.from(els.daysPicker.querySelectorAll(".selected")).map((b) => Number(b.dataset.day));
+    const freqType = els.freqType.dataset.value === "weekly" ? "weekly" : "days";
+    let weeklyTargetVal = Math.round(Number(els.habitWeeklyTarget.value));
+    if (!Number.isFinite(weeklyTargetVal) || weeklyTargetVal < 1) weeklyTargetVal = 1;
+    if (weeklyTargetVal > 14) weeklyTargetVal = 14;
 
     let target = 1, unit = "", increment = 1;
     if (selectedType === "count") {
@@ -4977,6 +5068,8 @@
       quit: !!els.habitQuit.checked,
       notes: (els.habitNotes.value || "").trim().slice(0, 500),
       days: days.length ? days : [0,1,2,3,4,5,6],
+      freqType,
+      weeklyTarget: weeklyTargetVal,
       updatedAt: now,
     };
 
@@ -5021,17 +5114,33 @@
     for (const habit of habitsInScope) {
       let hs = 0, hd = 0;
       const cells = [];
-      for (let i = 0; i < 7; i++) {
-        const d = addDays(weekStart, i);
-        const isScheduled = isHabitActiveOn(habit, d);
-        const isFuture = d > now && !sameDay(d, now);
-        const done = isScheduled && isCompleted(habit, d);
-        const notDone = isScheduled && isSkipped(habit, d);
-        if (isScheduled && !isFuture) {
-          hs++; dayTotals[i].scheduled++;
-          if (done) { hd++; dayTotals[i].done++; }
+      if (isWeekly(habit)) {
+        // Weekly-quota habit: measure against the target, not weekdays.
+        // Cells still mark which days were completed, but don't feed dayTotals
+        // (day-of-week stats are meaningless for "any N days").
+        let wd = 0;
+        for (let i = 0; i < 7; i++) {
+          const d = addDays(weekStart, i);
+          const isFuture = d > now && !sameDay(d, now);
+          const done = isCompleted(habit, d);
+          if (done) wd++;
+          cells.push({ date: d, isScheduled: true, done, notDone: false, isFuture, weekly: true });
         }
-        cells.push({ date: d, isScheduled, done, notDone, isFuture });
+        hs = weeklyTarget(habit);
+        hd = Math.min(wd, hs);
+      } else {
+        for (let i = 0; i < 7; i++) {
+          const d = addDays(weekStart, i);
+          const isScheduled = isHabitActiveOn(habit, d);
+          const isFuture = d > now && !sameDay(d, now);
+          const done = isScheduled && isCompleted(habit, d);
+          const notDone = isScheduled && isSkipped(habit, d);
+          if (isScheduled && !isFuture) {
+            hs++; dayTotals[i].scheduled++;
+            if (done) { hd++; dayTotals[i].done++; }
+          }
+          cells.push({ date: d, isScheduled, done, notDone, isFuture });
+        }
       }
       scheduledCount += hs;
       completedCount += hd;
@@ -7251,6 +7360,7 @@
       restoreFromTrash, permanentDeleteFromTrash, deleteHabitById,
       fmtClockLabel, formatClock, timeFmt, timeChipLabel, applyBackup,
       clockFromTimeStr, habitFromTemplate,
+      isWeekly, weeklyTarget, weeklyDoneCount, weeklyMet, todayStatus, weekAdherencePct,
       getState: () => state, setState: (s) => { state = s; },
     };
   }
