@@ -2560,6 +2560,12 @@ body.compact .habit-list { gap: 0.35rem; }
 }
 .habit-search:focus { outline: 2px solid var(--primary); outline-offset: 1px; border-color: var(--primary); }
 
+/* Natural-language quick add */
+.quick-add { display: flex; gap: 0.5rem; margin-bottom: 0.6rem; }
+.quick-add-input { flex: 1; padding: 0.6rem 0.9rem; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-2); }
+.quick-add-input:focus { outline: 2px solid var(--primary); outline-offset: 1px; border-color: var(--primary); }
+.quick-add-btn { flex-shrink: 0; white-space: nowrap; }
+
 /* Report heatmap */
 .heatmap { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
 .hm-cell { aspect-ratio: 1; border-radius: 4px; background: var(--card-soft); }

@@ -2694,6 +2694,8 @@
       habitsGroups: $("#habitsGroups"),
       habitsEmpty: $("#habitsEmpty"),
       habitSearch: $("#habitSearch"),
+      quickAddForm: $("#quickAddForm"),
+      quickAddInput: $("#quickAddInput"),
       bulkToggleBtn: $("#bulkToggleBtn"),
       bulkBar: $("#bulkBar"),
       bulkCount: $("#bulkCount"),
@@ -5370,6 +5372,104 @@
       if (/^\d{2}:\d{2}$/.test(inp.value) && !out.includes(inp.value)) out.push(inp.value);
     });
     return out.sort();
+  }
+
+  /* ---- Natural-language quick-add ---- */
+  // Parse "meditate 10 min every morning" into a habit draft. Pure + tested.
+  function parseQuickAdd(text) {
+    const raw = (text || "").trim();
+    if (!raw) return null;
+    const pad = (n) => String(n).padStart(2, "0");
+    let s = " " + raw.toLowerCase() + " ";
+    const res = { name: "", days: null, freqType: "days", weeklyTarget: 3, time: "", reminderTime: "", type: "check", target: 1, unit: "", increment: 1, quit: false };
+
+    // Quit intent (starts with no/quit/stop/avoid)
+    const qm = raw.toLowerCase().match(/^(no|quit|stop|avoid|give up)\b/);
+    if (qm) res.quit = true;
+
+    // Clock time (am/pm, or "at HH:MM")
+    let m = s.match(/\b(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)\b/);
+    if (m) {
+      let hr = +m[1]; const mn = m[2] ? +m[2] : 0; const pm = /p/.test(m[3]);
+      if (pm && hr < 12) hr += 12; if (!pm && hr === 12) hr = 0;
+      res.reminderTime = pad(hr) + ":" + pad(mn); s = s.replace(m[0], " ");
+    } else {
+      m = s.match(/\bat\s+(\d{1,2}):(\d{2})\b/);
+      if (m) { res.reminderTime = pad(+m[1]) + ":" + pad(+m[2]); s = s.replace(m[0], " "); }
+    }
+
+    // Part of day
+    const partMap = [["morning", "Morning", "08:00"], ["afternoon", "Afternoon", "14:00"], ["evening", "Evening", "19:00"], ["night", "Night", "21:00"], ["noon", "Afternoon", "12:00"]];
+    for (const [word, label, def] of partMap) {
+      const re = new RegExp("\\b(?:in the |every |each )?" + word + "s?\\b");
+      if (re.test(s)) { res.time = res.time || label; if (!res.reminderTime) res.reminderTime = def; s = s.replace(re, " "); }
+    }
+
+    // N times per week
+    m = s.match(/\b(\d+)\s*(?:x|times?)\s*(?:a|per|\/)\s*week\b/);
+    if (m) { res.freqType = "weekly"; res.weeklyTarget = Math.min(14, Math.max(1, +m[1])); s = s.replace(m[0], " "); }
+
+    // Weekday / weekend / everyday
+    if (/\bweekdays?\b/.test(s)) { res.days = [1, 2, 3, 4, 5]; s = s.replace(/\b(?:on\s+)?weekdays?\b/g, " "); }
+    if (/\bweekends?\b/.test(s)) { res.days = [0, 6]; s = s.replace(/\b(?:on\s+)?weekends?\b/g, " "); }
+    if (/\b(?:every\s?day|daily|everyday)\b/.test(s)) { res.days = [0, 1, 2, 3, 4, 5, 6]; s = s.replace(/\b(?:every\s?day|daily|everyday)\b/g, " "); }
+
+    // Specific weekday names
+    const dayNames = { sunday: 0, sun: 0, monday: 1, mon: 1, tuesday: 2, tues: 2, tue: 2, wednesday: 3, weds: 3, wed: 3, thursday: 4, thurs: 4, thur: 4, thu: 4, friday: 5, fri: 5, saturday: 6, sat: 6 };
+    const foundDays = new Set();
+    for (const [name, idx] of Object.entries(dayNames)) {
+      const re = new RegExp("\\b" + name + "\\b", "g");
+      if (re.test(s)) { foundDays.add(idx); s = s.replace(new RegExp("\\b" + name + "\\b", "g"), " "); }
+    }
+    if (foundDays.size) res.days = [...foundDays].sort();
+
+    // Count amount: number + unit
+    const unitMap = { min: "min", mins: "min", minute: "min", minutes: "min", l: "L", litre: "L", litres: "L", liter: "L", liters: "L", g: "g", gram: "g", grams: "g", step: "steps", steps: "steps", page: "pages", pages: "pages", rep: "reps", reps: "reps", oz: "oz", ml: "ml", cup: "cups", cups: "cups", glass: "glasses", glasses: "glasses", km: "km", mile: "miles", miles: "miles" };
+    m = s.match(/\b(\d+(?:\.\d+)?)\s*(mins?|minutes?|l|litres?|liters?|g|grams?|steps?|pages?|reps?|oz|ml|cups?|glass(?:es)?|km|miles?)\b/);
+    if (m) {
+      res.type = "count"; res.target = +m[1]; res.unit = unitMap[m[2]] || m[2];
+      res.increment = res.unit === "L" ? 0.5 : res.unit === "steps" ? 1000 : res.unit === "min" ? 5 : res.unit === "g" ? 10 : res.unit === "pages" ? 5 : 1;
+      s = s.replace(m[0], " ");
+    }
+
+    // Strip filler + leading quit words → habit name
+    s = s.replace(/\b(every|each|at|a|an|the|per|on|of|in|for|to|do|my|some)\b/g, " ");
+    s = s.replace(/^\s*(no|quit|stop|avoid|give up)\s+/, " ");
+    s = s.replace(/\s+/g, " ").trim();
+    res.name = s ? s.charAt(0).toUpperCase() + s.slice(1) : "";
+    return res;
+  }
+
+  // Open the habit modal pre-filled from a natural-language draft.
+  function quickAddHabit(text) {
+    const p = parseQuickAdd(text);
+    if (!p || !p.name) { showToast("Try something like \"Meditate 10 min every morning\".", "warn"); return; }
+    openHabitModal(null);
+    const els = getEls();
+    els.habitName.value = p.name;
+    // Type
+    const type = p.type === "count" ? "count" : "check";
+    els.typePicker.querySelectorAll(".type-btn").forEach((b) => b.classList.toggle("selected", b.dataset.type === type));
+    els.countFields.classList.toggle("hidden", type !== "count");
+    if (type === "count") {
+      els.habitTarget.value = p.target;
+      els.habitUnit.value = p.unit;
+      els.habitIncrement.value = p.increment;
+    }
+    if (p.time) els.habitTime.value = p.time;
+    if (p.reminderTime) renderReminderTimeInputs([p.reminderTime]);
+    els.habitQuit.checked = !!p.quit;
+    // Frequency
+    if (p.freqType === "weekly") {
+      els.habitWeeklyTarget.value = p.weeklyTarget;
+      applyFreqType("weekly");
+    } else if (p.days) {
+      applyFreqType("days");
+      els.daysPicker.querySelectorAll("button").forEach((b) => {
+        b.classList.toggle("selected", p.days.includes(Number(b.dataset.day)));
+      });
+    }
+    showToast("Review and save your habit.", "success");
   }
 
   /* ---- Habit modal ---- */
@@ -8503,6 +8603,13 @@
 
     // Habits
     els.habitSearch.addEventListener("input", () => { habitSearchTerm = els.habitSearch.value; renderHabits(); });
+    if (els.quickAddForm) els.quickAddForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const v = els.quickAddInput.value;
+      if (!v.trim()) return;
+      quickAddHabit(v);
+      els.quickAddInput.value = "";
+    });
     els.bulkToggleBtn.addEventListener("click", () => setBulkMode(!bulkMode));
     els.bulkMoveBtn.addEventListener("click", bulkMoveSelected);
     els.bulkDeleteBtn.addEventListener("click", bulkDeleteSelected);
@@ -8890,7 +8997,7 @@
       categoryMeta, getCategories,
       aiTodayInsight, weekdayAvgAdherence,
       buildInsights, timeOfDayStats, slotForHabit, perfectDayCount, totalCheckins, habitPairInsight,
-      yearHeatmapCells, dayAdherenceBucket, moodTrendData,
+      yearHeatmapCells, dayAdherenceBucket, moodTrendData, parseQuickAdd,
       evaluateAchievements, checkAchievements, maxLongestStreak, hasPerfectWeek,
       setMood, moodCompletionInsight, fireStackCues,
       buildMonthCalendar, timeAgo,
