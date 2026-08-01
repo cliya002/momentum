@@ -3274,10 +3274,16 @@
     if (habit.type !== "count") return null;
     const inc = habit.increment == null ? 1 : Number(habit.increment);
     const tgt = Number(habit.target);
-    if (inc !== 1 || !Number.isInteger(tgt) || tgt < 2 || tgt > 12) return null;
+    if (!Number.isInteger(tgt) || tgt < 2 || tgt > 12) return null;
     const times = (habit.reminderTimes && habit.reminderTimes.length)
       ? habit.reminderTimes.filter((t) => /^\d{2}:\d{2}$/.test(t)).slice().sort()
       : [];
+    // Treat as per-dose ("N times a day") when the step is 1, OR when the
+    // reminder times line up with the target (e.g. 2 reminders + target 2 —
+    // even if the step size was left at 2). Measurable counts like Water 4 L
+    // (fractional step, no per-time reminders) keep the +/- stepper.
+    const eligible = inc === 1 || times.length === tgt;
+    if (!eligible) return null;
     const slots = [];
     for (let i = 0; i < tgt; i++) {
       const time = i < times.length ? times[i] : null;

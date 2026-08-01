@@ -31,10 +31,17 @@ console.log("doseSlots eligibility");
   assert(s && s.length === 3 && s[0].time === null, "no reminders → slots with null times");
 }
 
+console.log("doseSlots — step size 2 but 2 reminders (the reported case)");
+{
+  const s = T.doseSlots({ type: "count", target: 2, increment: 2, reminderTimes: ["08:00", "21:00"] }, 1);
+  assert(Array.isArray(s) && s.length === 2, "step 2 + 2 reminders + target 2 → still 2 dose rows");
+  assert(s[0].partId === "morning" && s[1].partId === "night", "morning + night slots");
+}
+
 console.log("doseSlots exclusions");
 {
   assert(T.doseSlots({ type: "check", target: 1 }, 1) === null, "check habit → null");
-  assert(T.doseSlots({ type: "count", target: 4, increment: 0.5 }, 1) === null, "measurable (Water 4L, step 0.5) → null");
+  assert(T.doseSlots({ type: "count", target: 4, increment: 0.5 }, 1) === null, "measurable (Water 4L, step 0.5, no per-time reminders) → null");
   assert(T.doseSlots({ type: "count", target: 10000, increment: 1000 }, 1) === null, "steps → null");
   assert(T.doseSlots({ type: "count", target: 1, increment: 1 }, 1) === null, "target 1 → null");
   assert(T.doseSlots({ type: "count", target: 20, increment: 1 }, 1) === null, "target > 12 → null");
