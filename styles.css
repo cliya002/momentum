@@ -1670,6 +1670,22 @@ body.compact .habit-list { gap: 0.35rem; }
 .rh-hint { grid-column: 2 / 4; font-size: 0.72rem; color: var(--text-dim); }
 .rh-row.rh-warn { border-color: var(--warning, #f59e0b); }
 .rh-row.rh-bad { border-color: var(--danger); }
+
+/* Smart reminder timing suggestions */
+.smart-timing { margin-top: 0.6rem; display: flex; flex-direction: column; gap: 0.4rem; }
+.st-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.65rem;
+  background: var(--card-soft);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.st-name { font-size: 0.85rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-info { font-size: 0.8rem; color: var(--text-dim); white-space: nowrap; }
+.st-apply { padding: 0.3rem 0.7rem; font-size: 0.8rem; }
 .quiet-row input { flex: 1; }
 
 .ios-note {

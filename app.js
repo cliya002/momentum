@@ -579,6 +579,8 @@
       vacation: { start: null, end: null, note: "", updatedAt: 0 },
       // Per-week keystone focus habit: weekKey -> habitId
       keystone: {},
+      // Smart reminder timing: habitId -> { samples: [minSinceMidnight,…], updatedAt }
+      completionClock: {},
     };
   }
 
@@ -953,6 +955,15 @@
         if (typeof id === "string" && id) st.keystone[wk] = id;
       }
     }
+    // Smart-timing completion clock samples.
+    st.completionClock = {};
+    if (s.completionClock && typeof s.completionClock === "object") {
+      for (const [id, rec] of Object.entries(s.completionClock)) {
+        if (!rec || typeof rec !== "object" || !Array.isArray(rec.samples)) continue;
+        const samples = rec.samples.map(Number).filter((n) => Number.isFinite(n) && n >= 0 && n < 1440).slice(-50);
+        if (samples.length) st.completionClock[id] = { samples, updatedAt: Number(rec.updatedAt) || 0 };
+      }
+    }
     return st;
   }
 
@@ -1242,6 +1253,16 @@
     merged.keystone = {};
     for (const src of [remote.keystone || {}, local.keystone || {}]) {
       for (const [wk, id] of Object.entries(src)) if (id) merged.keystone[wk] = id;
+    }
+
+    // Completion clock: per habit, newest updatedAt wins (avoids double-counting).
+    merged.completionClock = {};
+    for (const src of [local.completionClock || {}, remote.completionClock || {}]) {
+      for (const [id, rec] of Object.entries(src)) {
+        if (!rec || !Array.isArray(rec.samples)) continue;
+        const ex = merged.completionClock[id];
+        if (!ex || (Number(rec.updatedAt) || 0) > (Number(ex.updatedAt) || 0)) merged.completionClock[id] = rec;
+      }
     }
 
     return merged;
@@ -2807,6 +2828,8 @@
       testReminderBtn: $("#testReminderBtn"),
       reminderHealthBtn: $("#reminderHealthBtn"),
       reminderHealth: $("#reminderHealth"),
+      smartTimingBtn: $("#smartTimingBtn"),
+      smartTiming: $("#smartTiming"),
       quietStart: $("#quietStart"),
       quietEnd: $("#quietEnd"),
       morningDigest: $("#morningDigest"),
@@ -3741,6 +3764,7 @@
   function maybeCelebrate(habit, date) {
     const today = new Date();
     if (!sameDay(date, today)) return;
+    recordCompletionClock(habit.id, date);
     checkStreakMilestone(habit);
     checkAchievements();
     fireStackCues(habit, date);
@@ -5676,6 +5700,90 @@
         els.vacationStatus.hidden = true;
       }
     }
+  }
+
+  /* ---- Smart reminder timing ---- */
+  // Record the clock time a habit was completed (today only), so we can learn
+  // when it actually gets done and suggest a better reminder time.
+  function recordCompletionClock(habitId, date) {
+    if (!sameDay(date, new Date())) return;
+    const now = new Date();
+    const min = now.getHours() * 60 + now.getMinutes();
+    if (!state.completionClock) state.completionClock = {};
+    const rec = state.completionClock[habitId] || { samples: [], updatedAt: 0 };
+    rec.samples = rec.samples.concat(min).slice(-50);
+    rec.updatedAt = Date.now();
+    state.completionClock[habitId] = rec;
+    if (typeof document !== "undefined") save(); // persist (guarded for test sandbox)
+  }
+  function median(nums) {
+    if (!nums.length) return null;
+    const s = nums.slice().sort((a, b) => a - b);
+    const mid = Math.floor(s.length / 2);
+    return s.length % 2 ? s[mid] : Math.round((s[mid - 1] + s[mid]) / 2);
+  }
+  // Suggest a reminder "HH:MM" from the median completion time; null if too few
+  // samples. Rounds to the nearest 5 minutes.
+  function suggestReminderTime(habitId) {
+    const rec = state.completionClock && state.completionClock[habitId];
+    if (!rec || rec.samples.length < 5) return null;
+    let m = median(rec.samples);
+    if (m == null) return null;
+    m = Math.round(m / 5) * 5;
+    return String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
+  }
+  // Habits whose usual completion time differs from their reminder by > 45 min.
+  function smartTimingSuggestions() {
+    const out = [];
+    for (const h of state.habits) {
+      if (h.archived) continue;
+      const sug = suggestReminderTime(h.id);
+      if (!sug) continue;
+      const cur = (h.reminderTimes && h.reminderTimes[0]) || h.reminderTime || "";
+      if (!/^\d{2}:\d{2}$/.test(cur)) {
+        out.push({ habit: h, suggested: sug, current: "", diff: 999 });
+        continue;
+      }
+      const [ch, cm] = cur.split(":").map(Number);
+      const [sh, sm] = sug.split(":").map(Number);
+      const diff = Math.abs((sh * 60 + sm) - (ch * 60 + cm));
+      if (diff >= 45) out.push({ habit: h, suggested: sug, current: cur, diff });
+    }
+    return out.sort((a, b) => b.diff - a.diff);
+  }
+  function applySmartTime(habitId, hhmm) {
+    const h = state.habits.find((x) => x.id === habitId);
+    if (!h || !/^\d{2}:\d{2}$/.test(hhmm)) return;
+    h.reminderTimes = [hhmm];
+    h.reminderTime = hhmm;
+    h.updatedAt = Date.now();
+    save();
+    scheduleReminders();
+    renderSmartTiming();
+    showToast(`${h.icon || "⏰"} ${h.name} reminder moved to ${fmtClockLabel(hhmm)}.`, "success");
+  }
+  function renderSmartTiming() {
+    const el = getEls().smartTiming;
+    if (!el) return;
+    const sugg = smartTimingSuggestions();
+    if (sugg.length === 0) {
+      el.innerHTML = `<p class="empty-inline">No suggestions yet. Momentum learns when you actually complete habits and will suggest better reminder times here.</p>`;
+      return;
+    }
+    el.innerHTML = sugg.map((s) =>
+      `<div class="st-row">
+        <span class="st-name">${escapeHtml((s.habit.icon || "•") + " " + s.habit.name)}</span>
+        <span class="st-info">${s.current ? "now " + escapeHtml(fmtClockLabel(s.current)) + " → " : "set "}<b>${escapeHtml(fmtClockLabel(s.suggested))}</b></span>
+        <button type="button" class="btn-secondary st-apply" data-id="${escapeHtml(s.habit.id)}" data-t="${escapeHtml(s.suggested)}">Use</button>
+      </div>`
+    ).join("");
+    el.querySelectorAll(".st-apply").forEach((b) =>
+      b.addEventListener("click", () => applySmartTime(b.dataset.id, b.dataset.t)));
+  }
+  function toggleSmartTiming() {
+    const el = getEls().smartTiming;
+    if (!el) return;
+    if (el.hidden) { el.hidden = false; renderSmartTiming(); } else { el.hidden = true; }
   }
 
   /* ---- Daily mood / energy quick-log ---- */
@@ -8338,6 +8446,7 @@
     });
     els.testReminderBtn.addEventListener("click", testReminder);
     if (els.reminderHealthBtn) els.reminderHealthBtn.addEventListener("click", toggleReminderHealth);
+    if (els.smartTimingBtn) els.smartTimingBtn.addEventListener("click", toggleSmartTiming);
     if (els.vacationSaveBtn) els.vacationSaveBtn.addEventListener("click", () => {
       const s = els.vacationStart.value, e = els.vacationEnd.value;
       if (!s || !e) { showToast("Pick both a start and end date.", "warn"); return; }
@@ -8597,6 +8706,7 @@
       setMood, moodCompletionInsight, fireStackCues,
       buildMonthCalendar, timeAgo,
       inVacation, vacationActiveNow, setVacation, clearVacation,
+      recordCompletionClock, suggestReminderTime, smartTimingSuggestions,
       getState: () => state, setState: (s) => { state = s; },
     };
   }
