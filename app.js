@@ -3245,6 +3245,30 @@
     return [dayPartFor(habit, dayIdx)];
   }
 
+  // A "times per day" habit (integer count, step 1, target 2-12) is shown as
+  // one tickable row PER dose. Returns the dose slots, or null for normal habits.
+  function doseSlots(habit, dayIdx) {
+    if (habit.type !== "count") return null;
+    const inc = habit.increment == null ? 1 : Number(habit.increment);
+    const tgt = Number(habit.target);
+    if (inc !== 1 || !Number.isInteger(tgt) || tgt < 2 || tgt > 12) return null;
+    const times = (habit.reminderTimes && habit.reminderTimes.length)
+      ? habit.reminderTimes.filter((t) => /^\d{2}:\d{2}$/.test(t)).slice().sort()
+      : [];
+    const slots = [];
+    for (let i = 0; i < tgt; i++) {
+      const time = i < times.length ? times[i] : null;
+      const partId = time ? dayPartForTime(time) : dayPartFor(habit, dayIdx);
+      slots.push({ i, total: tgt, time, partId });
+    }
+    return slots;
+  }
+  // Status of a single dose slot for the day: "done" | "skipped" | "pending".
+  function doseStatus(habit, date, i) {
+    if (isSkipped(habit, date)) return "skipped";
+    return completionValue(habit.id, date) > i ? "done" : "pending";
+  }
+
   // Which day part is "now" (for the highlight).
   function currentDayPartId() {
     const now = new Date();
@@ -3389,30 +3413,39 @@
     // Night habits, attributed to the correct night (last night or tonight).
     renderLastNightGroup(nightActive, nightDate, els, nightIsPrev);
 
-    // Bucket habits into day parts (multi-reminder habits land in each part).
+    // Bucket entries into day parts. An entry is a normal habit ({h,slot:null})
+    // or one dose of a "times per day" habit ({h,slot:{i,time,…}}). Multi-time
+    // habits therefore appear once per dose, each in its own part.
     const buckets = new Map(DAY_PARTS.map((p) => [p.id, []]));
     const todayIdx = today.getDay();
     for (const h of active) {
-      for (const pid of dayPartsForHabit(h, todayIdx)) {
-        (buckets.get(pid) || buckets.get("anytime")).push(h);
+      const slots = doseSlots(h, todayIdx);
+      if (slots) {
+        for (const s of slots) (buckets.get(s.partId) || buckets.get("anytime")).push({ h, slot: s });
+      } else {
+        for (const pid of dayPartsForHabit(h, todayIdx)) (buckets.get(pid) || buckets.get("anytime")).push({ h, slot: null });
       }
     }
     const nowPart = currentDayPartId();
+
+    const entryStatus = (e) => e.slot ? doseStatus(e.h, today, e.slot.i) : todayStatus(e.h, today);
+    const entryTime = (e) => {
+      if (e.slot && e.slot.time) return parseTimeToMinutes(e.slot.time) ?? 9999;
+      return parseTimeToMinutes(effectiveTime(e.h, todayIdx)) ?? 9999;
+    };
 
     for (const part of DAY_PARTS) {
       const list = buckets.get(part.id);
       if (!list || list.length === 0) continue;
 
-      const tIdx = today.getDay();
       const byOrderTime = (a, b) => {
-        const ta = parseTimeToMinutes(effectiveTime(a, tIdx)) ?? 9999;
-        const tb = parseTimeToMinutes(effectiveTime(b, tIdx)) ?? 9999;
+        const ta = entryTime(a), tb = entryTime(b);
         if (ta !== tb) return ta - tb;
-        return (a.order ?? 0) - (b.order ?? 0);
+        return (a.h.order ?? 0) - (b.h.order ?? 0);
       };
-      const pending = list.filter((h) => todayStatus(h, today) === "pending").sort(byOrderTime);
-      const settled = list.filter((h) => todayStatus(h, today) !== "pending").sort(byOrderTime);
-      const doneCount = list.filter((h) => todayStatus(h, today) === "done").length;
+      const pending = list.filter((e) => entryStatus(e) === "pending").sort(byOrderTime);
+      const settled = list.filter((e) => entryStatus(e) !== "pending").sort(byOrderTime);
+      const doneCount = list.filter((e) => entryStatus(e) === "done").length;
 
       // Fully-settled block → collapse into a single strip unless reopened.
       if (pending.length === 0 && settled.length > 0 && !reopenedDoneSections.has(part.id)) {
@@ -3448,10 +3481,11 @@
         markAll.title = "Mark all pending in this block as done";
         markAll.addEventListener("click", (e) => {
           e.stopPropagation();
-          const lastHabit = pending[pending.length - 1];
-          for (const h of pending) setCompletionValue(h.id, today, h.target);
+          const lastHabit = pending[pending.length - 1].h;
+          const seen = new Set();
+          for (const en of pending) { if (seen.has(en.h.id)) continue; seen.add(en.h.id); setCompletionValue(en.h.id, today, en.h.target); }
           renderToday();
-          showToast(`Marked ${pending.length} done.`, "success");
+          showToast(`Marked ${seen.size} done.`, "success");
           if (lastHabit) maybeCelebrate(lastHabit, today);
         });
         right.appendChild(markAll);
@@ -3464,12 +3498,12 @@
       heading.appendChild(right);
       wrap.appendChild(heading);
 
-      // Pending items (drag-reorderable)
+      // Pending items (drag-reorderable — dose rows aren't reorderable)
       const ul = document.createElement("ul");
       ul.className = "habit-list";
       ul.dataset.part = part.id;
-      for (const habit of pending) ul.appendChild(renderTodayItem(habit, today, part.id));
-      enableReorder(ul, pending, today);
+      for (const en of pending) ul.appendChild(en.slot ? renderDoseItem(en.h, today, en.slot) : renderTodayItem(en.h, today, part.id));
+      enableReorder(ul, pending.filter((e) => !e.slot).map((e) => e.h), today);
       wrap.appendChild(ul);
 
       // Collapsible completed/skipped items
@@ -3492,7 +3526,7 @@
         if (isOpen) {
           const cul = document.createElement("ul");
           cul.className = "habit-list completed-list";
-          for (const habit of settled) cul.appendChild(renderTodayItem(habit, today, part.id));
+          for (const en of settled) cul.appendChild(en.slot ? renderDoseItem(en.h, today, en.slot) : renderTodayItem(en.h, today, part.id));
           fold.appendChild(cul);
         }
         wrap.appendChild(fold);
@@ -3769,6 +3803,71 @@
       `<span class="leg"><span class="leg-num">${done}</span>Done</span>` +
       `<span class="leg"><span class="leg-num">${pending}</span>Pending</span>` +
       `<span class="leg"><span class="leg-num">${skipped}</span>Not done</span>`;
+  }
+
+  // A single dose row for a "times per day" habit (e.g. dose 2 of 2 at 8:00 PM).
+  // Ticking fills this dose (and earlier ones); un-ticking clears it and later.
+  function renderDoseItem(habit, date, slot) {
+    const li = document.createElement("li");
+    li.className = "habit-item dose-item";
+    const st = doseStatus(habit, date, slot.i);
+    const done = st === "done";
+    if (done) li.classList.add("done");
+    if (st === "skipped") li.classList.add("not-done");
+    li.dataset.habitId = habit.id;
+
+    const icon = document.createElement("div");
+    icon.className = "habit-icon";
+    icon.style.background = habit.color;
+    icon.textContent = habit.icon;
+
+    const info = document.createElement("div");
+    info.className = "habit-info";
+    const name = document.createElement("div");
+    name.className = "habit-name";
+    name.textContent = habit.name;
+    info.appendChild(name);
+    const meta = document.createElement("div");
+    meta.className = "habit-meta";
+    if (slot.time) {
+      const t = document.createElement("span");
+      t.className = "time-chip";
+      t.textContent = fmtClockLabel(slot.time);
+      meta.appendChild(t);
+    }
+    const dchip = document.createElement("span");
+    dchip.className = "dose-chip";
+    dchip.textContent = `dose ${slot.i + 1} of ${slot.total}`;
+    meta.appendChild(dchip);
+    info.appendChild(meta);
+    info.addEventListener("click", () => openHabitDetail(habit));
+
+    const controls = document.createElement("div");
+    controls.className = "count-controls";
+    const btn = document.createElement("button");
+    btn.className = "stepper-btn plus" + (done ? " done" : "");
+    btn.setAttribute("aria-label", (done ? "Undo " : "Mark done ") + habit.name + " dose " + (slot.i + 1));
+    if (done) {
+      btn.style.background = habit.color; btn.style.borderColor = habit.color; btn.style.color = "#fff";
+      btn.textContent = "✓";
+    } else {
+      btn.textContent = "+";
+    }
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const cur = completionValue(habit.id, date);
+      const wasDone = cur >= habit.target;
+      const next = done ? slot.i : slot.i + 1;
+      setCompletionValue(habit.id, date, next);
+      renderToday();
+      if (!wasDone && next >= habit.target) maybeCelebrate(habit, date);
+    });
+    controls.appendChild(btn);
+
+    li.appendChild(icon);
+    li.appendChild(info);
+    li.appendChild(controls);
+    return li;
   }
 
   function renderTodayItem(habit, date, partId) {
@@ -9591,7 +9690,7 @@
       fmtClockLabel, formatClock, timeFmt, timeChipLabel, applyBackup,
       clockFromTimeStr, habitFromTemplate,
       isWeekly, weeklyTarget, weeklyDoneCount, weeklyMet, todayStatus, weekAdherencePct,
-      dayPartsForHabit, dayPartForTime, isAutoTimeSummary,
+      dayPartsForHabit, dayPartForTime, isAutoTimeSummary, doseSlots, doseStatus,
       weekKeyOf, computeWeekReview, reviewTargetWeek,
       categoryMeta, getCategories,
       aiTodayInsight, weekdayAvgAdherence,
