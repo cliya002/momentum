@@ -581,6 +581,8 @@
       keystone: {},
       // Smart reminder timing: habitId -> { samples: [minSinceMidnight,…], updatedAt }
       completionClock: {},
+      // Recent activity log: [{ ts, type, text }] (newest first, capped)
+      activity: [],
     };
   }
 
@@ -964,6 +966,16 @@
         if (samples.length) st.completionClock[id] = { samples, updatedAt: Number(rec.updatedAt) || 0 };
       }
     }
+    // Recent activity log.
+    st.activity = [];
+    if (Array.isArray(s.activity)) {
+      for (const a of s.activity) {
+        if (!a || typeof a !== "object" || !a.ts) continue;
+        st.activity.push({ ts: Number(a.ts) || 0, type: String(a.type || "").slice(0, 20), text: String(a.text || "").slice(0, 140) });
+      }
+      st.activity.sort((a, b) => b.ts - a.ts);
+      st.activity = st.activity.slice(0, 50);
+    }
     return st;
   }
 
@@ -1265,6 +1277,18 @@
       }
     }
 
+    // Activity log: union, dedup by ts+text, newest 50.
+    const actSeen = new Set();
+    const acts = [];
+    for (const a of [...(local.activity || []), ...(remote.activity || [])]) {
+      if (!a || !a.ts) continue;
+      const key = a.ts + "|" + a.text;
+      if (actSeen.has(key)) continue;
+      actSeen.add(key); acts.push(a);
+    }
+    acts.sort((a, b) => b.ts - a.ts);
+    merged.activity = acts.slice(0, 50);
+
     return merged;
   }
 
@@ -1560,6 +1584,7 @@
     }
     if (!state.trash) state.trash = [];
     state.trash.push({ habit, completions: snap, trashedAt: Date.now() });
+    if (typeof logActivity === "function") logActivity("delete", `Deleted ${habit.icon || "•"} ${habit.name}`);
     state.habits = state.habits.filter((h) => h.id !== id);
     for (const day of Object.keys(state.completions)) {
       if (state.completions[day][id] != null) {
@@ -1820,6 +1845,7 @@
       state.completionsUpdatedAt[day] = Date.now();
     }
     state.trash.splice(idx, 1);
+    if (typeof logActivity === "function") logActivity("restore", `Restored ${h.icon || "•"} ${h.name}`);
     save();
     if (typeof scheduleReminders === "function") scheduleReminders();
     return true;
@@ -2834,6 +2860,8 @@
       reminderHealth: $("#reminderHealth"),
       smartTimingBtn: $("#smartTimingBtn"),
       smartTiming: $("#smartTiming"),
+      activityLogBtn: $("#activityLogBtn"),
+      activityLog: $("#activityLog"),
       quietStart: $("#quietStart"),
       quietEnd: $("#quietEnd"),
       morningDigest: $("#morningDigest"),
@@ -5192,6 +5220,20 @@
     setBulkMode(false);
   }
 
+  // Habit currently being dragged between category groups (Habits tab).
+  let draggingHabitId = null;
+  function moveHabitToCategory(id, cat) {
+    const h = state.habits.find((x) => x.id === id);
+    if (!h || h.category === cat) return;
+    const from = h.category;
+    h.category = cat;
+    h.updatedAt = Date.now();
+    logActivity("move", `Moved ${h.icon || "•"} ${h.name} to ${cat}`);
+    save();
+    renderHabits();
+    showToast(`Moved "${h.name}" from ${from} to ${cat}.`, "success");
+  }
+
   function renderHabits() {
     const els = getEls();
     els.habitsGroups.innerHTML = "";
@@ -5247,6 +5289,19 @@
       const list = groupMap.get(cat);
       if (!list || list.length === 0) continue;
       const wrap = document.createElement("div");
+      wrap.className = "cat-drop";
+      // Drop target: dragging a habit here moves it to this category.
+      wrap.addEventListener("dragover", (e) => {
+        if (!draggingHabitId) return;
+        e.preventDefault();
+        wrap.classList.add("drop-over");
+      });
+      wrap.addEventListener("dragleave", () => wrap.classList.remove("drop-over"));
+      wrap.addEventListener("drop", (e) => {
+        e.preventDefault();
+        wrap.classList.remove("drop-over");
+        if (draggingHabitId) moveHabitToCategory(draggingHabitId, cat);
+      });
       const heading = document.createElement("div");
       heading.className = "category-group-title";
       const cmeta = categoryMeta(cat);
@@ -5259,6 +5314,16 @@
         const li = document.createElement("li");
         li.className = "habit-item";
         li.style.cursor = "pointer";
+        if (!bulkMode) {
+          // Drag a habit onto another category group to move it.
+          li.setAttribute("draggable", "true");
+          li.addEventListener("dragstart", (e) => {
+            draggingHabitId = habit.id;
+            li.classList.add("dragging");
+            if (e.dataTransfer) { e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", habit.id); } catch (_) {} }
+          });
+          li.addEventListener("dragend", () => { draggingHabitId = null; li.classList.remove("dragging"); });
+        }
         if (bulkMode) {
           li.classList.add("selectable");
           if (bulkSelected.has(habit.id)) li.classList.add("selected");
@@ -5656,6 +5721,7 @@
     if (editingId) {
       const h = state.habits.find((x) => x.id === editingId);
       if (h) Object.assign(h, payload);
+      logActivity("edit", `Edited ${payload.icon || "•"} ${payload.name}`);
     } else {
       state.habits.push({
         id: uid(),
@@ -5663,6 +5729,7 @@
         order: state.habits.length,
         ...payload,
       });
+      logActivity("create", `Added ${payload.icon || "•"} ${payload.name}`);
     }
     save();
     scheduleReminders();
@@ -5738,6 +5805,31 @@
       localStorage.setItem("ht_review_dismissed", wk);
       el.classList.add("hidden");
     });
+  }
+
+  /* ---- Activity log ---- */
+  function logActivity(type, text) {
+    if (!Array.isArray(state.activity)) state.activity = [];
+    state.activity.unshift({ ts: Date.now(), type: String(type || "").slice(0, 20), text: String(text || "").slice(0, 140) });
+    state.activity = state.activity.slice(0, 50);
+    // Persistence is handled by the caller's save(); guard direct calls in tests.
+  }
+  function renderActivityLog() {
+    const el = getEls().activityLog;
+    if (!el) return;
+    const acts = (state.activity || []).slice(0, 30);
+    if (acts.length === 0) {
+      el.innerHTML = `<p class="empty-inline">No recent activity yet. Changes you make will show up here.</p>`;
+      return;
+    }
+    el.innerHTML = acts.map((a) =>
+      `<div class="act-row"><span class="act-text">${escapeHtml(a.text)}</span><span class="act-when">${escapeHtml(timeAgo(a.ts))}</span></div>`
+    ).join("");
+  }
+  function toggleActivityLog() {
+    const el = getEls().activityLog;
+    if (!el) return;
+    if (el.hidden) { el.hidden = false; renderActivityLog(); } else { el.hidden = true; }
   }
 
   /* ---- Keystone habit of the week ---- */
@@ -8742,6 +8834,7 @@
     els.testReminderBtn.addEventListener("click", testReminder);
     if (els.reminderHealthBtn) els.reminderHealthBtn.addEventListener("click", toggleReminderHealth);
     if (els.smartTimingBtn) els.smartTimingBtn.addEventListener("click", toggleSmartTiming);
+    if (els.activityLogBtn) els.activityLogBtn.addEventListener("click", toggleActivityLog);
     if (els.vacationSaveBtn) els.vacationSaveBtn.addEventListener("click", () => {
       const s = els.vacationStart.value, e = els.vacationEnd.value;
       if (!s || !e) { showToast("Pick both a start and end date.", "warn"); return; }
@@ -9004,6 +9097,7 @@
       inVacation, vacationActiveNow, setVacation, clearVacation,
       recordCompletionClock, suggestReminderTime, smartTimingSuggestions,
       keystoneId, getKeystoneHabit, setKeystone,
+      logActivity, moveHabitToCategory,
       getState: () => state, setState: (s) => { state = s; },
     };
   }

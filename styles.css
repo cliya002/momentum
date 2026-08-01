@@ -1710,6 +1710,16 @@ body.compact .habit-list { gap: 0.35rem; }
 .st-name { font-size: 0.85rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .st-info { font-size: 0.8rem; color: var(--text-dim); white-space: nowrap; }
 .st-apply { padding: 0.3rem 0.7rem; font-size: 0.8rem; }
+
+/* Activity log */
+.activity-log { margin-top: 0.6rem; display: flex; flex-direction: column; gap: 0.3rem; max-height: 320px; overflow-y: auto; }
+.act-row { display: flex; justify-content: space-between; gap: 0.75rem; padding: 0.45rem 0.6rem; background: var(--card-soft); border-radius: 8px; font-size: 0.82rem; }
+.act-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.act-when { color: var(--text-dim); white-space: nowrap; flex-shrink: 0; }
+
+/* Cross-category drag (Habits) */
+.habit-item.dragging { opacity: 0.5; }
+.cat-drop.drop-over { outline: 2px dashed var(--primary); outline-offset: 3px; border-radius: var(--radius); }
 .quiet-row input { flex: 1; }
 
 .ios-note {
