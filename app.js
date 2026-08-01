@@ -2134,9 +2134,10 @@
       localStorage.setItem(KEYS.lastSyncedHash, lastSyncedHash);
       dirtyForSync = false;
       updateSyncIndicator("synced");
+      const kb = (payload.length / 1024).toFixed(1);
+      recordSyncDetail("Pushed", `${state.habits.length} habits · ${kb} KB`);
       renderSyncStateLine();
       renderDeviceList();
-      const kb = (payload.length / 1024).toFixed(1);
       showSyncStatus(`✓ Pushed ${kb} KB · ${new Date().toLocaleTimeString()}`, "success");
     } catch (e) {
       updateSyncIndicator("error");
@@ -2184,9 +2185,12 @@
       const remoteState = readRemotePayload(file.content);
       if (!remoteState) throw new Error("Couldn't read remote state");
 
+      const habitsBefore = state.habits.length;
       state = mergeStates(state, remoteState);
       stampThisDevice();
       persistRaw();
+      const delta = state.habits.length - habitsBefore;
+      recordSyncDetail("Pulled & merged", `${state.habits.length} habits${delta > 0 ? ` (+${delta} from cloud)` : ""}`);
 
       lastSyncedAt = Date.now();
       localStorage.setItem(KEYS.lastSynced, String(lastSyncedAt));
@@ -2632,6 +2636,34 @@
     save();
     renderDataSummary();
     showToast("Check-in history cleared.", "success");
+  }
+
+  // Approx bytes used by the local progress-photo store (UTF-16 ≈ 2 bytes/char).
+  function photosBytes() {
+    try { return (localStorage.getItem("ht_photos") || "{}").length * 2 + (localStorage.getItem("ht_schedule_photo") || "").length * 2; }
+    catch (e) { return 0; }
+  }
+  function prunePhotosOlderThan(days) {
+    const p = loadPhotos();
+    const cutoff = addDays(new Date(), -days);
+    let n = 0;
+    for (const wk of Object.keys(p)) {
+      const d = new Date(wk + "T00:00:00");
+      if (!isNaN(d.getTime()) && d < cutoff) { delete p[wk]; n++; }
+    }
+    if (n) {
+      savePhotos(p);
+      renderDataSummary();
+      if (currentView === "progress") renderProgress();
+    }
+    showToast(n ? `Pruned ${n} photo${n === 1 ? "" : "s"} older than ${days} days.` : "No photos older than that.", n ? "success" : "");
+  }
+  function prunePhotosPrompt() {
+    const total = Object.keys(loadPhotos()).length;
+    if (total === 0) { showToast("No progress photos saved."); return; }
+    if (confirm(`Delete progress photos older than 90 days? Recent ones stay. (${total} saved right now.)`)) {
+      prunePhotosOlderThan(90);
+    }
   }
 
   function deleteAllPhotos() {
@@ -8287,7 +8319,20 @@
     el.hidden = false;
     let auto = isAutoSyncEnabled() ? "on" : "off";
     if (isRateLimited()) auto = `paused until ${new Date(rateLimitResetAt).toLocaleTimeString()}`;
-    el.innerHTML = `☁️ Last synced <b>${timeAgo(lastSyncedAt)}</b> · Device: <b>${escapeHtml(getDeviceName())}</b> · Auto-sync <b>${auto}</b>`;
+    const detail = syncDetailText();
+    el.innerHTML = `☁️ Last synced <b>${timeAgo(lastSyncedAt)}</b> · Device: <b>${escapeHtml(getDeviceName())}</b> · Auto-sync <b>${auto}</b>` +
+      (detail ? `<br><span class="sync-detail">${escapeHtml(detail)}</span>` : "");
+  }
+  // Last sync action summary (transparency): what happened and when.
+  function recordSyncDetail(action, extra) {
+    try { localStorage.setItem("ht_sync_detail", JSON.stringify({ ts: Date.now(), action, extra: extra || "" })); } catch (e) {}
+  }
+  function syncDetailText() {
+    try {
+      const d = JSON.parse(localStorage.getItem("ht_sync_detail") || "null");
+      if (!d || !d.ts) return "";
+      return `${d.action} ${timeAgo(d.ts)}${d.extra ? " · " + d.extra : ""}`;
+    } catch (e) { return ""; }
   }
 
   function renderDataSummary() {
@@ -8311,6 +8356,18 @@
     ];
     let html = items.map((i) => `<div class="ds-item"><div class="ds-num">${i.n}</div><div class="ds-label">${i.l}</div></div>`).join("");
     wrap.innerHTML = html;
+    // Storage meter: total vs ~5 MB, with the photos share highlighted.
+    const meter = $("#storageMeter");
+    if (meter) {
+      const cap = 5 * 1024 * 1024;
+      const pBytes = photosBytes();
+      const totalPct = Math.min(100, Math.round((bytes / cap) * 100));
+      const photoPct = Math.min(100, Math.round((pBytes / cap) * 100));
+      const pLabel = pBytes >= 1024 * 1024 ? (pBytes / (1024 * 1024)).toFixed(1) + " MB" : Math.round(pBytes / 1024) + " KB";
+      meter.innerHTML =
+        `<div class="sm-bar"><span class="sm-fill" style="width:${totalPct}%"></span><span class="sm-photos" style="width:${photoPct}%"></span></div>
+         <div class="sm-legend"><span>${used} of ~5 MB used (${totalPct}%)</span><span class="sm-photo-key">📷 photos ${pLabel}</span></div>`;
+    }
     // Proactive storage warning
     const warn = $("#storageWarn");
     if (warn) {
@@ -8876,6 +8933,8 @@
     // Granular danger zone
     els.clearHistoryBtn.addEventListener("click", clearAllHistory);
     els.deletePhotosBtn.addEventListener("click", deleteAllPhotos);
+    const pruneBtn = document.getElementById("prunePhotosBtn");
+    if (pruneBtn) pruneBtn.addEventListener("click", prunePhotosPrompt);
     const fu = document.getElementById("forceUpdateBtn");
     if (fu) fu.addEventListener("click", forceUpdate);
 
@@ -9097,7 +9156,7 @@
       inVacation, vacationActiveNow, setVacation, clearVacation,
       recordCompletionClock, suggestReminderTime, smartTimingSuggestions,
       keystoneId, getKeystoneHabit, setKeystone,
-      logActivity, moveHabitToCategory,
+      logActivity, moveHabitToCategory, prunePhotosOlderThan,
       getState: () => state, setState: (s) => { state = s; },
     };
   }

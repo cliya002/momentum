@@ -1515,6 +1515,17 @@ body.compact .habit-list { gap: 0.35rem; }
 }
 .data-summary .ds-num { font-size: 1.2rem; font-weight: 700; }
 .data-summary .ds-label { font-size: 0.72rem; color: var(--text-dim); margin-top: 2px; }
+
+/* Storage meter */
+.storage-meter { margin-top: 0.85rem; }
+.storage-meter .sm-bar {
+  position: relative; height: 10px; border-radius: 999px; overflow: hidden;
+  background: var(--card-soft); border: 1px solid var(--border);
+}
+.storage-meter .sm-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--primary); border-radius: 999px; }
+.storage-meter .sm-photos { position: absolute; left: 0; top: 0; bottom: 0; background: var(--amber, #f59e0b); border-radius: 999px; opacity: 0.9; }
+.storage-meter .sm-legend { display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--text-dim); margin-top: 0.3rem; }
+.sync-detail { font-size: 0.78rem; color: var(--text-dim); }
 .storage-warn {
   margin-top: 0.85rem;
   padding: 0.7rem 0.85rem;
