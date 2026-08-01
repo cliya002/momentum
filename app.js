@@ -2297,6 +2297,33 @@
     return h;
   }
 
+  // One-time backfill: give existing habits the same smart defaults new
+  // template habits get — reminder time from their set time, dose→message for
+  // supplements. Only fills blanks; never overwrites a reminder you set.
+  function smartFillReminders() {
+    const els = getEls();
+    let n = 0;
+    for (const h of state.habits) {
+      let changed = false;
+      if (!h.reminderTime) {
+        const c = clockFromTimeStr(h.time);
+        if (c) { h.reminderTime = c; changed = true; }
+      }
+      if (!h.reminderMsg && h.notes && h.category === "Supplements") {
+        h.reminderMsg = h.notes.slice(0, 120); changed = true;
+      }
+      if (changed) { h.updatedAt = Date.now(); n++; }
+    }
+    if (n) { save(); scheduleReminders(); if (currentView === "habits") renderHabits(); }
+    const el = els.smartFillStatus;
+    if (el) {
+      el.hidden = false;
+      el.className = "sync-status success";
+      el.textContent = n ? `Smart-filled ${n} habit${n === 1 ? "" : "s"}.` : "All caught up — nothing to fill.";
+    }
+    showToast(n ? `Smart-filled ${n} habit${n === 1 ? "" : "s"}.` : "Nothing to fill — you're all set.", "success");
+  }
+
   function addSelectedTemplates() {
     if (templateSelected.size === 0) return;
     let count = 0;
@@ -2551,6 +2578,8 @@
       fileInput: $("#fileInput"),
       resetAllBtn: $("#resetAllBtn"),
       browseTemplatesBtn: $("#browseTemplatesBtn"),
+      smartFillBtn: $("#smartFillBtn"),
+      smartFillStatus: $("#smartFillStatus"),
       // template picker modal
       templateModal: $("#templateModal"),
       templateList: $("#templateList"),
@@ -6970,6 +6999,7 @@
 
     // Template picker
     els.browseTemplatesBtn.addEventListener("click", openTemplateModal);
+    els.smartFillBtn.addEventListener("click", smartFillReminders);
     els.templateCancelBtn.addEventListener("click", closeTemplateModal);
     els.templateCloseBtn.addEventListener("click", closeTemplateModal);
     els.templateSelectAll.addEventListener("click", templateSelectAll);
