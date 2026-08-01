@@ -53,5 +53,35 @@ console.log("doseStatus");
   assert(T.doseStatus(habit, d, 0) === "done" && T.doseStatus(habit, d, 1) === "done", "count 2 → both done");
 }
 
+console.log("toggleDose — independent doses (the reported bug)");
+{
+  const st = T.normalizeState({ habits: [{ id: "h", name: "ACV", type: "count", target: 2, increment: 1, reminderTimes: ["08:00", "20:00"] }] });
+  T.setState(st); T.resetRenderCaches();
+  const d = new Date();
+  const habit = st.habits[0];
+  // Tick the MORNING dose only → evening must stay pending.
+  T.toggleDose(habit, d, 0);
+  assert(T.doseStatus(habit, d, 0) === "done", "morning ticked → morning done");
+  assert(T.doseStatus(habit, d, 1) === "pending", "evening stays pending (independent!)");
+  assert(st.completions[T.dateKey(d)].h === 1, "count reflects 1 dose done");
+}
+{
+  const st = T.normalizeState({ habits: [{ id: "h", name: "ACV", type: "count", target: 2, increment: 1, reminderTimes: ["08:00", "20:00"] }] });
+  T.setState(st); T.resetRenderCaches();
+  const d = new Date();
+  const habit = st.habits[0];
+  // Tick the EVENING dose only → morning must stay pending.
+  T.toggleDose(habit, d, 1);
+  assert(T.doseStatus(habit, d, 1) === "done", "evening ticked → evening done");
+  assert(T.doseStatus(habit, d, 0) === "pending", "morning stays pending");
+  // Now tick morning too → both done, count 2.
+  T.toggleDose(habit, d, 0);
+  assert(T.doseStatus(habit, d, 0) === "done" && T.doseStatus(habit, d, 1) === "done", "both done after ticking both");
+  assert(st.completions[T.dateKey(d)].h === 2, "count = 2");
+  // Untick evening → only morning remains done.
+  T.toggleDose(habit, d, 1);
+  assert(T.doseStatus(habit, d, 0) === "done" && T.doseStatus(habit, d, 1) === "pending", "untick evening leaves morning done");
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

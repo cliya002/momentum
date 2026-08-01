@@ -557,6 +557,9 @@
       habits: [],
       completions: {},
       completionsUpdatedAt: {},
+      // Per-dose bitmask for "times per day" habits: dateKey -> habitId -> mask.
+      // Keeps individual doses independent; the completion count stays = popcount.
+      doseTicks: {},
       measurements: {},
       journal: {},
       goal: null,
@@ -774,6 +777,18 @@
     }
     for (const [day, ts] of Object.entries(s.completionsUpdatedAt || {})) {
       st.completionsUpdatedAt[day] = Number(ts) || 0;
+    }
+    st.doseTicks = {};
+    if (s.doseTicks && typeof s.doseTicks === "object") {
+      for (const [day, byHabit] of Object.entries(s.doseTicks)) {
+        if (!byHabit || typeof byHabit !== "object") continue;
+        const clean = {};
+        for (const [hid, mask] of Object.entries(byHabit)) {
+          const mv = Math.floor(Number(mask));
+          if (Number.isFinite(mv) && mv > 0) clean[hid] = mv;
+        }
+        if (Object.keys(clean).length) st.doseTicks[day] = clean;
+      }
     }
     for (const [wk, m] of Object.entries(s.measurements || {})) {
       if (!m || typeof m !== "object") continue;
@@ -1116,6 +1131,14 @@
       if (Object.keys(cleaned).length > 0) {
         merged.completions[d] = cleaned;
         merged.completionsUpdatedAt[d] = Math.max(lts, rts) || now;
+        // Dose masks follow the same winning side for that day.
+        const dtSrc = (pickRemote ? (remote.doseTicks || {}) : (local.doseTicks || {}))[d]
+          || (local.doseTicks || {})[d] || (remote.doseTicks || {})[d];
+        if (dtSrc) {
+          const cd = {};
+          for (const [hid, mask] of Object.entries(dtSrc)) if (survivingIds.has(hid)) cd[hid] = mask;
+          if (Object.keys(cd).length) merged.doseTicks[d] = cd;
+        }
       }
     });
 
@@ -3263,10 +3286,53 @@
     }
     return slots;
   }
+  function popcount(n) { let c = 0; n = n | 0; while (n) { c += n & 1; n >>>= 1; } return c; }
   // Status of a single dose slot for the day: "done" | "skipped" | "pending".
+  // Uses the independent per-dose bitmask when present; otherwise falls back to
+  // the completion count (first N doses done) for older/other-device data.
   function doseStatus(habit, date, i) {
     if (isSkipped(habit, date)) return "skipped";
-    return completionValue(habit.id, date) > i ? "done" : "pending";
+    const day = dateKey(date);
+    const mask = state.doseTicks && state.doseTicks[day] ? state.doseTicks[day][habit.id] : undefined;
+    if (mask == null) return completionValue(habit.id, date) > i ? "done" : "pending";
+    return ((mask >> i) & 1) ? "done" : "pending";
+  }
+  // Toggle one dose independently. Keeps the completion count = number of doses
+  // done (popcount of the mask) so streaks/adherence keep working unchanged.
+  function toggleDose(habit, date, i) {
+    const day = dateKey(date);
+    if (!state.doseTicks) state.doseTicks = {};
+    if (!state.doseTicks[day]) state.doseTicks[day] = {};
+    let mask = state.doseTicks[day][habit.id];
+    if (mask == null) { // seed from any existing count (first-N doses)
+      const cnt = completionValue(habit.id, date);
+      mask = cnt > 0 ? (1 << Math.min(cnt, 12)) - 1 : 0;
+    }
+    mask ^= (1 << i);
+    const cnt = popcount(mask);
+    if (mask === 0) {
+      delete state.doseTicks[day][habit.id];
+      if (!Object.keys(state.doseTicks[day]).length) delete state.doseTicks[day];
+    } else {
+      state.doseTicks[day][habit.id] = mask;
+    }
+    setCompletionValue(habit.id, date, cnt); // syncs count + persists whole state
+    return cnt;
+  }
+  // Mark every dose of a habit done (or clear) — used by "mark all".
+  function setAllDoses(habit, date, done) {
+    const slots = doseSlots(habit, date.getDay());
+    if (!slots) { setCompletionValue(habit.id, date, done ? habit.target : 0); return; }
+    const day = dateKey(date);
+    if (!state.doseTicks) state.doseTicks = {};
+    if (done) {
+      if (!state.doseTicks[day]) state.doseTicks[day] = {};
+      state.doseTicks[day][habit.id] = (1 << habit.target) - 1;
+      setCompletionValue(habit.id, date, habit.target);
+    } else {
+      if (state.doseTicks[day]) delete state.doseTicks[day][habit.id];
+      setCompletionValue(habit.id, date, 0);
+    }
   }
 
   // Which day part is "now" (for the highlight).
@@ -3483,7 +3549,7 @@
           e.stopPropagation();
           const lastHabit = pending[pending.length - 1].h;
           const seen = new Set();
-          for (const en of pending) { if (seen.has(en.h.id)) continue; seen.add(en.h.id); setCompletionValue(en.h.id, today, en.h.target); }
+          for (const en of pending) { if (seen.has(en.h.id)) continue; seen.add(en.h.id); if (en.slot) setAllDoses(en.h, today, true); else setCompletionValue(en.h.id, today, en.h.target); }
           renderToday();
           showToast(`Marked ${seen.size} done.`, "success");
           if (lastHabit) maybeCelebrate(lastHabit, today);
@@ -3855,12 +3921,10 @@
     }
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
-      const cur = completionValue(habit.id, date);
-      const wasDone = cur >= habit.target;
-      const next = done ? slot.i : slot.i + 1;
-      setCompletionValue(habit.id, date, next);
+      const wasDone = isCompleted(habit, date);
+      const cnt = toggleDose(habit, date, slot.i); // independent per-dose toggle
       renderToday();
-      if (!wasDone && next >= habit.target) maybeCelebrate(habit, date);
+      if (!wasDone && cnt >= habit.target) maybeCelebrate(habit, date);
     });
     controls.appendChild(btn);
 
@@ -9690,7 +9754,7 @@
       fmtClockLabel, formatClock, timeFmt, timeChipLabel, applyBackup,
       clockFromTimeStr, habitFromTemplate,
       isWeekly, weeklyTarget, weeklyDoneCount, weeklyMet, todayStatus, weekAdherencePct,
-      dayPartsForHabit, dayPartForTime, isAutoTimeSummary, doseSlots, doseStatus,
+      dayPartsForHabit, dayPartForTime, isAutoTimeSummary, doseSlots, doseStatus, toggleDose,
       weekKeyOf, computeWeekReview, reviewTargetWeek,
       categoryMeta, getCategories,
       aiTodayInsight, weekdayAvgAdherence,
