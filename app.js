@@ -6042,6 +6042,7 @@
     // Auto-generated insights feed + time-of-day breakdown
     renderInsightsFeed();
     renderTimeOfDay();
+    renderMoodTrend();
     // Achievements (check for newly-earned, then render the grid)
     checkAchievements();
     renderAchievements();
@@ -6488,6 +6489,36 @@
     wrap.innerHTML = items.slice(0, 7).map((it) =>
       `<div class="insight-row"><span class="insight-row-icon">${it.icon}</span><span class="insight-row-text">${escapeHtml(it.text)}</span></div>`
     ).join("");
+  }
+
+  // Last N days of mood taps (1-5), oldest→newest; mood null on untapped days.
+  function moodTrendData(days) {
+    const out = [];
+    const today = new Date();
+    for (let i = days - 1; i >= 0; i--) {
+      const d = addDays(today, -i);
+      const m = state.moods && state.moods[dateKey(d)];
+      out.push({ date: d, mood: m ? m.mood : null });
+    }
+    return out;
+  }
+  const MOOD_ICONS = ["", "😫", "😕", "😐", "🙂", "🤩"];
+  function renderMoodTrend() {
+    const card = $("#moodTrendCard");
+    const el = $("#moodTrendChart");
+    const avgEl = $("#moodTrendAvg");
+    if (!card || !el) return;
+    const data = moodTrendData(30);
+    const logged = data.filter((x) => x.mood != null);
+    if (logged.length < 3) { card.hidden = true; return; }
+    card.hidden = false;
+    const avg = logged.reduce((s, x) => s + x.mood, 0) / logged.length;
+    if (avgEl) avgEl.textContent = `avg ${avg.toFixed(1)} ${MOOD_ICONS[Math.round(avg)] || ""}`;
+    el.innerHTML = data.map((x) => {
+      if (x.mood == null) return `<span class="mt-bar mt-empty" title="${x.date.toLocaleDateString()} · no entry"></span>`;
+      const h = Math.round((x.mood / 5) * 100);
+      return `<span class="mt-bar" style="height:${h}%" data-mood="${x.mood}" title="${x.date.toLocaleDateString()} · ${MOOD_ICONS[x.mood]}"></span>`;
+    }).join("");
   }
 
   function renderTimeOfDay() {
@@ -8859,7 +8890,7 @@
       categoryMeta, getCategories,
       aiTodayInsight, weekdayAvgAdherence,
       buildInsights, timeOfDayStats, slotForHabit, perfectDayCount, totalCheckins, habitPairInsight,
-      yearHeatmapCells, dayAdherenceBucket,
+      yearHeatmapCells, dayAdherenceBucket, moodTrendData,
       evaluateAchievements, checkAchievements, maxLongestStreak, hasPerfectWeek,
       setMood, moodCompletionInsight, fireStackCues,
       buildMonthCalendar, timeAgo,

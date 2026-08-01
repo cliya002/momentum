@@ -1091,6 +1091,30 @@ body.compact .habit-list { gap: 0.35rem; }
 .tod-fill.best { background: var(--success); }
 .tod-pct { font-size: 0.78rem; font-weight: 600; color: var(--text-dim); text-align: right; }
 
+/* Mood trend chart */
+.mt-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 90px;
+  padding-top: 0.3rem;
+}
+.mt-bar {
+  flex: 1;
+  min-width: 4px;
+  background: var(--primary);
+  border-radius: 3px 3px 0 0;
+  align-self: flex-end;
+  min-height: 4px;
+  transition: height 0.3s ease;
+}
+.mt-bar[data-mood="1"] { background: #ef4444; }
+.mt-bar[data-mood="2"] { background: #f59e0b; }
+.mt-bar[data-mood="3"] { background: #eab308; }
+.mt-bar[data-mood="4"] { background: #84cc16; }
+.mt-bar[data-mood="5"] { background: #22c55e; }
+.mt-bar.mt-empty { background: var(--card-soft); height: 4px; border-radius: 3px; }
+
 /* Achievements */
 .badge-grid {
   display: grid;
