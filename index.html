@@ -183,6 +183,8 @@
             </div>
           </div>
 
+          <div id="reviewPrompt" class="review-prompt hidden"></div>
+
           <div id="todayHint" class="today-hint" hidden>
             <span>💡 Tap <b>+</b> for done, <b>−</b> for not done, or swipe a row. Tap a habit's text to see more.</span>
             <button id="todayHintDismiss" class="hint-dismiss" aria-label="Dismiss">✕</button>
@@ -965,6 +967,25 @@
       <div class="modal-actions">
         <button type="button" id="onboardSkipBtn" class="btn-secondary" style="margin-right:auto">Skip for now</button>
         <button type="button" id="onboardAddBtn" class="btn-primary">Add habits</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Weekly Review Modal ===================== -->
+  <div id="reviewModal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-content">
+      <div class="template-modal-header">
+        <h2>Weekly review</h2>
+        <button type="button" id="reviewCloseBtn" class="icon-btn" aria-label="Close">✕</button>
+      </div>
+      <p class="card-sub" id="reviewRange"></p>
+      <div id="reviewBody"></div>
+      <label style="display:block;margin-top:1rem">Focus for next week
+        <textarea id="reviewFocus" rows="3" maxlength="500" placeholder="One thing to double down on…"></textarea>
+      </label>
+      <div class="modal-actions">
+        <button type="button" id="reviewSkipBtn" class="btn-secondary" style="margin-right:auto">Not now</button>
+        <button type="button" id="reviewSaveBtn" class="btn-primary">Save review</button>
       </div>
     </div>
   </div>

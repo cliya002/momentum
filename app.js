@@ -554,6 +554,8 @@
       trash: [],
       freezes: { updatedAt: 0, days: {}, habitDays: {} },
       deletions: { habits: {} },
+      // Guided weekly review: weekKey (Monday dateKey) -> { focus, adherence, updatedAt }
+      reviews: {},
     };
   }
 
@@ -867,6 +869,18 @@
         for (const [k, v] of Object.entries(s.freezes.habitDays)) if (v) st.freezes.habitDays[k] = true;
       }
     }
+    // Guided weekly reviews, keyed by week-start (Monday) dateKey.
+    st.reviews = {};
+    if (s.reviews && typeof s.reviews === "object") {
+      for (const [wk, r] of Object.entries(s.reviews)) {
+        if (!r || typeof r !== "object") continue;
+        st.reviews[wk] = {
+          focus: String(r.focus || "").slice(0, 500),
+          adherence: Number.isFinite(Number(r.adherence)) ? Number(r.adherence) : null,
+          updatedAt: Number(r.updatedAt) || now,
+        };
+      }
+    }
     return st;
   }
 
@@ -1113,6 +1127,16 @@
       days: (pFreeze.days && typeof pFreeze.days === "object") ? pFreeze.days : {},
       habitDays: (pFreeze.habitDays && typeof pFreeze.habitDays === "object") ? pFreeze.habitDays : {},
     };
+
+    // Weekly reviews: union by week key, newest updatedAt wins per entry.
+    merged.reviews = {};
+    for (const src of [local.reviews || {}, remote.reviews || {}]) {
+      for (const [wk, r] of Object.entries(src)) {
+        if (!r || typeof r !== "object") continue;
+        const ex = merged.reviews[wk];
+        if (!ex || (Number(r.updatedAt) || 0) > (Number(ex.updatedAt) || 0)) merged.reviews[wk] = r;
+      }
+    }
 
     return merged;
   }
@@ -2547,6 +2571,15 @@
       detailArchiveBtn: $("#detailArchiveBtn"),
       detailCloseBtn: $("#detailCloseBtn"),
       detailEditBtn: $("#detailEditBtn"),
+      // weekly review
+      reviewPrompt: $("#reviewPrompt"),
+      reviewModal: $("#reviewModal"),
+      reviewRange: $("#reviewRange"),
+      reviewBody: $("#reviewBody"),
+      reviewFocus: $("#reviewFocus"),
+      reviewCloseBtn: $("#reviewCloseBtn"),
+      reviewSkipBtn: $("#reviewSkipBtn"),
+      reviewSaveBtn: $("#reviewSaveBtn"),
       // onboarding
       onboardModal: $("#onboardModal"),
       onboardTemplates: $("#onboardTemplates"),
@@ -2826,6 +2859,7 @@
     }
     els.todayGreetingSub.textContent = `${dateStr} · ${leftMsg}`;
 
+    renderReviewPrompt();
     renderFasting();
     renderJournal(today);
 
@@ -5137,6 +5171,131 @@
     switchView(currentView);
   }
 
+  /* ---- Guided weekly review ---- */
+  function weekKeyOf(date) { return dateKey(startOfWeekMonday(date)); }
+
+  // Which week to review right now: on Sunday, this week (it ends today);
+  // Mon-Wed, last week (just ended) if it hasn't been reviewed yet.
+  function reviewTargetWeek() {
+    const today = new Date();
+    const dow = today.getDay(); // 0 = Sun
+    if (dow === 0) return startOfWeekMonday(today);
+    if (dow >= 1 && dow <= 3) return addDays(startOfWeekMonday(today), -7);
+    return null;
+  }
+
+  function computeWeekReview(weekStart) {
+    const now = new Date();
+    const adherence = weekAdherencePct(weekStart);
+    const prevAdh = weekAdherencePct(addDays(weekStart, -7));
+    let totalDone = 0;
+    const dayDone = new Array(7).fill(0);
+    const habitDone = {};
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(weekStart, i);
+      if (d > now && !sameDay(d, now)) break;
+      for (const h of state.habits) {
+        if (h.archived) continue;
+        if (isCompleted(h, d)) { totalDone++; dayDone[i]++; habitDone[h.id] = (habitDone[h.id] || 0) + 1; }
+      }
+    }
+    let bestIdx = -1, bestVal = -1;
+    for (let i = 0; i < 7; i++) if (dayDone[i] > bestVal) { bestVal = dayDone[i]; bestIdx = i; }
+    let topId = null, topVal = 0;
+    for (const [id, c] of Object.entries(habitDone)) if (c > topVal) { topVal = c; topId = id; }
+    const topHabit = state.habits.find((h) => h.id === topId) || null;
+    let bestStreak = 0;
+    for (const h of state.habits) if (!h.archived) { const s = currentStreak(h); if (s > bestStreak) bestStreak = s; }
+    return { adherence, prevAdh, totalDone, bestIdx, bestVal, topHabit, topVal, bestStreak };
+  }
+
+  const WEEK_DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+  function renderReviewPrompt() {
+    const els = getEls();
+    const el = els.reviewPrompt;
+    if (!el) return;
+    const ws = reviewTargetWeek();
+    if (!ws || state.habits.length === 0) { el.classList.add("hidden"); return; }
+    const wk = dateKey(ws);
+    if (state.reviews && state.reviews[wk]) { el.classList.add("hidden"); return; }
+    if (localStorage.getItem("ht_review_dismissed") === wk) { el.classList.add("hidden"); return; }
+    const r = computeWeekReview(ws);
+    el.classList.remove("hidden");
+    el.innerHTML =
+      `<div class="review-prompt-body">
+        <span class="review-prompt-icon">📋</span>
+        <div class="review-prompt-text">
+          <b>Your week in review</b>
+          <span class="hint">${r.adherence == null ? "See how the week went" : r.adherence + "% adherence"} · set next week's focus</span>
+        </div>
+      </div>
+      <div class="review-prompt-actions">
+        <button type="button" class="btn-secondary" id="reviewDismissBtn">Later</button>
+        <button type="button" class="btn-primary" id="reviewOpenBtn">Review</button>
+      </div>`;
+    el.querySelector("#reviewOpenBtn").addEventListener("click", () => openWeeklyReview(ws));
+    el.querySelector("#reviewDismissBtn").addEventListener("click", () => {
+      localStorage.setItem("ht_review_dismissed", wk);
+      el.classList.add("hidden");
+    });
+  }
+
+  let reviewingWeek = null;
+  function openWeeklyReview(weekStart) {
+    const els = getEls();
+    reviewingWeek = weekStart;
+    const wk = dateKey(weekStart);
+    const r = computeWeekReview(weekStart);
+    const end = addDays(weekStart, 6);
+    els.reviewRange.textContent = `${formatDateShort(weekStart)} – ${formatDateShort(end)}`;
+
+    const rows = [];
+    rows.push(reviewStat("Adherence", r.adherence == null ? "—" : r.adherence + "%",
+      r.prevAdh != null && r.adherence != null ? deltaLabel(r.adherence - r.prevAdh) : ""));
+    rows.push(reviewStat("Habits completed", String(r.totalDone), ""));
+    if (r.bestIdx >= 0 && r.bestVal > 0) rows.push(reviewStat("Strongest day", WEEK_DAY_NAMES[r.bestIdx], `${r.bestVal} done`));
+    if (r.topHabit) rows.push(reviewStat("Most consistent", `${r.topHabit.icon || "•"} ${r.topHabit.name}`, `${r.topVal}×`));
+    rows.push(reviewStat("Best current streak", `${r.bestStreak} day${r.bestStreak === 1 ? "" : "s"}`, ""));
+    els.reviewBody.innerHTML = `<div class="review-stats">${rows.join("")}</div>`;
+
+    const existing = state.reviews && state.reviews[wk];
+    els.reviewFocus.value = existing ? (existing.focus || "") : "";
+    els.reviewModal.classList.remove("hidden");
+    setTimeout(() => els.reviewFocus.focus(), 60);
+  }
+
+  function reviewStat(label, value, sub) {
+    return `<div class="review-stat"><span class="rs-label">${escapeHtml(label)}</span><span class="rs-value">${escapeHtml(value)}</span>${sub ? `<span class="rs-sub">${escapeHtml(sub)}</span>` : ""}</div>`;
+  }
+  function deltaLabel(delta) {
+    const d = Math.round(delta);
+    if (d === 0) return "same as last week";
+    return d > 0 ? `▲ ${d}% vs last week` : `▼ ${Math.abs(d)}% vs last week`;
+  }
+
+  function closeReviewModal() {
+    getEls().reviewModal.classList.add("hidden");
+    reviewingWeek = null;
+  }
+
+  function saveWeeklyReview() {
+    if (!reviewingWeek) return closeReviewModal();
+    const els = getEls();
+    const wk = dateKey(reviewingWeek);
+    const r = computeWeekReview(reviewingWeek);
+    if (!state.reviews) state.reviews = {};
+    state.reviews[wk] = {
+      focus: (els.reviewFocus.value || "").trim().slice(0, 500),
+      adherence: r.adherence,
+      updatedAt: Date.now(),
+    };
+    save();
+    closeReviewModal();
+    renderReviewPrompt();
+    showToast("Weekly review saved. 📋", "success");
+  }
+
   /* ---- Report ---- */
   function renderReport() {
     const els = getEls();
@@ -7099,6 +7258,12 @@
     els.addReminderTimeBtn.addEventListener("click", () => addReminderTimeRow(""));
     els.habitForm.addEventListener("submit", submitHabitForm);
     els.modal.addEventListener("click", (e) => { if (e.target === els.modal) closeModal(); });
+
+    // Weekly review modal
+    if (els.reviewSaveBtn) els.reviewSaveBtn.addEventListener("click", saveWeeklyReview);
+    if (els.reviewSkipBtn) els.reviewSkipBtn.addEventListener("click", closeReviewModal);
+    if (els.reviewCloseBtn) els.reviewCloseBtn.addEventListener("click", closeReviewModal);
+    if (els.reviewModal) els.reviewModal.addEventListener("click", (e) => { if (e.target === els.reviewModal) closeReviewModal(); });
     els.typePicker.addEventListener("click", (e) => {
       const btn = e.target.closest(".type-btn");
       if (!btn) return;
@@ -7408,6 +7573,7 @@
       fmtClockLabel, formatClock, timeFmt, timeChipLabel, applyBackup,
       clockFromTimeStr, habitFromTemplate,
       isWeekly, weeklyTarget, weeklyDoneCount, weeklyMet, todayStatus, weekAdherencePct,
+      weekKeyOf, computeWeekReview, reviewTargetWeek,
       getState: () => state, setState: (s) => { state = s; },
     };
   }
