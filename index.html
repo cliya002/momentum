@@ -558,6 +558,23 @@
           </div>
 
           <div class="card">
+            <div class="card-title">💾 Backup &amp; restore</div>
+            <p class="card-sub">Export all your data to a file, or restore from one. Independent of cloud sync.</p>
+            <div class="row-actions">
+              <button id="exportBackupBtn" class="btn-secondary">⬇️ Export backup</button>
+              <button id="importBackupBtn" class="btn-secondary">⬆️ Import backup</button>
+              <input type="file" id="importBackupInput" accept="application/json,.json" hidden />
+            </div>
+            <div id="backupStatus" class="sync-status" hidden></div>
+          </div>
+
+          <div class="card" id="trashCard" hidden>
+            <div class="card-title">🗑️ Trash <span class="card-sub-inline" id="trashCount"></span></div>
+            <p class="card-sub">Deleted habits stay here for 7 days, then they're removed for good.</p>
+            <div id="trashList" class="device-list"></div>
+          </div>
+
+          <div class="card">
             <div class="card-title">🖥️ Synced devices</div>
             <p class="card-sub">Devices that have synced to your cloud data. Names come from each device's "This device's name".</p>
             <div id="deviceList" class="device-list"></div>
@@ -681,6 +698,14 @@
                   <option value="auto">Auto (match device)</option>
                   <option value="light">Light</option>
                   <option value="dark">Dark</option>
+                </select>
+              </label>
+            </div>
+            <div class="field">
+              <label>Time format
+                <select id="timeFormatSelect">
+                  <option value="12">12-hour (3:30 PM)</option>
+                  <option value="24">24-hour (15:30)</option>
                 </select>
               </label>
             </div>
@@ -830,6 +855,11 @@
         <label>
           Reminder <span class="hint">(optional — needs notifications on)</span>
           <input id="habitReminder" type="time" />
+        </label>
+
+        <label>
+          Reminder message <span class="hint">(optional — custom text)</span>
+          <input id="habitReminderMsg" type="text" maxlength="120" placeholder="e.g. Take with fat" />
         </label>
 
         <label>

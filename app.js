@@ -1354,6 +1354,101 @@
     return true;
   }
 
+  function renderTrash() {
+    const els = getEls();
+    if (!els.trashCard) return;
+    const list = (state.trash || []).slice().sort((a, b) => (b.trashedAt || 0) - (a.trashedAt || 0));
+    els.trashCard.hidden = list.length === 0;
+    els.trashCount.textContent = list.length ? `${list.length} item${list.length === 1 ? "" : "s"}` : "";
+    els.trashList.innerHTML = "";
+    const DAY = 24 * 60 * 60 * 1000;
+    for (const e of list) {
+      const h = e.habit || {};
+      const daysLeft = Math.max(0, Math.ceil((e.trashedAt + TRASH_RETENTION_MS - Date.now()) / DAY));
+      const row = document.createElement("div");
+      row.className = "device-row";
+      row.innerHTML =
+        `<span class="dv-icon">${escapeHtml(h.icon || "🎯")}</span>` +
+        `<span class="dv-info"><b>${escapeHtml(h.name || "Untitled")}</b><br><span class="hint">restores for ${daysLeft} more day${daysLeft === 1 ? "" : "s"}</span></span>`;
+      const actions = document.createElement("span");
+      actions.className = "dv-actions";
+      const restore = document.createElement("button");
+      restore.className = "btn-secondary";
+      restore.textContent = "Restore";
+      restore.addEventListener("click", () => { restoreFromTrash(h.id); renderTrash(); if (currentView === "habits") renderHabits(); showToast(`Restored "${h.name}".`, "success"); });
+      const del = document.createElement("button");
+      del.className = "btn-secondary btn-danger-outline";
+      del.textContent = "Delete forever";
+      del.addEventListener("click", () => { if (confirm(`Permanently delete "${h.name}"? This cannot be undone.`)) { permanentDeleteFromTrash(h.id); renderTrash(); } });
+      actions.appendChild(restore);
+      actions.appendChild(del);
+      row.appendChild(actions);
+      els.trashList.appendChild(row);
+    }
+  }
+
+  /* ---- Backup & restore ---- */
+  function exportBackup() {
+    const payload = {
+      schemaVersion: 1,
+      app: "momentum",
+      appVersion: (self.APP_VERSION || ""),
+      exportedAt: new Date().toISOString(),
+      state,
+    };
+    downloadFile(`momentum-backup-${todayKey()}.json`, JSON.stringify(payload, null, 2), "application/json");
+    localStorage.setItem(KEYS.lastBackup, String(Date.now()));
+    if (getEls().backupStatus) { const el = getEls().backupStatus; el.hidden = false; el.className = "sync-status success"; el.textContent = "Backup downloaded."; }
+  }
+  function applyBackup(parsed, mode) {
+    // Returns true on success. mode: "replace" | "merge".
+    if (!parsed || typeof parsed !== "object") throw new Error("not a backup file");
+    const incoming = parsed.state && parsed.state.habits ? parsed.state : (parsed.habits ? parsed : null);
+    if (!incoming || !Array.isArray(incoming.habits)) throw new Error("unrecognized backup structure");
+    const normalized = normalizeState(incoming);
+    state = (mode === "merge") ? mergeStates(state, normalized) : normalized;
+    save();
+    return true;
+  }
+  function importBackupFile(file) {
+    const els = getEls();
+    const reader = new FileReader();
+    reader.onload = () => {
+      let parsed;
+      try { parsed = JSON.parse(reader.result); }
+      catch (e) { showBackupStatus("That file isn't valid JSON.", "warn"); return; }
+      let incomingOk;
+      try { incomingOk = (parsed.state && parsed.state.habits) || Array.isArray(parsed.habits); } catch (e) { incomingOk = false; }
+      if (!incomingOk) { showBackupStatus("That doesn't look like a Momentum backup.", "warn"); return; }
+      const merge = confirm("Import backup:\n\nOK = MERGE with your current data\nCancel = REPLACE everything with the backup");
+      try {
+        applyBackup(parsed, merge ? "merge" : "replace");
+        switchView(currentView);
+        renderTrash();
+        showBackupStatus(merge ? "Backup merged." : "Backup restored.", "success");
+      } catch (e) {
+        showBackupStatus("Import failed: " + (e.message || e), "warn");
+      }
+    };
+    reader.readAsText(file);
+  }
+  const BACKUP_REMINDER_MS = 21 * 24 * 60 * 60 * 1000;
+  function maybeBackupReminder() {
+    if (!state.habits || state.habits.length === 0) return;
+    const last = Number(localStorage.getItem(KEYS.lastBackup)) || 0;
+    if (last === 0) { localStorage.setItem(KEYS.lastBackup, String(Date.now())); return; } // seed on first run
+    if (Date.now() - last > BACKUP_REMINDER_MS) {
+      showToast("It's been a while since your last backup — Settings → Backup & restore.", "info", 6000);
+    }
+  }
+  function showBackupStatus(msg, kind) {
+    const el = getEls().backupStatus;
+    if (!el) return;
+    el.hidden = false;
+    el.className = "sync-status " + (kind || "");
+    el.textContent = msg;
+  }
+
   function setHabitArchived(id, archived) {
     const h = state.habits.find((x) => x.id === id);
     if (!h) return;
@@ -2234,6 +2329,7 @@
       daysPicker: $("#daysPicker"),
       habitNightPrevDay: $("#habitNightPrevDay"),
       habitNoPush: $("#habitNoPush"),
+      habitReminderMsg: $("#habitReminderMsg"),
       advancedToggle: $("#advancedToggle"),
       dayTimesWrap: $("#dayTimesWrap"),
       dayTimesGrid: $("#dayTimesGrid"),
@@ -2309,10 +2405,18 @@
       pushTestBtn: $("#pushTestBtn"),
       pushResetBtn: $("#pushResetBtn"),
       pushStatus: $("#pushStatus"),
+      exportBackupBtn: $("#exportBackupBtn"),
+      importBackupBtn: $("#importBackupBtn"),
+      importBackupInput: $("#importBackupInput"),
+      backupStatus: $("#backupStatus"),
+      trashCard: $("#trashCard"),
+      trashCount: $("#trashCount"),
+      trashList: $("#trashList"),
       clearHistoryBtn: $("#clearHistoryBtn"),
       deletePhotosBtn: $("#deletePhotosBtn"),
       themeSelect: $("#themeSelect"),
       compactToggle: $("#compactToggle"),
+      timeFormatSelect: $("#timeFormatSelect"),
       showDetailsToggle: $("#showDetailsToggle"),
       remindersToggle: $("#remindersToggle"),
       exportBtn: $("#exportBtn"),
@@ -2407,7 +2511,16 @@
     const lower = t.toLowerCase();
     if (lower === "all day" || lower === "anytime") return "";
     const dotIdx = t.indexOf("·");
-    return (dotIdx >= 0 ? t.slice(0, dotIdx) : t).trim();
+    const c = (dotIdx >= 0 ? t.slice(0, dotIdx) : t).trim();
+    // Reformat a leading clock time to the 12/24h preference; leave words as-is.
+    const m = /^(\d{1,2}):(\d{2})\s*(AM|PM)?/i.exec(c);
+    if (m) {
+      let hh = parseInt(m[1], 10); const mm = parseInt(m[2], 10); const ap = (m[3] || "").toUpperCase();
+      if (ap === "PM" && hh < 12) hh += 12;
+      if (ap === "AM" && hh === 12) hh = 0;
+      return formatClock(hh, mm);
+    }
+    return c;
   }
 
   // Sections whose fully-done state has been manually expanded this session.
@@ -3774,9 +3887,11 @@
     if (pending.length === 1) {
       const h = pending[0];
       const chip = timeChipLabel(effectiveTime(h, today.getDay()));
-      const body = h.notes
-        ? (chip ? `${chip} · ${h.notes}` : h.notes)
-        : (chip ? `Time for your ${chip} habit` : "Time to check this off");
+      const body = h.reminderMsg
+        ? h.reminderMsg
+        : h.notes
+          ? (chip ? `${chip} · ${h.notes}` : h.notes)
+          : (chip ? `Time for your ${chip} habit` : "Time to check this off");
       notify(`${h.icon || "⏰"} ${h.name}`, {
         body,
         ids: [h.id],
@@ -3893,11 +4008,17 @@
     for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
     return out;
   }
+  function timeFmt() { return localStorage.getItem(KEYS.timeFormat) === "24" ? "24" : "12"; }
+  function formatClock(hh, mm) {
+    hh = ((hh % 24) + 24) % 24;
+    if (timeFmt() === "24") return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+    const ap = hh < 12 ? "AM" : "PM";
+    const h12 = ((hh + 11) % 12) + 1;
+    return `${h12}:${String(mm).padStart(2, "0")} ${ap}`;
+  }
   function fmtClockLabel(hhmm) {
     const [h, m] = hhmm.split(":").map(Number);
-    const ap = h < 12 ? "AM" : "PM";
-    const h12 = ((h + 11) % 12) + 1;
-    return `${h12}:${String(m).padStart(2, "0")} ${ap}`;
+    return formatClock(h, m);
   }
   // Build the reminder schedule the worker will fire on. Times are local "HH:MM"
   // plus the weekdays each applies to. Background pushes can't know completion
@@ -3941,13 +4062,17 @@
       if (hs.length === 1) {
         const h = hs[0];
         title = `${h.icon || "⏰"} ${h.name}`;
-        const bits = [`Due ${label}`];
-        if (h.notes) bits.push(h.notes);
-        body = bits.join(" · ");
+        if (h.reminderMsg) {
+          body = `Due ${label} · ${h.reminderMsg}`;
+        } else {
+          const bits = [`Due ${label}`];
+          if (h.notes) bits.push(h.notes);
+          body = bits.join(" · ");
+        }
       } else {
         title = `🕒 ${label} · ${hs.length} to check off`;
-        // One line per habit with its dose/notes for supplement stacks.
-        body = hs.map((h) => `${h.icon || "•"} ${h.name}${h.notes ? " — " + h.notes : ""}`).join("\n");
+        // One line per habit — prefer its custom message, else its notes.
+        body = hs.map((h) => `${h.icon || "•"} ${h.name}${h.reminderMsg ? " — " + h.reminderMsg : h.notes ? " — " + h.notes : ""}`).join("\n");
       }
       // ids make the notification actionable (Done / Snooze).
       entries.push({ time, days, title, body, ids: hs.map((h) => h.id) });
@@ -4511,6 +4636,7 @@
     }
     els.habitTime.value = habit ? habit.time : "";
     els.habitReminder.value = habit ? (habit.reminderTime || "") : (localStorage.getItem(KEYS.reminderDefault) || "");
+    els.habitReminderMsg.value = habit ? (habit.reminderMsg || "") : "";
     els.habitNotes.value = habit ? (habit.notes || "") : "";
     els.habitNightPrevDay.checked = habit ? !!habit.nightPrevDay : false;
     els.habitNoPush.checked = habit ? !!habit.noPush : false;
@@ -4622,6 +4748,7 @@
       time: els.habitTime.value.trim(),
       dayTimes,
       reminderTime: /^\d{2}:\d{2}$/.test(els.habitReminder.value) ? els.habitReminder.value : "",
+      reminderMsg: (els.habitReminderMsg.value || "").trim().slice(0, 120),
       nightPrevDay: !!els.habitNightPrevDay.checked,
       noPush: !!els.habitNoPush.checked,
       notes: (els.habitNotes.value || "").trim().slice(0, 500),
@@ -6017,7 +6144,9 @@
     els.themeSelect.value = localStorage.getItem(KEYS.theme) || "auto";
     els.remindersToggle.checked = remindersEnabled() && ("Notification" in window) && Notification.permission === "granted";
     els.compactToggle.checked = localStorage.getItem(KEYS.compact) === "true";
+    els.timeFormatSelect.value = timeFmt();
     els.showDetailsToggle.checked = localStorage.getItem(KEYS.showDetails) === "true";
+    renderTrash();
     els.unitsSelect.value = localStorage.getItem(KEYS.units) === "metric" ? "metric" : "imperial";
     els.deviceNameInput.value = localStorage.getItem(KEYS.deviceName) || "";
     els.reminderDefault.value = localStorage.getItem(KEYS.reminderDefault) || "";
@@ -6375,6 +6504,17 @@
       localStorage.setItem(KEYS.showDetails, els.showDetailsToggle.checked ? "true" : "false");
       renderToday();
     });
+    els.timeFormatSelect.addEventListener("change", () => {
+      localStorage.setItem(KEYS.timeFormat, els.timeFormatSelect.value === "24" ? "24" : "12");
+      switchView(currentView);
+    });
+    els.exportBackupBtn.addEventListener("click", exportBackup);
+    els.importBackupBtn.addEventListener("click", () => els.importBackupInput.click());
+    els.importBackupInput.addEventListener("change", (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (f) importBackupFile(f);
+      e.target.value = "";
+    });
 
     // Fasting
     if (els.fastingPresets) {
@@ -6649,6 +6789,7 @@
     if (isAutoSyncEnabled()) startAutoSync();
     cleanupNotifiedKeys();
     if (purgeTrash()) save(); // drop trash older than 7 days (writes tombstones)
+    maybeBackupReminder();
     scheduleReminders();
     catchUpReminders();
     maybeFireWeeklyReport();
@@ -6748,6 +6889,7 @@
       nightLogInfo, splitNightHabits, isHabitActiveOn, isFrozen, setFreeze,
       habitCompletionStats, purgeTrash, countsForAdherence, resetRenderCaches,
       restoreFromTrash, permanentDeleteFromTrash, deleteHabitById,
+      fmtClockLabel, formatClock, timeFmt, timeChipLabel, applyBackup,
       getState: () => state, setState: (s) => { state = s; },
     };
   }
