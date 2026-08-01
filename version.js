@@ -1,4 +1,4 @@
 // Single source of truth for the app version.
 // Bumped automatically on every push by bump.js.
 // Works in both the page (self === window) and the service worker (self === SW global).
-self.APP_VERSION = "4.48.0";
+self.APP_VERSION = "4.49.0";

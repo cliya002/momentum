@@ -5708,12 +5708,13 @@
     inp.type = "time";
     inp.className = "reminder-time-input";
     if (value) inp.value = value;
+    inp.addEventListener("change", syncTimeFromReminders);
     const rm = document.createElement("button");
     rm.type = "button";
     rm.className = "reminder-time-remove";
     rm.textContent = "×";
     rm.setAttribute("aria-label", "Remove reminder time");
-    rm.addEventListener("click", () => row.remove());
+    rm.addEventListener("click", () => { row.remove(); syncTimeFromReminders(); });
     row.appendChild(inp);
     row.appendChild(rm);
     els.habitReminderList.appendChild(row);
@@ -5732,6 +5733,23 @@
       if (/^\d{2}:\d{2}$/.test(inp.value) && !out.includes(inp.value)) out.push(inp.value);
     });
     return out.sort();
+  }
+  // Is the "Time of day" text just an auto-generated summary of clock times
+  // (so we can safely refresh it), vs. custom text like "8:00 AM · with meal"?
+  function isAutoTimeSummary(str) {
+    return str === "" || /^\s*\d{1,2}:\d{2}(\s?[AP]M)?(\s*&\s*\d{1,2}:\d{2}(\s?[AP]M)?)*\s*$/i.test(str);
+  }
+  // Keep the "Time of day" field in sync with the reminder times, unless the
+  // user has typed their own descriptive label there.
+  function syncTimeFromReminders() {
+    const els = getEls();
+    if (!els.habitTime) return;
+    const times = collectReminderTimes();
+    if (times.length === 0) return;
+    const cur = (els.habitTime.value || "").trim();
+    if (isAutoTimeSummary(cur)) {
+      els.habitTime.value = times.map(fmtClockLabel).join(" & ");
+    }
   }
 
   /* ---- Natural-language quick-add ---- */
@@ -9573,7 +9591,7 @@
       fmtClockLabel, formatClock, timeFmt, timeChipLabel, applyBackup,
       clockFromTimeStr, habitFromTemplate,
       isWeekly, weeklyTarget, weeklyDoneCount, weeklyMet, todayStatus, weekAdherencePct,
-      dayPartsForHabit, dayPartForTime,
+      dayPartsForHabit, dayPartForTime, isAutoTimeSummary,
       weekKeyOf, computeWeekReview, reviewTargetWeek,
       categoryMeta, getCategories,
       aiTodayInsight, weekdayAvgAdherence,
