@@ -5456,6 +5456,9 @@
 
     // Insight summary
     renderReportInsight(rows, pct, dayTotals, weekStart);
+    // Auto-generated insights feed + time-of-day breakdown
+    renderInsightsFeed();
+    renderTimeOfDay();
     // 5-week heatmap
     renderReportHeatmap(habitsInScope);
     // Adherence trend line
@@ -5668,6 +5671,217 @@
       }
       el.appendChild(cell);
     }
+  }
+
+  /* ---- Insights feed + time-of-day ---- */
+
+  // Which part of the day a habit lives in, from its (effective) time or a
+  // descriptive time string like "Morning" / "10:30 PM · with meal".
+  function slotForHabit(h) {
+    const min = parseTimeToMinutes(h.time);
+    // parseTimeToMinutes returns a sentinel >= 1440 for "All day"/"anytime"/unparseable.
+    if (min != null && min < 1440) return min < 720 ? "morning" : min < 1020 ? "afternoon" : "evening";
+    const t = (h.time || "").toLowerCase();
+    if (/morning|wake|breakfast|sunrise/.test(t)) return "morning";
+    if (/afternoon|lunch|midday|noon/.test(t)) return "afternoon";
+    if (/evening|night|bed|dinner|sunset/.test(t)) return "evening";
+    return "anytime";
+  }
+
+  const TOD_SLOTS = [
+    { key: "morning", label: "Morning", icon: "🌅" },
+    { key: "afternoon", label: "Afternoon", icon: "☀️" },
+    { key: "evening", label: "Evening", icon: "🌙" },
+    { key: "anytime", label: "Anytime", icon: "🕐" },
+  ];
+
+  // Scheduled/done tallies per time-of-day slot over the last ~8 weeks.
+  function timeOfDayStats() {
+    const slots = { morning: { s: 0, d: 0 }, afternoon: { s: 0, d: 0 }, evening: { s: 0, d: 0 }, anytime: { s: 0, d: 0 } };
+    const today = new Date();
+    for (const h of state.habits) {
+      if (h.archived) continue;
+      const slot = slotForHabit(h);
+      let d = new Date();
+      for (let i = 0; i < 56; i++) {
+        if (d <= today && countsForAdherence(h, d)) {
+          slots[slot].s++;
+          if (isCompleted(h, d)) slots[slot].d++;
+        }
+        d = addDays(d, -1);
+      }
+    }
+    return slots;
+  }
+
+  // Aggregate adherence per weekday across all active habits (~12 weeks).
+  function weekdayAdherenceAll() {
+    const byDow = Array.from({ length: 7 }, () => ({ s: 0, d: 0 }));
+    const today = new Date();
+    for (const h of state.habits) {
+      if (h.archived) continue;
+      let d = new Date();
+      for (let i = 0; i < 84; i++) {
+        if (d <= today && countsForAdherence(h, d)) {
+          const w = d.getDay();
+          byDow[w].s++;
+          if (isCompleted(h, d)) byDow[w].d++;
+        }
+        d = addDays(d, -1);
+      }
+    }
+    return byDow;
+  }
+
+  // Count of "perfect days" (every scheduled habit done) in the last N days.
+  function perfectDayCount(days) {
+    let n = 0;
+    const today = new Date();
+    for (let i = 0; i < days; i++) {
+      const d = addDays(today, -i);
+      const sched = state.habits.filter((h) => !h.archived && !h.nightPrevDay && countsForAdherence(h, d));
+      if (sched.length && sched.every((h) => isCompleted(h, d))) n++;
+    }
+    return n;
+  }
+
+  function totalCheckins() {
+    let n = 0;
+    for (const day of Object.values(state.completions)) {
+      for (const v of Object.values(day)) if (v > 0) n++;
+    }
+    return n;
+  }
+
+  // Build a scannable list of plain-language findings from real data.
+  function buildInsights() {
+    const out = [];
+    const active = state.habits.filter((h) => !h.archived);
+    if (active.length === 0) return out;
+    const now = new Date();
+
+    // 1. This week vs last week
+    const wsThis = startOfWeekMonday(now);
+    const thisPct = weekAdherencePct(wsThis);
+    const lastPct = weekAdherencePct(addDays(wsThis, -7));
+    if (thisPct != null && lastPct != null) {
+      const d = thisPct - lastPct;
+      if (Math.abs(d) >= 5) {
+        out.push({ icon: d > 0 ? "📈" : "📉", text: `You're ${d > 0 ? "up" : "down"} ${Math.abs(d)} points this week (${thisPct}% vs ${lastPct}% last week).` });
+      } else {
+        out.push({ icon: "📊", text: `Holding steady around ${thisPct}% adherence week to week.` });
+      }
+    }
+
+    // 2. Strongest / weakest weekday
+    const byDow = weekdayAdherenceAll();
+    const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    let bestDay = null, worstDay = null;
+    for (let i = 0; i < 7; i++) {
+      if (byDow[i].s < 3) continue;
+      const rate = byDow[i].d / byDow[i].s;
+      if (!bestDay || rate > bestDay.rate) bestDay = { i, rate };
+      if (!worstDay || rate < worstDay.rate) worstDay = { i, rate };
+    }
+    if (bestDay && worstDay && bestDay.i !== worstDay.i && bestDay.rate - worstDay.rate >= 0.15) {
+      out.push({ icon: "💪", text: `${dayNames[bestDay.i]}s are your strongest day (${Math.round(bestDay.rate * 100)}%).` });
+      if (worstDay.rate < 0.6) out.push({ icon: "🎯", text: `${dayNames[worstDay.i]}s slip the most (${Math.round(worstDay.rate * 100)}%) — worth a plan.` });
+    }
+
+    // 3. Best time of day
+    const tod = timeOfDayStats();
+    let bestSlot = null;
+    for (const s of TOD_SLOTS) {
+      const v = tod[s.key];
+      if (v.s < 5) continue;
+      const rate = v.d / v.s;
+      if (!bestSlot || rate > bestSlot.rate) bestSlot = { ...s, rate };
+    }
+    if (bestSlot && bestSlot.rate >= 0.6) {
+      out.push({ icon: bestSlot.icon, text: `${bestSlot.label} is your power window — ${Math.round(bestSlot.rate * 100)}% of those habits get done.` });
+    }
+
+    // 4. Best & needs-work habits (by completion rate over history)
+    const scored = [];
+    for (const h of active) {
+      const s = habitCompletionStats(h);
+      if (s && s.sched >= 5) scored.push({ h, rate: s.rate });
+    }
+    scored.sort((a, b) => b.rate - a.rate);
+    if (scored.length >= 2) {
+      const top = scored[0], low = scored[scored.length - 1];
+      if (top.rate >= 70) out.push({ icon: "🏆", text: `Most consistent: ${top.h.icon || "•"} ${top.h.name} (${top.rate}%).` });
+      if (low.rate < 50 && low.h.id !== top.h.id) out.push({ icon: "🌱", text: `Needs love: ${low.h.icon || "•"} ${low.h.name} (${low.rate}%). Try shrinking it or moving the time.` });
+    }
+
+    // 5. Longest current streak
+    let bestStreak = 0, bestStreakHabit = null;
+    for (const h of active) { const st = currentStreak(h); if (st > bestStreak) { bestStreak = st; bestStreakHabit = h; } }
+    if (bestStreak >= 3 && bestStreakHabit) {
+      out.push({ icon: "🔥", text: `${bestStreakHabit.icon || "•"} ${bestStreakHabit.name} is on a ${bestStreak}-day streak — your longest going right now.` });
+    }
+
+    // 6. Perfect days
+    const pd = perfectDayCount(30);
+    if (pd >= 3) out.push({ icon: "✅", text: `${pd} perfect days in the last month — every scheduled habit done.` });
+
+    // 7. Energy correlation (needs 4+ weeks with energy logged)
+    const enWeeks = measurementList().filter((e) => e.energy != null);
+    if (enWeeks.length >= 4) {
+      const ad = [], en = [];
+      for (const e of enWeeks) {
+        const parts = String(e.weekKey).split("-").map(Number);
+        if (parts.length !== 3) continue;
+        const p = weekAdherencePct(new Date(parts[0], parts[1] - 1, parts[2]));
+        if (p != null) { ad.push(p); en.push(e.energy); }
+      }
+      const r = pearson(ad, en);
+      if (r != null && Math.abs(r) >= 0.4) {
+        out.push({ icon: "⚡", text: r > 0
+          ? `Your energy runs higher in weeks you hit your habits.`
+          : `Interesting — higher-adherence weeks track with lower logged energy. Watch for overtraining.` });
+      }
+    }
+
+    // 8. Milestone-ish total
+    const total = totalCheckins();
+    if (total >= 50) out.push({ icon: "🎉", text: `${total} check-ins logged all-time. That's a lot of small wins.` });
+
+    return out;
+  }
+
+  function renderInsightsFeed() {
+    const card = $("#insightsFeedCard");
+    const wrap = $("#insightsFeed");
+    if (!card || !wrap) return;
+    const items = buildInsights();
+    if (items.length === 0) { card.hidden = true; return; }
+    card.hidden = false;
+    wrap.innerHTML = items.slice(0, 7).map((it) =>
+      `<div class="insight-row"><span class="insight-row-icon">${it.icon}</span><span class="insight-row-text">${escapeHtml(it.text)}</span></div>`
+    ).join("");
+  }
+
+  function renderTimeOfDay() {
+    const card = $("#timeOfDayCard");
+    const wrap = $("#timeOfDayChart");
+    if (!card || !wrap) return;
+    const tod = timeOfDayStats();
+    const rows = TOD_SLOTS.filter((s) => tod[s.key].s > 0);
+    if (rows.length === 0) { card.hidden = true; return; }
+    card.hidden = false;
+    let bestRate = -1;
+    for (const s of rows) { const v = tod[s.key]; const r = v.d / v.s; if (r > bestRate) bestRate = r; }
+    wrap.innerHTML = rows.map((s) => {
+      const v = tod[s.key];
+      const pct = Math.round((v.d / v.s) * 100);
+      const isBest = v.s >= 5 && (v.d / v.s) === bestRate;
+      return `<div class="tod-row">
+        <span class="tod-label">${s.icon} ${s.label}</span>
+        <span class="tod-bar"><span class="tod-fill${isBest ? " best" : ""}" style="width:${pct}%"></span></span>
+        <span class="tod-pct">${pct}%</span>
+      </div>`;
+    }).join("");
   }
 
   function renderReportInsight(rows, pct, dayTotals, weekStart) {
@@ -7742,6 +7956,7 @@
       weekKeyOf, computeWeekReview, reviewTargetWeek,
       categoryMeta, getCategories,
       aiTodayInsight, weekdayAvgAdherence,
+      buildInsights, timeOfDayStats, slotForHabit, perfectDayCount, totalCheckins,
       getState: () => state, setState: (s) => { state = s; },
     };
   }
