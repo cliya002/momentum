@@ -6045,8 +6045,9 @@
     // Achievements (check for newly-earned, then render the grid)
     checkAchievements();
     renderAchievements();
-    // 5-week heatmap
+    // 5-week heatmap + full-year heatmap
     renderReportHeatmap(habitsInScope);
+    renderYearHeatmap();
     // Adherence trend line
     renderAdherenceTrend(habitsInScope);
     // Category breakdown
@@ -6603,6 +6604,48 @@
           : `<span class="badge-progress"><span class="badge-progress-fill" style="width:${pct}%"></span></span>
              <span class="badge-count">${a.cur}/${a.target}</span>`}
       </div>`;
+    }).join("");
+  }
+
+  /* ---- Year in pixels (full-year adherence heatmap) ---- */
+  // Overall adherence bucket for a day: "none" | "0".."4" | "future".
+  function dayAdherenceBucket(d) {
+    const now = new Date();
+    if (d > now && !sameDay(d, now)) return "future";
+    const sched = state.habits.filter((h) => !h.archived && !h.nightPrevDay && countsForAdherence(h, d));
+    if (!sched.length) return "none";
+    const done = sched.filter((h) => isCompleted(h, d)).length;
+    const p = done / sched.length;
+    if (p === 0) return "0";
+    if (p < 0.34) return "1";
+    if (p < 0.67) return "2";
+    if (p < 1) return "3";
+    return "4";
+  }
+  // 53 weeks × 7 days ending this week (Monday-first columns).
+  function yearHeatmapCells() {
+    const today = new Date();
+    const start = startOfWeekMonday(addDays(today, -7 * 52));
+    const cells = [];
+    for (let i = 0; i < 53 * 7; i++) {
+      const d = addDays(start, i);
+      cells.push({ date: d, bucket: dayAdherenceBucket(d) });
+    }
+    return cells;
+  }
+  function renderYearHeatmap() {
+    const card = $("#yearHeatmapCard");
+    const el = $("#yearHeatmap");
+    if (!card || !el) return;
+    const cells = yearHeatmapCells();
+    // Hide until there's at least some logged history.
+    const anyData = cells.some((c) => c.bucket !== "none" && c.bucket !== "future");
+    if (!anyData) { card.hidden = true; return; }
+    card.hidden = false;
+    el.innerHTML = cells.map((c) => {
+      const cls = c.bucket === "none" ? "hm-none" : c.bucket === "future" ? "yh-future" : "hm-" + c.bucket;
+      const title = c.bucket === "future" ? "" : `${c.date.toLocaleDateString()}`;
+      return `<span class="yh-cell ${cls}" title="${title}"></span>`;
     }).join("");
   }
 
@@ -8816,6 +8859,7 @@
       categoryMeta, getCategories,
       aiTodayInsight, weekdayAvgAdherence,
       buildInsights, timeOfDayStats, slotForHabit, perfectDayCount, totalCheckins, habitPairInsight,
+      yearHeatmapCells, dayAdherenceBucket,
       evaluateAchievements, checkAchievements, maxLongestStreak, hasPerfectWeek,
       setMood, moodCompletionInsight, fireStackCues,
       buildMonthCalendar, timeAgo,
