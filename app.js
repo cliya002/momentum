@@ -2742,6 +2742,7 @@
       detailCloseBtn: $("#detailCloseBtn"),
       detailEditBtn: $("#detailEditBtn"),
       moodStrip: $("#moodStrip"),
+      keystoneCard: $("#keystoneCard"),
       // vacation mode
       vacationBanner: $("#vacationBanner"),
       vacationStatus: $("#vacationStatus"),
@@ -2756,6 +2757,7 @@
       reviewRange: $("#reviewRange"),
       reviewBody: $("#reviewBody"),
       reviewFocus: $("#reviewFocus"),
+      reviewKeystone: $("#reviewKeystone"),
       reviewCloseBtn: $("#reviewCloseBtn"),
       reviewSkipBtn: $("#reviewSkipBtn"),
       reviewSaveBtn: $("#reviewSaveBtn"),
@@ -3043,6 +3045,7 @@
     els.todayGreetingSub.textContent = `${dateStr} · ${leftMsg}`;
 
     renderVacationBanner();
+    renderKeystone();
     renderReviewPrompt();
     renderMoodStrip();
     renderFasting();
@@ -5637,6 +5640,66 @@
     });
   }
 
+  /* ---- Keystone habit of the week ---- */
+  function keystoneId() {
+    const wk = weekKeyOf(new Date());
+    return (state.keystone && state.keystone[wk]) || null;
+  }
+  function getKeystoneHabit() {
+    const id = keystoneId();
+    if (!id) return null;
+    return state.habits.find((h) => h.id === id && !h.archived) || null;
+  }
+  function setKeystone(habitId) {
+    if (!state.keystone) state.keystone = {};
+    const wk = weekKeyOf(new Date());
+    if (habitId) state.keystone[wk] = habitId; else delete state.keystone[wk];
+    save();
+    renderKeystone();
+    if (currentView === "today") renderToday();
+  }
+  function renderKeystone() {
+    const el = getEls().keystoneCard;
+    if (!el) return;
+    const active = state.habits.filter((h) => !h.archived);
+    if (active.length === 0) { el.classList.add("hidden"); el.innerHTML = ""; return; }
+    const h = getKeystoneHabit();
+    el.classList.remove("hidden");
+    if (!h) {
+      el.innerHTML =
+        `<div class="ks-head"><span class="ks-icon">⭐</span><b>Pick your focus this week</b></div>
+         <p class="hint">Choose one keystone habit to prioritize — small wins here lift everything else.</p>
+         <select id="keystoneSelect" class="filter-select" style="width:100%">
+           <option value="">Choose a habit…</option>
+           ${active.map((x) => `<option value="${escapeHtml(x.id)}">${escapeHtml((x.icon || "•") + " " + x.name)}</option>`).join("")}
+         </select>`;
+      const sel = el.querySelector("#keystoneSelect");
+      if (sel) sel.addEventListener("change", () => setKeystone(sel.value));
+      return;
+    }
+    const today = new Date();
+    const streak = currentStreak(h);
+    let progressLine;
+    if (isWeekly(h)) {
+      progressLine = `${weeklyDoneCount(h, today)}/${weeklyTarget(h)} this week`;
+    } else {
+      const wp = weeklyProgress(h);
+      progressLine = wp.weekTotal > 0 ? `${wp.done}/${wp.weekTotal} this week` : `${streak}-day streak`;
+    }
+    const doneToday = isCompleted(h, today);
+    el.innerHTML =
+      `<div class="ks-head"><span class="ks-icon">⭐</span><b>Focus this week</b>
+        <button type="button" class="ks-change" id="keystoneChange">Change</button></div>
+       <div class="ks-body">
+         <span class="habit-icon" style="background:${escapeHtml(h.color)}">${escapeHtml(h.icon || "🎯")}</span>
+         <div class="ks-info"><div class="ks-name">${escapeHtml(h.name)}</div>
+           <div class="ks-meta">${escapeHtml(progressLine)}${streak > 0 ? " · 🔥 " + streak : ""}${doneToday ? " · ✓ done today" : ""}</div>
+         </div>
+       </div>`;
+    const chg = el.querySelector("#keystoneChange");
+    if (chg) chg.addEventListener("click", () => setKeystone(""));
+  }
+
   /* ---- Vacation / pause mode ---- */
   function setVacation(start, end, note) {
     if (!start || !end) return;
@@ -5858,6 +5921,13 @@
 
     const existing = state.reviews && state.reviews[wk];
     els.reviewFocus.value = existing ? (existing.focus || "") : "";
+    // Keystone picker (applies to the current week's focus habit).
+    if (els.reviewKeystone) {
+      const active = state.habits.filter((h) => !h.archived);
+      els.reviewKeystone.innerHTML = `<option value="">No keystone habit</option>` +
+        active.map((h) => `<option value="${escapeHtml(h.id)}">${escapeHtml((h.icon || "•") + " " + h.name)}</option>`).join("");
+      els.reviewKeystone.value = keystoneId() || "";
+    }
     els.reviewModal.classList.remove("hidden");
     setTimeout(() => els.reviewFocus.focus(), 60);
   }
@@ -5887,6 +5957,13 @@
       adherence: r.adherence,
       updatedAt: Date.now(),
     };
+    // Apply the chosen keystone habit for the current week.
+    if (els.reviewKeystone) {
+      const wkNow = weekKeyOf(new Date());
+      if (!state.keystone) state.keystone = {};
+      if (els.reviewKeystone.value) state.keystone[wkNow] = els.reviewKeystone.value;
+      else delete state.keystone[wkNow];
+    }
     save();
     closeReviewModal();
     renderReviewPrompt();
@@ -8707,6 +8784,7 @@
       buildMonthCalendar, timeAgo,
       inVacation, vacationActiveNow, setVacation, clearVacation,
       recordCompletionClock, suggestReminderTime, smartTimingSuggestions,
+      keystoneId, getKeystoneHabit, setKeystone,
       getState: () => state, setState: (s) => { state = s; },
     };
   }

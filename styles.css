@@ -1940,6 +1940,26 @@ body.compact .habit-list { gap: 0.35rem; }
 .mood-btn:hover { transform: scale(1.1); }
 .mood-btn.on { filter: none; opacity: 1; transform: scale(1.15); background: var(--primary-soft); }
 
+/* Keystone habit of the week */
+.keystone-card {
+  padding: 0.85rem 1rem;
+  margin-bottom: 0.85rem;
+  border-radius: 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--amber, #f59e0b);
+  box-shadow: var(--shadow-sm);
+}
+.keystone-card .ks-head { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; }
+.keystone-card .ks-icon { font-size: 1.1rem; }
+.keystone-card .ks-change { margin-left: auto; background: transparent; border: none; color: var(--primary); font-size: 0.8rem; font-weight: 600; cursor: pointer; }
+.keystone-card .ks-body { display: flex; align-items: center; gap: 0.7rem; margin-top: 0.6rem; }
+.keystone-card .ks-info { min-width: 0; }
+.keystone-card .ks-name { font-weight: 700; font-size: 0.98rem; }
+.keystone-card .ks-meta { font-size: 0.8rem; color: var(--text-dim); margin-top: 2px; }
+.keystone-card .hint { margin: 0.3rem 0 0.5rem; }
+.keystone-card select { margin-top: 0.3rem; }
+
 /* Vacation / pause mode */
 .vacation-banner {
   display: flex;
