@@ -704,6 +704,13 @@
       })(),
       notes: (h.notes || "").slice(0, 500),
       reminderTime: /^\d{2}:\d{2}$/.test(h.reminderTime) ? h.reminderTime : "",
+      reminderTimes: (function () {
+        const out = [];
+        const arr = Array.isArray(h.reminderTimes) ? h.reminderTimes : [];
+        for (const t of arr) if (/^\d{2}:\d{2}$/.test(t) && !out.includes(t)) out.push(t);
+        if (out.length === 0 && /^\d{2}:\d{2}$/.test(h.reminderTime)) out.push(h.reminderTime);
+        return out.slice(0, 6).sort();
+      })(),
       reminderMsg: (h.reminderMsg || "").slice(0, 120),
       nightPrevDay: !!h.nightPrevDay,
       noPush: !!h.noPush,
@@ -2456,7 +2463,8 @@
       habitName: $("#habitName"),
       habitCategory: $("#habitCategory"),
       habitTime: $("#habitTime"),
-      habitReminder: $("#habitReminder"),
+      habitReminderList: $("#habitReminderList"),
+      addReminderTimeBtn: $("#addReminderTimeBtn"),
       habitNotes: $("#habitNotes"),
       habitTarget: $("#habitTarget"),
       habitUnit: $("#habitUnit"),
@@ -3867,6 +3875,19 @@
     return /^\d{2}:\d{2}$/.test(habit.reminderTime) ? habit.reminderTime : null;
   }
 
+  // All reminder times a habit should fire at on the given day. Supports
+  // multiple times; for a single time the work-schedule per-day override applies.
+  function habitReminderTimes(habit, date) {
+    const list = (habit.reminderTimes && habit.reminderTimes.length)
+      ? habit.reminderTimes.filter((t) => /^\d{2}:\d{2}$/.test(t))
+      : (/^\d{2}:\d{2}$/.test(habit.reminderTime) ? [habit.reminderTime] : []);
+    if (list.length === 1) {
+      const rt = effectiveReminderTime(habit, date);
+      if (rt) return [rt];
+    }
+    return list;
+  }
+
   function scheduleReminders() {
     if (typeof window === "undefined") return; // no-op outside the browser (tests)
     clearReminderTimers();
@@ -3888,14 +3909,13 @@
     const groups = new Map(); // "HH:MM" -> [habitId]
     for (const h of state.habits) {
       if (h.archived) continue;
-      if (!h.reminderTime || !/^\d{2}:\d{2}$/.test(h.reminderTime)) continue;
       if (!isHabitActiveOn(h, now)) continue;
-      const rt = effectiveReminderTime(h, now);
-      if (!rt) continue;
-      const [hh, mm] = rt.split(":").map(Number);
-      if (inQuietHours(hh, mm)) continue;
-      if (!groups.has(rt)) groups.set(rt, []);
-      groups.get(rt).push(h.id);
+      for (const rt of habitReminderTimes(h, now)) {
+        const [hh, mm] = rt.split(":").map(Number);
+        if (inQuietHours(hh, mm)) continue;
+        if (!groups.has(rt)) groups.set(rt, []);
+        groups.get(rt).push(h.id);
+      }
     }
     for (const [time, ids] of groups) {
       const [hh, mm] = time.split(":").map(Number);
@@ -3996,16 +4016,15 @@
     const overdue = [];
     for (const h of state.habits) {
       if (h.archived) continue;
-      if (!h.reminderTime || !/^\d{2}:\d{2}$/.test(h.reminderTime)) continue;
       if (!isHabitActiveOn(h, now)) continue;
-      const rt = effectiveReminderTime(h, now);
-      if (!rt) continue;
-      const [hh, mm] = rt.split(":").map(Number);
-      if (hh * 60 + mm > nowMin) continue;             // not due yet
-      if (inQuietHours(hh, mm)) continue;
       if (habitStatus(h, now) !== "pending") continue; // already done/skipped
       if (notified.has(h.id)) continue;                // already pinged today
-      overdue.push(h);
+      // Overdue if the earliest non-quiet reminder time has passed.
+      const due = habitReminderTimes(h, now).some((rt) => {
+        const [hh, mm] = rt.split(":").map(Number);
+        return hh * 60 + mm <= nowMin && !inQuietHours(hh, mm);
+      });
+      if (due) overdue.push(h);
     }
     if (overdue.length === 0) return;
     markNotified(overdue.map((h) => h.id));
@@ -4204,12 +4223,13 @@
     const byTime = new Map();
     for (const h of state.habits) {
       if (h.archived) continue;
-      if (!h.reminderTime || !/^\d{2}:\d{2}$/.test(h.reminderTime)) continue;
       if (h.noPush) continue; // habit opted out of background reminders
-      const [qh, qm] = h.reminderTime.split(":").map(Number);
-      if (inQuietHours(qh, qm)) continue; // don't push during quiet hours
-      if (!byTime.has(h.reminderTime)) byTime.set(h.reminderTime, []);
-      byTime.get(h.reminderTime).push(h);
+      for (const rt of habitReminderTimes(h, today)) {
+        const [qh, qm] = rt.split(":").map(Number);
+        if (inQuietHours(qh, qm)) continue; // don't push during quiet hours
+        if (!byTime.has(rt)) byTime.set(rt, []);
+        byTime.get(rt).push(h);
+      }
     }
     for (const [time, hs] of byTime) {
       const days = [...new Set(hs.flatMap((h) => (h.days && h.days.length ? h.days : [0, 1, 2, 3, 4, 5, 6])))];
@@ -4770,6 +4790,41 @@
     }
   }
 
+  /* ---- Reminder-time editor (multiple times per habit) ---- */
+  function addReminderTimeRow(value) {
+    const els = getEls();
+    const row = document.createElement("div");
+    row.className = "reminder-time-row";
+    const inp = document.createElement("input");
+    inp.type = "time";
+    inp.className = "reminder-time-input";
+    if (value) inp.value = value;
+    const rm = document.createElement("button");
+    rm.type = "button";
+    rm.className = "reminder-time-remove";
+    rm.textContent = "×";
+    rm.setAttribute("aria-label", "Remove reminder time");
+    rm.addEventListener("click", () => row.remove());
+    row.appendChild(inp);
+    row.appendChild(rm);
+    els.habitReminderList.appendChild(row);
+  }
+  function renderReminderTimeInputs(times) {
+    const els = getEls();
+    els.habitReminderList.innerHTML = "";
+    const list = (times || []).filter((t) => /^\d{2}:\d{2}$/.test(t));
+    if (list.length === 0) addReminderTimeRow("");
+    else list.forEach((t) => addReminderTimeRow(t));
+  }
+  function collectReminderTimes() {
+    const els = getEls();
+    const out = [];
+    els.habitReminderList.querySelectorAll(".reminder-time-input").forEach((inp) => {
+      if (/^\d{2}:\d{2}$/.test(inp.value) && !out.includes(inp.value)) out.push(inp.value);
+    });
+    return out.sort();
+  }
+
   /* ---- Habit modal ---- */
   function openHabitModal(habit) {
     const els = getEls();
@@ -4791,7 +4846,10 @@
       els.habitCategory.value = habit.category;
     }
     els.habitTime.value = habit ? habit.time : "";
-    els.habitReminder.value = habit ? (habit.reminderTime || "") : (localStorage.getItem(KEYS.reminderDefault) || "");
+    const initTimes = habit
+      ? (habit.reminderTimes && habit.reminderTimes.length ? habit.reminderTimes : (habit.reminderTime ? [habit.reminderTime] : []))
+      : (localStorage.getItem(KEYS.reminderDefault) ? [localStorage.getItem(KEYS.reminderDefault)] : []);
+    renderReminderTimeInputs(initTimes);
     els.habitReminderMsg.value = habit ? (habit.reminderMsg || "") : "";
     els.habitNotes.value = habit ? (habit.notes || "") : "";
     els.habitNightPrevDay.checked = habit ? !!habit.nightPrevDay : false;
@@ -4903,7 +4961,8 @@
       target, unit, increment,
       time: els.habitTime.value.trim(),
       dayTimes,
-      reminderTime: /^\d{2}:\d{2}$/.test(els.habitReminder.value) ? els.habitReminder.value : "",
+      reminderTime: collectReminderTimes()[0] || "",
+      reminderTimes: collectReminderTimes(),
       reminderMsg: (els.habitReminderMsg.value || "").trim().slice(0, 120),
       nightPrevDay: !!els.habitNightPrevDay.checked,
       noPush: !!els.habitNoPush.checked,
@@ -6852,6 +6911,7 @@
       if (!editingId) return;
       if (deleteHabitById(editingId)) { closeModal(); switchView(currentView); }
     });
+    els.addReminderTimeBtn.addEventListener("click", () => addReminderTimeRow(""));
     els.habitForm.addEventListener("submit", submitHabitForm);
     els.modal.addEventListener("click", (e) => { if (e.target === els.modal) closeModal(); });
     els.typePicker.addEventListener("click", (e) => {

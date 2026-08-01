@@ -2284,3 +2284,14 @@ body.compact .habit-list { gap: 0.35rem; }
 .trend-line { fill: none; stroke: var(--primary); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
 .trend-dot { fill: var(--primary); }
 .trend-xlabel { fill: var(--text-dim); font-size: 9px; }
+
+/* Multiple reminder times editor */
+.reminder-times { display: flex; flex-direction: column; gap: 0.4rem; margin: 0.35rem 0 0.5rem; }
+.reminder-time-row { display: flex; align-items: center; gap: 0.5rem; }
+.reminder-time-input { flex: 1; }
+.reminder-time-remove {
+  width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
+  background: var(--card-soft); border: 1px solid var(--border); color: var(--text-dim);
+  font-size: 1.2rem; line-height: 1;
+}
+.reminder-time-remove:hover { background: var(--danger-soft); color: var(--danger); border-color: var(--danger); }
