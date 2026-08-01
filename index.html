@@ -606,6 +606,39 @@
           </div>
 
           <div class="card">
+            <div class="card-title">📁 OneDrive sync <span class="hint">(alternative to Gist)</span></div>
+            <p class="card-sub">Sync your data to your own Microsoft OneDrive. Needs a one-time free Azure app registration to get a client ID.</p>
+            <details class="setup-guide">
+              <summary>One-time setup (Azure)</summary>
+              <ol>
+                <li>Go to <a href="https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank" rel="noopener">Azure App registrations</a> → <b>New registration</b>.</li>
+                <li>Supported account types: <b>Personal Microsoft accounts</b> (and/or org, your choice).</li>
+                <li>Add a <b>Single-page application (SPA)</b> redirect URI equal to this app's URL: <code id="odRedirectHint">—</code></li>
+                <li>Under <b>API permissions</b>, add Microsoft Graph delegated <b>Files.ReadWrite.AppFolder</b> and <b>offline_access</b>.</li>
+                <li>Copy the <b>Application (client) ID</b> and paste it below.</li>
+              </ol>
+            </details>
+            <div class="field">
+              <label for="odClientId">Application (client) ID</label>
+              <input type="text" id="odClientId" placeholder="00000000-0000-0000-0000-000000000000" autocomplete="off" />
+            </div>
+            <div class="row-actions">
+              <button id="odConnectBtn" class="btn-primary" type="button">🔗 Connect OneDrive</button>
+              <button id="odDisconnectBtn" class="btn-secondary" type="button" hidden>Disconnect</button>
+              <button id="odPushBtn" class="btn-secondary" type="button">⬆️ Push</button>
+              <button id="odPullBtn" class="btn-secondary" type="button">⬇️ Pull</button>
+            </div>
+            <div class="field toggle-field">
+              <label class="toggle-row">
+                <span><b>Auto-sync to OneDrive</b><br><span class="hint">Push whenever data changes, pull when you open the app.</span></span>
+                <input type="checkbox" id="odAutoToggle" />
+              </label>
+            </div>
+            <div id="odStateLine" class="sync-state-line" hidden></div>
+            <div id="odStatus" class="sync-status" hidden></div>
+          </div>
+
+          <div class="card">
             <div class="card-title">📊 Your data</div>
             <div id="dataSummary" class="data-summary"></div>
             <div id="storageMeter" class="storage-meter"></div>

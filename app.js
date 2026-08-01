@@ -41,6 +41,13 @@
     accent: "ht_accent",
     textSize: "ht_text_size",
     contrast: "ht_contrast",
+    odClientId: "ht_od_client_id",
+    odAccess: "ht_od_access",
+    odRefresh: "ht_od_refresh",
+    odExpiry: "ht_od_expiry",
+    odEnabled: "ht_od_enabled",
+    odAuto: "ht_od_auto",
+    odLastSync: "ht_od_last_sync",
   };
   const DEFAULT_CATEGORIES = ["Fitness","Nutrition","Sleep","Supplements","Custom"];
   // Fallback color/icon per default category (used until the user customizes).
@@ -1036,6 +1043,7 @@
       if (syncInFlight) return;
       dirtyForSync = true;
       if (isAutoSyncEnabled()) queueAutoSyncPush();
+      if (typeof odAutoEnabled === "function" && odAutoEnabled() && !odSyncInFlight) queueOneDrivePush();
     } catch (e) {
       console.error("save failed", e);
       if (isQuotaError(e)) {
@@ -2040,6 +2048,221 @@
     if (payload.state && typeof payload.state === "object") return normalizeState(payload.state);
     if (payload.habits) return normalizeState(payload);
     return null;
+  }
+
+  /* ================================================================
+   * OneDrive sync (Microsoft Graph + OAuth2 Authorization Code + PKCE)
+   * A self-contained alternative to the Gist provider. Stores the app's data
+   * in the user's OneDrive app folder (/Apps/<yourapp>/momentum.json).
+   * Needs a one-time Azure app registration (client ID) — see the setup guide
+   * in Settings. No client secret (public SPA client).
+   * ================================================================ */
+  const OD_AUTHORIZE = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";
+  const OD_TOKEN = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
+  const OD_SCOPES = "Files.ReadWrite.AppFolder offline_access openid profile";
+  const OD_FILE_URL = "https://graph.microsoft.com/v1.0/me/drive/special/approot:/momentum.json:/content";
+  let odSyncInFlight = false;
+  let odPushTimer = null;
+
+  function odClientId() { return (localStorage.getItem(KEYS.odClientId) || "").trim(); }
+  function odConnected() { return localStorage.getItem(KEYS.odEnabled) === "true" && !!localStorage.getItem(KEYS.odRefresh); }
+  function odAutoEnabled() { return odConnected() && localStorage.getItem(KEYS.odAuto) === "true"; }
+  // The redirect URI must exactly match the SPA redirect registered in Azure.
+  function odRedirectUri() { return location.origin + location.pathname; }
+
+  function b64url(bytes) {
+    let s = "";
+    for (const b of bytes) s += String.fromCharCode(b);
+    return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function odRandom(len) {
+    const a = new Uint8Array(len || 48);
+    crypto.getRandomValues(a);
+    return b64url(a);
+  }
+  async function odChallenge(verifier) {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+    return b64url(new Uint8Array(buf));
+  }
+
+  async function connectOneDrive() {
+    const cid = odClientId();
+    if (!cid) { showOdStatus("Enter your Azure app (client) ID first.", "warn"); return; }
+    if (!window.crypto || !crypto.subtle) { showOdStatus("This browser can't do secure sign-in (no WebCrypto).", "warn"); return; }
+    const verifier = odRandom(48);
+    const challenge = await odChallenge(verifier);
+    const st = odRandom(12);
+    localStorage.setItem("ht_od_verifier", verifier);
+    localStorage.setItem("ht_od_state", st);
+    const p = new URLSearchParams({
+      client_id: cid, response_type: "code", redirect_uri: odRedirectUri(),
+      scope: OD_SCOPES, code_challenge: challenge, code_challenge_method: "S256",
+      state: st, prompt: "select_account",
+    });
+    location.href = OD_AUTHORIZE + "?" + p.toString();
+  }
+
+  function storeOdTokens(data) {
+    if (data.access_token) localStorage.setItem(KEYS.odAccess, data.access_token);
+    if (data.refresh_token) localStorage.setItem(KEYS.odRefresh, data.refresh_token);
+    const exp = Date.now() + ((Number(data.expires_in) || 3600) - 90) * 1000;
+    localStorage.setItem(KEYS.odExpiry, String(exp));
+  }
+
+  // On app load: if we came back from the Microsoft sign-in with a ?code=,
+  // exchange it for tokens. Returns true if it handled a redirect.
+  async function handleOneDriveRedirect() {
+    const u = new URL(location.href);
+    const code = u.searchParams.get("code");
+    const st = u.searchParams.get("state");
+    if (!code || !st) return false;
+    const expect = localStorage.getItem("ht_od_state");
+    const verifier = localStorage.getItem("ht_od_verifier");
+    // Only handle it if this looks like our OneDrive flow.
+    if (!verifier || !expect || st !== expect) return false;
+    try {
+      const body = new URLSearchParams({
+        client_id: odClientId(), grant_type: "authorization_code", code,
+        redirect_uri: odRedirectUri(), code_verifier: verifier,
+      });
+      const res = await fetch(OD_TOKEN, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error_description || data.error || "token exchange failed");
+      storeOdTokens(data);
+      localStorage.setItem(KEYS.odEnabled, "true");
+      localStorage.removeItem("ht_od_verifier");
+      localStorage.removeItem("ht_od_state");
+      history.replaceState({}, "", odRedirectUri());
+      await oneDrivePull({ silent: true });
+      await oneDrivePush({ silent: true });
+      showOdStatus("✓ OneDrive connected and synced.", "success");
+      renderOneDriveState();
+      return true;
+    } catch (e) {
+      history.replaceState({}, "", odRedirectUri());
+      showOdStatus("OneDrive connect failed: " + (e.message || e), "error");
+      return false;
+    }
+  }
+
+  // Return a valid access token, refreshing via the refresh_token if needed.
+  async function odAccessToken() {
+    const at = localStorage.getItem(KEYS.odAccess);
+    const exp = Number(localStorage.getItem(KEYS.odExpiry) || 0);
+    if (at && Date.now() < exp) return at;
+    const rt = localStorage.getItem(KEYS.odRefresh);
+    const cid = odClientId();
+    if (!rt || !cid) return null;
+    try {
+      const body = new URLSearchParams({
+        client_id: cid, grant_type: "refresh_token", refresh_token: rt,
+        redirect_uri: odRedirectUri(), scope: OD_SCOPES,
+      });
+      const res = await fetch(OD_TOKEN, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body });
+      const data = await res.json();
+      if (!res.ok) { return null; }
+      storeOdTokens(data);
+      return data.access_token;
+    } catch (e) { return null; }
+  }
+
+  function disconnectOneDrive() {
+    [KEYS.odAccess, KEYS.odRefresh, KEYS.odExpiry, KEYS.odEnabled, KEYS.odAuto, KEYS.odLastSync].forEach((k) => localStorage.removeItem(k));
+    showOdStatus("Disconnected from OneDrive (data stays on your device and OneDrive).", "success");
+    renderOneDriveState();
+  }
+
+  async function oneDrivePull(opts = {}) {
+    const silent = !!opts.silent;
+    if (!odConnected()) return silent ? null : showOdStatus("Connect OneDrive first.", "warn");
+    if (!navigator.onLine) return silent ? null : showOdStatus("You're offline.", "warn");
+    const at = await odAccessToken();
+    if (!at) return silent ? null : showOdStatus("Sign in to OneDrive again.", "warn");
+    try {
+      const res = await fetch(OD_FILE_URL, { headers: { Authorization: "Bearer " + at } });
+      if (res.status === 404) { if (!silent) showOdStatus("No OneDrive backup yet — push first.", "success"); return; }
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const text = await res.text();
+      const remote = readRemotePayload(text);
+      if (remote) {
+        const before = state.habits.length;
+        state = mergeStates(state, remote);
+        stampThisDevice();
+        persistRaw();
+        const delta = state.habits.length - before;
+        recordSyncDetail("OneDrive pull", `${state.habits.length} habits${delta > 0 ? ` (+${delta})` : ""}`);
+      }
+      localStorage.setItem(KEYS.odLastSync, String(Date.now()));
+      renderOneDriveState();
+      if (!opts.internal && !silent) { showOdStatus("✓ Pulled from OneDrive.", "success"); switchView(currentView); }
+    } catch (e) {
+      if (!silent) showOdStatus("OneDrive pull failed: " + (e.message || e), "error");
+    }
+  }
+
+  async function oneDrivePush(opts = {}) {
+    const silent = !!opts.silent;
+    if (!odConnected()) return silent ? null : showOdStatus("Connect OneDrive first.", "warn");
+    if (!navigator.onLine) { if (!silent) showOdStatus("You're offline. Will retry.", "warn"); return; }
+    if (odSyncInFlight) return;
+    odSyncInFlight = true;
+    if (!silent) showOdStatus("⬆️ Uploading to OneDrive…", "loading");
+    try {
+      const at = await odAccessToken();
+      if (!at) { if (!silent) showOdStatus("Sign in to OneDrive again.", "warn"); return; }
+      // Pull-merge first so we never clobber another device's changes.
+      await oneDrivePull({ silent: true, internal: true });
+      stampThisDevice();
+      persistRaw();
+      const payload = JSON.stringify({ version: 2, app: "health-tracker", updatedAt: new Date().toISOString(), state });
+      const res = await fetch(OD_FILE_URL, { method: "PUT", headers: { Authorization: "Bearer " + (await odAccessToken()), "Content-Type": "application/json" }, body: payload });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      localStorage.setItem(KEYS.odLastSync, String(Date.now()));
+      recordSyncDetail("OneDrive push", `${state.habits.length} habits`);
+      renderOneDriveState();
+      if (!silent) showOdStatus("✓ Pushed to OneDrive.", "success");
+    } catch (e) {
+      if (!silent) showOdStatus("OneDrive push failed: " + (e.message || e), "error");
+    } finally {
+      odSyncInFlight = false;
+    }
+  }
+
+  function queueOneDrivePush() {
+    if (odPushTimer) clearTimeout(odPushTimer);
+    odPushTimer = setTimeout(() => { odPushTimer = null; oneDrivePush({ silent: true }); }, 4000);
+  }
+
+  function showOdStatus(msg, kind) {
+    const el = document.getElementById("odStatus");
+    if (!el) return;
+    el.hidden = false;
+    el.className = "sync-status" + (kind ? " " + kind : "");
+    el.textContent = msg;
+  }
+  function renderOneDriveState() {
+    const el = document.getElementById("odStateLine");
+    const connectBtn = document.getElementById("odConnectBtn");
+    const disconnectBtn = document.getElementById("odDisconnectBtn");
+    const pushBtn = document.getElementById("odPushBtn");
+    const pullBtn = document.getElementById("odPullBtn");
+    const autoToggle = document.getElementById("odAutoToggle");
+    const cid = document.getElementById("odClientId");
+    if (cid && document.activeElement !== cid) cid.value = odClientId();
+    const connected = odConnected();
+    if (connectBtn) connectBtn.hidden = connected;
+    if (disconnectBtn) disconnectBtn.hidden = !connected;
+    if (pushBtn) pushBtn.disabled = !connected;
+    if (pullBtn) pullBtn.disabled = !connected;
+    if (autoToggle) { autoToggle.disabled = !connected; autoToggle.checked = odAutoEnabled(); }
+    if (el) {
+      if (!connected) { el.hidden = true; }
+      else {
+        const last = Number(localStorage.getItem(KEYS.odLastSync) || 0);
+        el.hidden = false;
+        el.innerHTML = `📁 OneDrive connected · Last sync <b>${timeAgo(last)}</b> · Auto <b>${odAutoEnabled() ? "on" : "off"}</b>`;
+      }
+    }
   }
 
   async function syncPush(opts = {}) {
@@ -8263,6 +8486,9 @@
     renderDeviceList();
     renderCategoryManager();
     renderVacationSettings();
+    const odHint = document.getElementById("odRedirectHint");
+    if (odHint) odHint.textContent = odRedirectUri();
+    renderOneDriveState();
   }
 
   function renderDeviceList() {
@@ -8975,6 +9201,27 @@
     els.syncPullBtn.addEventListener("click", () => syncPull());
     els.syncTestBtn.addEventListener("click", testConnection);
     els.syncDeleteCloudBtn.addEventListener("click", deleteCloudData);
+
+    // Settings — OneDrive sync
+    const odCid = document.getElementById("odClientId");
+    if (odCid) odCid.addEventListener("change", () => localStorage.setItem(KEYS.odClientId, odCid.value.trim()));
+    const odConnectBtn = document.getElementById("odConnectBtn");
+    if (odConnectBtn) odConnectBtn.addEventListener("click", () => {
+      if (odCid) localStorage.setItem(KEYS.odClientId, odCid.value.trim());
+      connectOneDrive();
+    });
+    const odDisconnectBtn = document.getElementById("odDisconnectBtn");
+    if (odDisconnectBtn) odDisconnectBtn.addEventListener("click", disconnectOneDrive);
+    const odPushBtn = document.getElementById("odPushBtn");
+    if (odPushBtn) odPushBtn.addEventListener("click", () => oneDrivePush());
+    const odPullBtn = document.getElementById("odPullBtn");
+    if (odPullBtn) odPullBtn.addEventListener("click", () => oneDrivePull());
+    const odAutoToggle = document.getElementById("odAutoToggle");
+    if (odAutoToggle) odAutoToggle.addEventListener("change", () => {
+      localStorage.setItem(KEYS.odAuto, odAutoToggle.checked ? "true" : "false");
+      renderOneDriveState();
+      if (odAutoToggle.checked) oneDrivePush({ silent: true });
+    });
     els.pairDeviceBtn.addEventListener("click", copyPairingLink);
     els.pairQrBtn.addEventListener("click", showPairingQr);
     els.scanQrBtn.addEventListener("click", openScanner);
@@ -9127,6 +9374,11 @@
     checkPairingLink();
     updateSyncIndicator(navigator.onLine ? "idle" : "offline");
     if (isAutoSyncEnabled()) startAutoSync();
+    // OneDrive: finish an OAuth redirect if we're returning from sign-in,
+    // otherwise pull the latest on open when auto-sync is on.
+    handleOneDriveRedirect().then((handled) => {
+      if (!handled && odAutoEnabled()) oneDrivePull({ silent: true });
+    }).catch(() => {});
     cleanupNotifiedKeys();
     if (purgeTrash()) save(); // drop trash older than 7 days (writes tombstones)
     maybeBackupReminder();
@@ -9151,6 +9403,7 @@
       scheduleReminders();
       catchUpReminders();
       maybeFireWeeklyReport();
+      if (odAutoEnabled()) oneDrivePull({ silent: true });
     });
     document.addEventListener("pointerdown", unlockAudioOnce, { once: true });
     document.addEventListener("keydown", unlockAudioOnce, { once: true });
@@ -9275,7 +9528,7 @@
       keystoneId, getKeystoneHabit, setKeystone,
       logActivity, moveHabitToCategory, prunePhotosOlderThan,
       shade, hexToRgb,
-      translate, availableLangs,
+      translate, availableLangs, b64url,
       getState: () => state, setState: (s) => { state = s; },
     };
   }
