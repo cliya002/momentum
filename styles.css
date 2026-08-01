@@ -1650,6 +1650,26 @@ body.compact .habit-list { gap: 0.35rem; }
 .category-row .cat-del:hover { color: var(--danger); }
 
 .quiet-row { display: flex; align-items: center; gap: 0.6rem; }
+
+/* Reminder health check */
+.reminder-health { margin-top: 0.6rem; }
+.rh-list { display: flex; flex-direction: column; gap: 0.4rem; }
+.rh-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: baseline;
+  gap: 0.25rem 0.5rem;
+  padding: 0.5rem 0.65rem;
+  background: var(--card-soft);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.rh-icon { grid-row: span 2; align-self: center; font-size: 0.95rem; }
+.rh-label { font-size: 0.85rem; font-weight: 600; }
+.rh-value { font-size: 0.85rem; color: var(--text-dim); text-align: right; font-weight: 600; }
+.rh-hint { grid-column: 2 / 4; font-size: 0.72rem; color: var(--text-dim); }
+.rh-row.rh-warn { border-color: var(--warning, #f59e0b); }
+.rh-row.rh-bad { border-color: var(--danger); }
 .quiet-row input { flex: 1; }
 
 .ios-note {
@@ -2482,6 +2502,38 @@ body.compact .habit-list { gap: 0.35rem; }
 .detail-hist .dh.notdone { background: var(--danger-soft); border-color: var(--danger); }
 .detail-hist .dh.frozen { background: #bae6fd; border-color: #38bdf8; }
 .detail-hist .dh.off { opacity: 0.35; }
+
+/* Per-habit month calendar */
+.detail-month { margin: 0.7rem 0 0.4rem; }
+.mc-head { display: flex; align-items: center; justify-content: center; gap: 0.75rem; margin-bottom: 0.5rem; }
+.mc-month { font-weight: 700; font-size: 0.95rem; min-width: 9rem; text-align: center; }
+.mc-nav {
+  background: var(--card-soft); border: 1px solid var(--border); color: var(--text);
+  width: 30px; height: 30px; border-radius: 8px; font-size: 1rem; cursor: pointer;
+}
+.mc-nav:disabled { opacity: 0.3; cursor: default; }
+.mc-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.mc-dow { text-align: center; font-size: 0.65rem; color: var(--text-dim); font-weight: 600; padding-bottom: 2px; }
+.mc-cell {
+  aspect-ratio: 1 / 1;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.7rem;
+  border-radius: 6px;
+  background: var(--card-soft);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+.mc-cell.mc-empty { background: transparent; border: none; }
+.mc-cell.done { color: #fff; border-color: transparent; }
+.mc-cell.notdone { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
+.mc-cell.frozen { background: #bae6fd; border-color: #38bdf8; color: #0369a1; }
+.mc-cell.pending { background: var(--card-soft); }
+.mc-cell.off { opacity: 0.4; }
+.mc-cell.future { opacity: 0.25; }
+.mc-cell.mc-today { box-shadow: 0 0 0 2px var(--primary); }
+.mc-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; font-size: 0.68rem; color: var(--text-dim); margin-top: 0.5rem; }
+.mc-legend .mc-cell { width: 12px; height: 12px; aspect-ratio: auto; }
+.mc-legend .mc-cell.done { background: var(--primary); }
 
 /* History cell freeze marker (Report/day views) */
 .day-cell.frozen, .sp.frozen { background: #bae6fd !important; border-color: #38bdf8 !important; }

@@ -37,6 +37,7 @@
     timeFormat: "ht_time_format",
     onboardSeen: "ht_onboard_seen",
     lastBackup: "ht_last_backup",
+    lastNotif: "ht_last_notif",
   };
   const DEFAULT_CATEGORIES = ["Fitness","Nutrition","Sleep","Supplements","Custom"];
   // Fallback color/icon per default category (used until the user customizes).
@@ -1606,11 +1607,50 @@
 
   /* ---- Per-habit detail view ---- */
   let detailHabitId = null;
+  let detailMonthOffset = 0; // 0 = current month, -1 = last month, …
   const DOW_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  function openHabitDetail(habit) {
+
+  // Month grid of completion status for a single habit (Monday-first).
+  function buildMonthCalendar(habit, offset) {
+    const now = new Date();
+    const base = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+    const year = base.getFullYear(), month = base.getMonth();
+    const monthLabel = base.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const startDow = (new Date(year, month, 1).getDay() + 6) % 7; // 0 = Mon
+    let cells = "";
+    for (let i = 0; i < startDow; i++) cells += `<span class="mc-cell mc-empty"></span>`;
+    for (let day = 1; day <= daysInMonth; day++) {
+      const d = new Date(year, month, day);
+      let cls = "off";
+      if (d > now && !sameDay(d, now)) cls = "future";
+      else if (isHabitActiveOn(habit, d)) {
+        if (isCompleted(habit, d)) cls = "done";
+        else if (isFrozen(habit.id, d)) cls = "frozen";
+        else if (isSkipped(habit, d)) cls = "notdone";
+        else cls = "pending";
+      }
+      const style = cls === "done" ? ` style="background:${escapeHtml(habit.color)};border-color:${escapeHtml(habit.color)}"` : "";
+      const todayCls = sameDay(d, now) ? " mc-today" : "";
+      cells += `<span class="mc-cell ${cls}${todayCls}"${style}>${day}</span>`;
+    }
+    const canNext = offset < 0;
+    return `<div class="mc-head">
+        <button type="button" class="mc-nav" id="mcPrev" aria-label="Previous month">‹</button>
+        <span class="mc-month">${escapeHtml(monthLabel)}</span>
+        <button type="button" class="mc-nav" id="mcNext" aria-label="Next month" ${canNext ? "" : "disabled"}>›</button>
+      </div>
+      <div class="mc-grid">
+        ${["M", "T", "W", "T", "F", "S", "S"].map((l) => `<span class="mc-dow">${l}</span>`).join("")}
+        ${cells}
+      </div>`;
+  }
+
+  function openHabitDetail(habit, keepMonth) {
     const els = getEls();
     if (!els.habitDetailModal) return;
     detailHabitId = habit.id;
+    if (!keepMonth) detailMonthOffset = 0; // reset to current month on fresh open
     resetRenderCaches();
     const cur = currentStreak(habit);
     const longest = longestStreak(habit);
@@ -1630,25 +1670,18 @@
     } else {
       html += `<p class="detail-line hint">Not enough history yet — check in for a few days to see your stats.</p>`;
     }
-    // 14-day mini history strip
-    html += `<div class="detail-hist">`;
-    for (let i = 13; i >= 0; i--) {
-      const d = addDays(new Date(), -i);
-      let cls = "off";
-      if (isHabitActiveOn(habit, d)) {
-        if (isCompleted(habit, d)) cls = "done";
-        else if (isFrozen(habit.id, d)) cls = "frozen";
-        else if (isSkipped(habit, d)) cls = "notdone";
-        else cls = "pending";
-      }
-      html += `<span class="dh ${cls}" title="${d.toLocaleDateString()}"></span>`;
-    }
-    html += `</div>`;
+    // Month calendar of completion history
+    html += `<div class="detail-month">${buildMonthCalendar(habit, detailMonthOffset)}</div>`;
+    html += `<div class="mc-legend"><span class="mc-cell done"></span>Done <span class="mc-cell notdone"></span>Missed <span class="mc-cell frozen"></span>Frozen <span class="mc-cell pending"></span>Pending</div>`;
     html += `<label class="toggle-row" style="margin-top:0.8rem"><span><b>❄️ Freeze today</b><br><span class="hint">A planned rest/sick day won't break the streak.</span></span>` +
       `<input type="checkbox" id="detailFreezeToday" ${frozenToday ? "checked" : ""} /></label>`;
     els.habitDetailBody.innerHTML = html;
     const fz = document.getElementById("detailFreezeToday");
-    if (fz) fz.addEventListener("change", () => { setFreeze(habit.id, new Date(), fz.checked); openHabitDetail(habit); });
+    if (fz) fz.addEventListener("change", () => { setFreeze(habit.id, new Date(), fz.checked); openHabitDetail(habit, true); });
+    const mcPrev = document.getElementById("mcPrev");
+    const mcNext = document.getElementById("mcNext");
+    if (mcPrev) mcPrev.addEventListener("click", () => { detailMonthOffset -= 1; openHabitDetail(habit, true); });
+    if (mcNext) mcNext.addEventListener("click", () => { if (detailMonthOffset < 0) { detailMonthOffset += 1; openHabitDetail(habit, true); } });
     els.detailArchiveBtn.textContent = habit.archived ? "Unarchive" : "Archive";
     els.habitDetailModal.classList.remove("hidden");
   }
@@ -2719,6 +2752,8 @@
       reminderDefault: $("#reminderDefault"),
       soundToggle: $("#soundToggle"),
       testReminderBtn: $("#testReminderBtn"),
+      reminderHealthBtn: $("#reminderHealthBtn"),
+      reminderHealth: $("#reminderHealth"),
       quietStart: $("#quietStart"),
       quietEnd: $("#quietEnd"),
       morningDigest: $("#morningDigest"),
@@ -4780,12 +4815,14 @@
       if (navigator.serviceWorker && navigator.serviceWorker.ready) {
         const reg = await navigator.serviceWorker.ready;
         await reg.showNotification(title, options);
+        try { localStorage.setItem(KEYS.lastNotif, String(Date.now())); } catch (e) {}
         return true;
       }
     } catch (e) { /* fall through */ }
     try {
       const n = new Notification(title, options);
       n.onclick = () => { window.focus(); n.close(); };
+      try { localStorage.setItem(KEYS.lastNotif, String(Date.now())); } catch (e) {}
       return true;
     } catch (e) {
       showToast("⏰ " + title);
@@ -4812,6 +4849,102 @@
       reminderTimers.push(t);
       showToast(`Snoozed ${snoozeLabel()}.`);
     }
+  }
+
+  // Earliest upcoming habit reminder still to fire today (HH:MM), or null.
+  function nextReminderToday() {
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    let best = null;
+    for (const h of state.habits) {
+      if (h.archived || !isHabitActiveOn(h, now)) continue;
+      for (const rt of habitReminderTimes(h, now)) {
+        const [hh, mm] = rt.split(":").map(Number);
+        const t = hh * 60 + mm;
+        if (t > nowMin && !inQuietHours(hh, mm) && (best == null || t < best)) best = t;
+      }
+    }
+    return best == null ? null : fmtClockLabel(String(Math.floor(best / 60)).padStart(2, "0") + ":" + String(best % 60).padStart(2, "0"));
+  }
+
+  function healthRow(level, label, value, hint) {
+    const icon = level === "ok" ? "✅" : level === "warn" ? "⚠️" : "❌";
+    return `<div class="rh-row rh-${level}"><span class="rh-icon">${icon}</span>` +
+      `<span class="rh-label">${escapeHtml(label)}</span>` +
+      `<span class="rh-value">${escapeHtml(value)}</span>` +
+      (hint ? `<span class="rh-hint">${escapeHtml(hint)}</span>` : "") + `</div>`;
+  }
+
+  async function renderReminderHealth() {
+    const el = getEls().reminderHealth;
+    if (!el) return;
+    const rows = [];
+
+    // Notification permission
+    const supported = "Notification" in window;
+    const perm = supported ? Notification.permission : "unsupported";
+    rows.push(healthRow(
+      perm === "granted" ? "ok" : perm === "denied" ? "bad" : "warn",
+      "Notification permission",
+      perm,
+      perm === "denied" ? "Enable it in your browser/site settings." :
+      perm === "default" ? "Tap Enable reminders to grant." :
+      !supported ? "This browser can't show notifications." : ""));
+
+    // Reminders enabled
+    const remOn = remindersEnabled();
+    rows.push(healthRow(remOn ? "ok" : "warn", "In-app reminders", remOn ? "on" : "off",
+      remOn ? "" : "Turn on Enable reminders above."));
+
+    // Background push
+    const pconf = pushConfigured();
+    const penabled = pushEnabled();
+    let sub = null;
+    try { sub = await getPushSubscription(); } catch (e) {}
+    if (!pconf) {
+      rows.push(healthRow("warn", "Background push", "not set up", "Add a push server URL below for reminders when the app is closed."));
+    } else if (penabled && sub) {
+      rows.push(healthRow("ok", "Background push", "active", "Reminders fire even when the app is closed."));
+    } else {
+      rows.push(healthRow("warn", "Background push", penabled ? "enabled, no subscription" : "off",
+        penabled ? "Try Re-register device below." : "Turn on background reminders below."));
+    }
+
+    // Habits with reminders
+    const withReminders = state.habits.filter((h) => !h.archived && habitReminderTimes(h, new Date()).length > 0).length;
+    const activeHabits = state.habits.filter((h) => !h.archived).length;
+    rows.push(healthRow(withReminders > 0 ? "ok" : "warn", "Habits with a reminder",
+      `${withReminders} of ${activeHabits}`,
+      withReminders === 0 ? "Add a reminder time when editing a habit." : ""));
+
+    // Next reminder today
+    const next = nextReminderToday();
+    rows.push(healthRow(next ? "ok" : "warn", "Next reminder today", next || "none left",
+      next ? "" : "Nothing more scheduled before midnight."));
+
+    // Quiet hours
+    const qs = localStorage.getItem(KEYS.quietStart);
+    const qe = localStorage.getItem(KEYS.quietEnd);
+    rows.push(healthRow("ok", "Quiet hours",
+      (qs && qe) ? `${fmtClockLabel(qs)} – ${fmtClockLabel(qe)}` : "none",
+      (qs && qe) ? "No reminders in this window." : ""));
+
+    // Sound
+    rows.push(healthRow("ok", "Reminder sound", soundEnabled() ? "on" : "off", ""));
+
+    // Last notification delivered
+    const last = Number(localStorage.getItem(KEYS.lastNotif) || 0);
+    rows.push(healthRow(last ? "ok" : "warn", "Last notification", last ? timeAgo(last) : "none yet",
+      last ? "" : "Send a test to confirm delivery."));
+
+    el.innerHTML = `<div class="rh-list">${rows.join("")}</div>`;
+  }
+
+  function toggleReminderHealth() {
+    const el = getEls().reminderHealth;
+    if (!el) return;
+    if (el.hidden) { el.hidden = false; renderReminderHealth(); }
+    else { el.hidden = true; }
   }
 
   function testReminder() {
@@ -7982,6 +8115,7 @@
       if (els.soundToggle.checked) { ensureAudioCtx(); playChime(); }
     });
     els.testReminderBtn.addEventListener("click", testReminder);
+    if (els.reminderHealthBtn) els.reminderHealthBtn.addEventListener("click", toggleReminderHealth);
     els.morningDigest.addEventListener("change", () => {
       if (els.morningDigest.value) localStorage.setItem(KEYS.morningDigest, els.morningDigest.value);
       else localStorage.removeItem(KEYS.morningDigest);
@@ -8204,6 +8338,7 @@
       buildInsights, timeOfDayStats, slotForHabit, perfectDayCount, totalCheckins,
       evaluateAchievements, checkAchievements, maxLongestStreak, hasPerfectWeek,
       setMood, moodCompletionInsight, fireStackCues,
+      buildMonthCalendar, timeAgo,
       getState: () => state, setState: (s) => { state = s; },
     };
   }
