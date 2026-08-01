@@ -3232,6 +3232,18 @@
   function dayPartFor(habit, dayIdx) {
     return dayPartForTime(effectiveTime(habit, dayIdx == null ? new Date().getDay() : dayIdx));
   }
+  // Day-part(s) a habit belongs to on Today. A multi-reminder habit (e.g. a
+  // twice-a-day supplement at 8am & 8pm) shows in each distinct part so you get
+  // prompted for every dose; single-time habits stay in exactly one part.
+  function dayPartsForHabit(habit, dayIdx) {
+    const times = (habit.reminderTimes && habit.reminderTimes.length) ? habit.reminderTimes : [];
+    if (times.length >= 2) {
+      const parts = [];
+      for (const t of times) { const p = dayPartForTime(t); if (!parts.includes(p)) parts.push(p); }
+      if (parts.length >= 2) return parts;
+    }
+    return [dayPartFor(habit, dayIdx)];
+  }
 
   // Which day part is "now" (for the highlight).
   function currentDayPartId() {
@@ -3377,10 +3389,14 @@
     // Night habits, attributed to the correct night (last night or tonight).
     renderLastNightGroup(nightActive, nightDate, els, nightIsPrev);
 
-    // Bucket habits into day parts
+    // Bucket habits into day parts (multi-reminder habits land in each part).
     const buckets = new Map(DAY_PARTS.map((p) => [p.id, []]));
     const todayIdx = today.getDay();
-    for (const h of active) buckets.get(dayPartFor(h, todayIdx)).push(h);
+    for (const h of active) {
+      for (const pid of dayPartsForHabit(h, todayIdx)) {
+        (buckets.get(pid) || buckets.get("anytime")).push(h);
+      }
+    }
     const nowPart = currentDayPartId();
 
     for (const part of DAY_PARTS) {
@@ -3452,7 +3468,7 @@
       const ul = document.createElement("ul");
       ul.className = "habit-list";
       ul.dataset.part = part.id;
-      for (const habit of pending) ul.appendChild(renderTodayItem(habit, today));
+      for (const habit of pending) ul.appendChild(renderTodayItem(habit, today, part.id));
       enableReorder(ul, pending, today);
       wrap.appendChild(ul);
 
@@ -3476,7 +3492,7 @@
         if (isOpen) {
           const cul = document.createElement("ul");
           cul.className = "habit-list completed-list";
-          for (const habit of settled) cul.appendChild(renderTodayItem(habit, today));
+          for (const habit of settled) cul.appendChild(renderTodayItem(habit, today, part.id));
           fold.appendChild(cul);
         }
         wrap.appendChild(fold);
@@ -3755,7 +3771,7 @@
       `<span class="leg"><span class="leg-num">${skipped}</span>Not done</span>`;
   }
 
-  function renderTodayItem(habit, date) {
+  function renderTodayItem(habit, date, partId) {
     const li = document.createElement("li");
     li.className = "habit-item";
     // Row/grouping status is weekly-aware; the +/- buttons act on today only.
@@ -3796,7 +3812,14 @@
     const streak = currentStreak(habit);
     const meta = document.createElement("div");
     meta.className = "habit-meta";
-    const timeChip = timeChipLabel(effectiveTime(habit, date.getDay()));
+    // For a multi-reminder habit shown in a specific day-part, display that
+    // part's dose time (e.g. 8:00 PM in the Evening group) instead of the base.
+    let chipTime = effectiveTime(habit, date.getDay());
+    if (partId && habit.reminderTimes && habit.reminderTimes.length >= 2) {
+      const inPart = habit.reminderTimes.filter((t) => dayPartForTime(t) === partId);
+      if (inPart.length) chipTime = fmtClockLabel(inPart[0]);
+    }
+    const timeChip = timeChipLabel(chipTime);
     if (timeChip) {
       const timeEl = document.createElement("span");
       timeEl.className = "time-chip";
@@ -9550,6 +9573,7 @@
       fmtClockLabel, formatClock, timeFmt, timeChipLabel, applyBackup,
       clockFromTimeStr, habitFromTemplate,
       isWeekly, weeklyTarget, weeklyDoneCount, weeklyMet, todayStatus, weekAdherencePct,
+      dayPartsForHabit, dayPartForTime,
       weekKeyOf, computeWeekReview, reviewTargetWeek,
       categoryMeta, getCategories,
       aiTodayInsight, weekdayAvgAdherence,
