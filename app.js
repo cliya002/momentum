@@ -72,7 +72,7 @@
         { name: "Strength training", icon: "💪", color: "#6366f1", category: "Fitness", time: "Morning", days: [1,3,5], notes: "Push / pull / legs split" },
         { name: "Stretch / mobility", icon: "🧘", color: "#14b8a6", category: "Fitness", time: "Evening", notes: "10 min mobility flow" },
         { name: "Core / abs",      icon: "🎯",  color: "#ec4899", category: "Fitness", time: "Morning", days: [2,4,6], notes: "" },
-        { name: "10,000 steps",    icon: "🚶",  color: "#22c55e", category: "Fitness", time: "All day", notes: "Daily step goal" },
+        { name: "10,000 steps",    icon: "🚶",  color: "#22c55e", category: "Fitness", time: "All day", notes: "Daily step goal", type: "count", target: 10000, unit: "steps", increment: 1000 },
         { name: "Foam rolling",    icon: "🧴",  color: "#a855f7", category: "Fitness", time: "Evening", notes: "" },
         { name: "Pull-ups",        icon: "🏋️",  color: "#6366f1", category: "Fitness", time: "Morning", notes: "Sets to target" },
       ],
@@ -89,8 +89,8 @@
       title: "🥗 Nutrition & hydration",
       items: [
         { name: "Calories on target", icon: "🥗", color: "#14b8a6", category: "Nutrition", time: "All day", notes: "2,000-2,200 cal" },
-        { name: "Protein target",  icon: "🍗",  color: "#ec4899", category: "Nutrition", time: "All day", notes: "180-200 g" },
-        { name: "Water 3-4 L",     icon: "💧",  color: "#3b82f6", category: "Nutrition", time: "All day", notes: "3-4 litres" },
+        { name: "Protein target",  icon: "🍗",  color: "#ec4899", category: "Nutrition", time: "All day", notes: "180-200 g", type: "count", target: 180, unit: "g", increment: 20 },
+        { name: "Water 4 L",       icon: "💧",  color: "#3b82f6", category: "Nutrition", time: "All day", notes: "Stay hydrated", type: "count", target: 4, unit: "L", increment: 0.5 },
         { name: "Eat vegetables",  icon: "🥦",  color: "#22c55e", category: "Nutrition", time: "All day", notes: "Veggies with 2+ meals" },
         { name: "Eat fruit",       icon: "🍎",  color: "#ef4444", category: "Nutrition", time: "All day", notes: "" },
         { name: "No junk food",    icon: "🎯",  color: "#f59e0b", category: "Nutrition", time: "All day", notes: "" },
@@ -3304,12 +3304,58 @@
     li.appendChild(icon);
     li.appendChild(info);
 
-    // Unified minus / plus controls with tri-state:
-    //   '+' toggles between done and pending
-    //   '−' toggles between skipped and pending
     const controls = document.createElement("div");
     controls.className = "count-controls";
 
+    if (habit.type === "count") {
+      // Measurable habit: tap to add/subtract the increment toward the target.
+      const cur = completionValue(habit.id, date);
+      const shown = cur < 0 ? 0 : cur;
+      const inc = habit.increment > 0 ? habit.increment : 1;
+
+      const minus = document.createElement("button");
+      minus.className = "stepper-btn minus";
+      minus.setAttribute("aria-label", `Subtract from ${habit.name}`);
+      minus.textContent = daySkipped ? "✕" : "−";
+      if (daySkipped) minus.classList.add("active");
+      else if (shown <= 0) minus.classList.add("muted");
+      minus.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (daySkipped) { setCompletionValue(habit.id, date, 0); renderToday(); return; }
+        if (shown <= 0) { setCompletionWithUndo(habit, date, SKIPPED, `${habit.name} marked not done`); return; }
+        const next = Math.max(0, Math.round((shown - inc) * 100) / 100);
+        setCompletionValue(habit.id, date, next);
+        renderToday();
+      });
+      controls.appendChild(minus);
+
+      const val = document.createElement("div");
+      val.className = "count-value" + (dayDone ? " done" : "");
+      if (dayDone) val.style.color = habit.color;
+      val.innerHTML = `<span class="cv-now">${fmtValue(habit, shown)}</span><span class="cv-target">/ ${fmtValue(habit, habit.target)}</span>`;
+      controls.appendChild(val);
+
+      const plus = document.createElement("button");
+      plus.className = "stepper-btn plus";
+      plus.setAttribute("aria-label", `Add to ${habit.name}`);
+      plus.textContent = "+";
+      plus.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const base = shown < 0 ? 0 : shown;
+        const next = Math.round((base + inc) * 100) / 100;
+        const wasDone = base >= habit.target;
+        setCompletionValue(habit.id, date, next);
+        renderToday();
+        if (!wasDone && next >= habit.target) maybeCelebrate(habit, date);
+      });
+      controls.appendChild(plus);
+
+      li.appendChild(controls);
+      // Fasting card still embeds below (handled after this block).
+    } else {
+    // Unified minus / plus controls with tri-state:
+    //   '+' toggles between done and pending
+    //   '−' toggles between skipped and pending
     const minus = document.createElement("button");
     minus.className = "stepper-btn minus";
     minus.setAttribute("aria-label", `Mark ${habit.name} not done`);
@@ -3356,6 +3402,7 @@
     controls.appendChild(plus);
 
     li.appendChild(controls);
+    }
 
     // Embed the fasting tracker inline within the intermittent-fasting habit.
     if (isFastingHabit(habit) && !fastingCardPlacedThisRender) {
