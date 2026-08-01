@@ -2088,18 +2088,27 @@
   async function connectOneDrive() {
     const cid = odClientId();
     if (!cid) { showOdStatus("Enter your Azure app (client) ID first.", "warn"); return; }
-    if (!window.crypto || !crypto.subtle) { showOdStatus("This browser can't do secure sign-in (no WebCrypto).", "warn"); return; }
-    const verifier = odRandom(48);
-    const challenge = await odChallenge(verifier);
-    const st = odRandom(12);
-    localStorage.setItem("ht_od_verifier", verifier);
-    localStorage.setItem("ht_od_state", st);
-    const p = new URLSearchParams({
-      client_id: cid, response_type: "code", redirect_uri: odRedirectUri(),
-      scope: OD_SCOPES, code_challenge: challenge, code_challenge_method: "S256",
-      state: st, prompt: "select_account",
-    });
-    location.href = OD_AUTHORIZE + "?" + p.toString();
+    if (!/^[0-9a-f-]{30,40}$/i.test(cid)) { showOdStatus("That client ID doesn't look right — paste the Application (client) ID GUID from Azure.", "warn"); return; }
+    if (!window.isSecureContext || !window.crypto || !crypto.subtle) {
+      showOdStatus("Secure sign-in needs HTTPS. Open the app at its https:// address, then try again.", "warn");
+      return;
+    }
+    try {
+      showOdStatus("Redirecting to Microsoft sign-in…", "loading");
+      const verifier = odRandom(48);
+      const challenge = await odChallenge(verifier);
+      const st = odRandom(12);
+      localStorage.setItem("ht_od_verifier", verifier);
+      localStorage.setItem("ht_od_state", st);
+      const p = new URLSearchParams({
+        client_id: cid, response_type: "code", redirect_uri: odRedirectUri(),
+        scope: OD_SCOPES, code_challenge: challenge, code_challenge_method: "S256",
+        state: st, prompt: "select_account",
+      });
+      window.location.assign(OD_AUTHORIZE + "?" + p.toString());
+    } catch (e) {
+      showOdStatus("Couldn't start sign-in: " + (e.message || e), "error");
+    }
   }
 
   function storeOdTokens(data) {
