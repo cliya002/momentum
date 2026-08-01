@@ -75,6 +75,35 @@ console.log("count units");
   assert(p.target === 8000 && p.unit === "steps" && p.increment === 1000, "steps with 1000 increment");
 }
 
+console.log("times per day");
+{
+  const p = T.parseQuickAdd("Cinnamon Turmeric ACV twice a day");
+  assert(p.type === "count" && p.target === 2, "twice a day → count target 2");
+  assert(p.name === "Cinnamon Turmeric ACV", "name preserved");
+}
+{
+  const p = T.parseQuickAdd("Water 3 times a day");
+  assert(p.type === "count" && p.target === 3, "3 times a day → target 3");
+}
+{
+  const p = T.parseQuickAdd("Vitamins 2x a day");
+  assert(p.type === "count" && p.target === 2, "2x a day → target 2");
+}
+{
+  const p = T.parseQuickAdd("Stretch three times a day");
+  assert(p.type === "count" && p.target === 3, "'three times a day' → target 3");
+}
+{
+  // "once a day" is just a normal daily check, not a count
+  const p = T.parseQuickAdd("Read once a day");
+  assert(p.type === "check", "once a day stays a check habit");
+}
+{
+  // must not collide with weekly
+  const p = T.parseQuickAdd("Gym 3x a week");
+  assert(p.freqType === "weekly" && p.type === "check", "3x a week is weekly, not a daily count");
+}
+
 console.log("empty / junk");
 {
   assert(T.parseQuickAdd("") === null, "empty → null");

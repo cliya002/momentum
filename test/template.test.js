@@ -36,5 +36,14 @@ console.log("habitFromTemplate (smart defaults)");
   assert(h.reminderTime === "07:30", "falls back to provided default reminder");
 }
 
+console.log("twice-a-day count template (Cinnamon Turmeric ACV)");
+{
+  // Locate the template item in the library and build a habit from it.
+  const item = { name: "Cinnamon Turmeric ACV", category: "Supplements", time: "8:00 AM & 8:00 PM", notes: "Twice a day", type: "count", target: 2, unit: "", increment: 1, reminderTimes: ["08:00", "20:00"] };
+  const h = T.habitFromTemplate(item);
+  assert(h.type === "count" && h.target === 2, "count habit with daily target 2");
+  assert(Array.isArray(h.reminderTimes) && h.reminderTimes.length === 2, "carries two reminder times");
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

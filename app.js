@@ -174,6 +174,7 @@
         { name: "Pre-workout",     icon: "⚡",  color: "#ef4444", category: "Supplements", time: "Afternoon", notes: "Before training" },
         { name: "Whey protein shake", icon: "🥛", color: "#ec4899", category: "Supplements", time: "6:00 PM · post-workout", notes: "" },
         { name: "Amla + Collagen", icon: "💊",  color: "#22c55e", category: "Supplements", time: "Morning", notes: "For hair, skin & nails" },
+        { name: "Cinnamon Turmeric ACV", icon: "🍯", color: "#f59e0b", category: "Supplements", time: "8:00 AM & 8:00 PM", notes: "Twice a day — morning & evening", type: "count", target: 2, unit: "", increment: 1, reminderTimes: ["08:00", "20:00"] },
       ],
     },
     {
@@ -5718,6 +5719,10 @@
     const pad = (n) => String(n).padStart(2, "0");
     let s = " " + raw.toLowerCase() + " ";
     const res = { name: "", days: null, freqType: "days", weeklyTarget: 3, time: "", reminderTime: "", type: "check", target: 1, unit: "", increment: 1, quit: false };
+    // Fragments matched here are removed from the ORIGINAL text later so the
+    // habit name keeps its casing (e.g. "ACV", "Cinnamon Turmeric ACV").
+    const consumed = [];
+    const eat = (frag) => { if (frag) consumed.push(frag); };
 
     // Quit intent (starts with no/quit/stop/avoid)
     const qm = raw.toLowerCase().match(/^(no|quit|stop|avoid|give up)\b/);
@@ -5728,34 +5733,49 @@
     if (m) {
       let hr = +m[1]; const mn = m[2] ? +m[2] : 0; const pm = /p/.test(m[3]);
       if (pm && hr < 12) hr += 12; if (!pm && hr === 12) hr = 0;
-      res.reminderTime = pad(hr) + ":" + pad(mn); s = s.replace(m[0], " ");
+      res.reminderTime = pad(hr) + ":" + pad(mn); s = s.replace(m[0], " "); eat(m[0]);
     } else {
       m = s.match(/\bat\s+(\d{1,2}):(\d{2})\b/);
-      if (m) { res.reminderTime = pad(+m[1]) + ":" + pad(+m[2]); s = s.replace(m[0], " "); }
+      if (m) { res.reminderTime = pad(+m[1]) + ":" + pad(+m[2]); s = s.replace(m[0], " "); eat(m[0]); }
     }
 
     // Part of day
     const partMap = [["morning", "Morning", "08:00"], ["afternoon", "Afternoon", "14:00"], ["evening", "Evening", "19:00"], ["night", "Night", "21:00"], ["noon", "Afternoon", "12:00"]];
     for (const [word, label, def] of partMap) {
       const re = new RegExp("\\b(?:in the |every |each )?" + word + "s?\\b");
-      if (re.test(s)) { res.time = res.time || label; if (!res.reminderTime) res.reminderTime = def; s = s.replace(re, " "); }
+      const pm2 = s.match(re);
+      if (pm2) { res.time = res.time || label; if (!res.reminderTime) res.reminderTime = def; s = s.replace(re, " "); eat(pm2[0]); }
     }
 
     // N times per week
     m = s.match(/\b(\d+)\s*(?:x|times?)\s*(?:a|per|\/)\s*week\b/);
-    if (m) { res.freqType = "weekly"; res.weeklyTarget = Math.min(14, Math.max(1, +m[1])); s = s.replace(m[0], " "); }
+    if (m) { res.freqType = "weekly"; res.weeklyTarget = Math.min(14, Math.max(1, +m[1])); s = s.replace(m[0], " "); eat(m[0]); }
+
+    // N times per day → a count habit with a daily target (e.g. "twice a day")
+    let dm = s.match(/\b(\d+)\s*(?:x|times?)\s*(?:a|per|\/)?\s*day\b/);
+    if (!dm) {
+      const wordNum = { once: 1, twice: 2, thrice: 3, two: 2, three: 3, four: 4, five: 5 };
+      const wm = s.match(/\b(once|twice|thrice|two|three|four|five)\s*(?:times?)?\s*(?:a|per)?\s*day\b/);
+      if (wm) dm = [wm[0], String(wordNum[wm[1]])];
+    }
+    if (dm) {
+      const n = Math.max(1, Math.min(20, +dm[1]));
+      if (n > 1) { res.type = "count"; res.target = n; res.unit = ""; res.increment = 1; }
+      s = s.replace(dm[0], " "); eat(dm[0]);
+    }
 
     // Weekday / weekend / everyday
-    if (/\bweekdays?\b/.test(s)) { res.days = [1, 2, 3, 4, 5]; s = s.replace(/\b(?:on\s+)?weekdays?\b/g, " "); }
-    if (/\bweekends?\b/.test(s)) { res.days = [0, 6]; s = s.replace(/\b(?:on\s+)?weekends?\b/g, " "); }
-    if (/\b(?:every\s?day|daily|everyday)\b/.test(s)) { res.days = [0, 1, 2, 3, 4, 5, 6]; s = s.replace(/\b(?:every\s?day|daily|everyday)\b/g, " "); }
+    let wm2;
+    if ((wm2 = s.match(/\b(?:on\s+)?weekdays?\b/))) { res.days = [1, 2, 3, 4, 5]; s = s.replace(/\b(?:on\s+)?weekdays?\b/g, " "); eat(wm2[0]); }
+    if ((wm2 = s.match(/\b(?:on\s+)?weekends?\b/))) { res.days = [0, 6]; s = s.replace(/\b(?:on\s+)?weekends?\b/g, " "); eat(wm2[0]); }
+    if ((wm2 = s.match(/\b(?:every\s?day|daily|everyday)\b/))) { res.days = [0, 1, 2, 3, 4, 5, 6]; s = s.replace(/\b(?:every\s?day|daily|everyday)\b/g, " "); eat(wm2[0]); }
 
     // Specific weekday names
     const dayNames = { sunday: 0, sun: 0, monday: 1, mon: 1, tuesday: 2, tues: 2, tue: 2, wednesday: 3, weds: 3, wed: 3, thursday: 4, thurs: 4, thur: 4, thu: 4, friday: 5, fri: 5, saturday: 6, sat: 6 };
     const foundDays = new Set();
     for (const [name, idx] of Object.entries(dayNames)) {
       const re = new RegExp("\\b" + name + "\\b", "g");
-      if (re.test(s)) { foundDays.add(idx); s = s.replace(new RegExp("\\b" + name + "\\b", "g"), " "); }
+      if (re.test(s)) { foundDays.add(idx); s = s.replace(new RegExp("\\b" + name + "\\b", "g"), " "); eat(name); }
     }
     if (foundDays.size) res.days = [...foundDays].sort();
 
@@ -5765,14 +5785,20 @@
     if (m) {
       res.type = "count"; res.target = +m[1]; res.unit = unitMap[m[2]] || m[2];
       res.increment = res.unit === "L" ? 0.5 : res.unit === "steps" ? 1000 : res.unit === "min" ? 5 : res.unit === "g" ? 10 : res.unit === "pages" ? 5 : 1;
-      s = s.replace(m[0], " ");
+      s = s.replace(m[0], " "); eat(m[0]);
     }
 
-    // Strip filler + leading quit words → habit name
-    s = s.replace(/\b(every|each|at|a|an|the|per|on|of|in|for|to|do|my|some)\b/g, " ");
-    s = s.replace(/^\s*(no|quit|stop|avoid|give up)\s+/, " ");
-    s = s.replace(/\s+/g, " ").trim();
-    res.name = s ? s.charAt(0).toUpperCase() + s.slice(1) : "";
+    // Build the name from the ORIGINAL text (preserve casing) minus consumed bits.
+    const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    let name = raw;
+    for (const frag of consumed) {
+      const f = frag.trim();
+      if (f) name = name.replace(new RegExp("\\b" + esc(f) + "\\b", "i"), " ");
+    }
+    name = name.replace(/\b(every|each|at|a|an|the|per|on|of|in|for|to|do|my|some)\b/gi, " ");
+    name = name.replace(/^\s*(no|quit|stop|avoid|give up)\s+/i, " ");
+    name = name.replace(/\s+/g, " ").trim();
+    res.name = name ? name.charAt(0).toUpperCase() + name.slice(1) : "";
     return res;
   }
 
