@@ -527,6 +527,68 @@
         { name: "Lights out",      icon: "😴",  color: "#a855f7", category: "Sleep", time: "10:30 PM", notes: "", nightPrevDay: true },
       ],
     },
+    {
+      title: "🩺 Health & meds",
+      items: [
+        { name: "Morning meds",    icon: "💊",  color: "#3b82f6", category: "Supplements", time: "8:00 AM", notes: "With breakfast", reminderTimes: ["08:00"] },
+        { name: "Evening meds",    icon: "💊",  color: "#6366f1", category: "Supplements", time: "8:00 PM", notes: "With dinner", reminderTimes: ["20:00"] },
+        { name: "Meds — morning & night", icon: "💊", color: "#a855f7", category: "Supplements", time: "8:00 AM & 8:00 PM", notes: "Twice a day", type: "count", target: 2, unit: "", increment: 1, reminderTimes: ["08:00", "20:00"] },
+        { name: "Eye drops (3×/day)", icon: "👁️", color: "#38bdf8", category: "Custom", time: "8:00 AM · 2:00 PM · 8:00 PM", notes: "3 times a day", type: "count", target: 3, unit: "", increment: 1, reminderTimes: ["08:00", "14:00", "20:00"] },
+        { name: "Inhaler (2×/day)", icon: "🫁", color: "#14b8a6", category: "Custom", time: "8:00 AM & 8:00 PM", notes: "Preventer — morning & night", type: "count", target: 2, unit: "", increment: 1, reminderTimes: ["08:00", "20:00"] },
+        { name: "Blood pressure check", icon: "🩸", color: "#ef4444", category: "Custom", time: "Morning", notes: "Log the reading in notes" },
+        { name: "Blood sugar check", icon: "🩸", color: "#f59e0b", category: "Custom", time: "Morning", notes: "" },
+        { name: "Weigh in",       icon: "⚖️",  color: "#3b82f6", category: "Custom", time: "Morning", days: [1], notes: "Same time, once a week" },
+        { name: "Stretch breaks (hourly)", icon: "🧍", color: "#22c55e", category: "Fitness", time: "All day", notes: "Stand & move", type: "count", target: 6, unit: "", increment: 1 },
+      ],
+    },
+    {
+      title: "📏 Measurable goals",
+      items: [
+        { name: "Water — 8 glasses", icon: "💧", color: "#3b82f6", category: "Nutrition", time: "All day", notes: "Tap for each glass", type: "count", target: 8, unit: "glasses", increment: 1 },
+        { name: "Read 20 pages",   icon: "📖",  color: "#14b8a6", category: "Custom", time: "Evening", notes: "", type: "count", target: 20, unit: "pages", increment: 5 },
+        { name: "50 push-ups",     icon: "💪",  color: "#6366f1", category: "Fitness", time: "All day", notes: "Spread through the day", type: "count", target: 50, unit: "reps", increment: 10 },
+        { name: "Meditate 20 min", icon: "🧘",  color: "#a855f7", category: "Custom", time: "Morning", notes: "", type: "count", target: 20, unit: "min", increment: 5, reminderTimes: ["07:00"] },
+        { name: "Journal 1 page",  icon: "✍️",  color: "#3b82f6", category: "Custom", time: "Evening", notes: "", type: "count", target: 1, unit: "page", increment: 1 },
+        { name: "Fruit & veg — 5 a day", icon: "🥦", color: "#22c55e", category: "Nutrition", time: "All day", notes: "", type: "count", target: 5, unit: "", increment: 1 },
+        { name: "Protein — 150 g", icon: "🍗",  color: "#ec4899", category: "Nutrition", time: "All day", notes: "", type: "count", target: 150, unit: "g", increment: 25 },
+      ],
+    },
+    {
+      title: "🩹 Recovery & physio",
+      items: [
+        { name: "PT / rehab exercises", icon: "🩹", color: "#14b8a6", category: "Fitness", time: "Morning", notes: "Your prescribed set" },
+        { name: "Ice / heat therapy", icon: "🧊", color: "#38bdf8", category: "Fitness", time: "Evening", notes: "15-20 min" },
+        { name: "Knee mobility",   icon: "🦵",  color: "#6366f1", category: "Fitness", time: "Morning", notes: "" },
+        { name: "Shoulder mobility", icon: "💪", color: "#3b82f6", category: "Fitness", time: "Morning", notes: "" },
+        { name: "Posture reset (3×/day)", icon: "🧍", color: "#a855f7", category: "Fitness", time: "All day", notes: "Roll shoulders back, chin tuck", type: "count", target: 3, unit: "", increment: 1, reminderTimes: ["10:00", "14:00", "17:00"] },
+        { name: "Foam roll",       icon: "🧴",  color: "#f59e0b", category: "Fitness", time: "Evening", notes: "" },
+        { name: "Nerve glides",    icon: "🖐️",  color: "#14b8a6", category: "Fitness", time: "Evening", notes: "" },
+      ],
+    },
+    {
+      title: "🚭 Quit — days clean",
+      items: [
+        { name: "No alcohol",      icon: "🚫",  color: "#ef4444", category: "Custom", time: "All day", notes: "Track your streak", quit: true },
+        { name: "No smoking",      icon: "🚭",  color: "#ef4444", category: "Custom", time: "All day", notes: "", quit: true },
+        { name: "No vaping",       icon: "💨",  color: "#ef4444", category: "Custom", time: "All day", notes: "", quit: true },
+        { name: "No fast food",    icon: "🍔",  color: "#f59e0b", category: "Nutrition", time: "All day", notes: "", quit: true },
+        { name: "No energy drinks", icon: "🥤", color: "#f59e0b", category: "Nutrition", time: "All day", notes: "", quit: true },
+        { name: "No late-night snacking", icon: "🌙", color: "#a855f7", category: "Nutrition", time: "Evening", notes: "", quit: true },
+        { name: "No nail biting",  icon: "💅",  color: "#ec4899", category: "Custom", time: "All day", notes: "", quit: true },
+        { name: "No doomscrolling", icon: "📵", color: "#6366f1", category: "Custom", time: "All day", notes: "", quit: true },
+      ],
+    },
+    {
+      title: "🧘 Digital wellbeing",
+      items: [
+        { name: "Phone-free morning hour", icon: "🌅", color: "#f59e0b", category: "Custom", time: "Morning", notes: "No phone for the first hour" },
+        { name: "Screen time under 2h", icon: "⏳", color: "#6366f1", category: "Custom", time: "All day", notes: "" },
+        { name: "No phone in bed", icon: "🛏️",  color: "#a855f7", category: "Sleep", time: "10:00 PM", notes: "", nightPrevDay: true },
+        { name: "Inbox to zero",   icon: "📧",  color: "#14b8a6", category: "Custom", time: "Afternoon", days: [1,2,3,4,5], notes: "" },
+        { name: "Social-media-free day", icon: "📵", color: "#ef4444", category: "Custom", time: "All day", days: [0], notes: "One day a week" },
+        { name: "Notifications off after 9pm", icon: "🔕", color: "#3b82f6", category: "Sleep", time: "9:00 PM", notes: "" },
+      ],
+    },
   ];
 
   const TEMPLATE_ITEM_DEFAULTS = {
