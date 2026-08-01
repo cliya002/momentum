@@ -8383,18 +8383,23 @@
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
         navigator.serviceWorker.register("./sw.js").then((reg) => {
-          // Check for updates on load, then auto-reload when a new SW activates.
           reg.update().catch(() => {});
+          // A new version may already be waiting from a previous visit.
+          if (reg.waiting && navigator.serviceWorker.controller) offerUpdate(reg.waiting);
+          // A new version finished installing while the app is open.
           reg.addEventListener("updatefound", () => {
             const nw = reg.installing;
             if (!nw) return;
             nw.addEventListener("statechange", () => {
-              if (nw.state === "installed" && navigator.serviceWorker.controller) {
-                showToast("Updating to the latest version…");
-              }
+              if (nw.state === "installed" && navigator.serviceWorker.controller) offerUpdate(nw);
             });
           });
+          // Re-check for updates when the user returns to the app.
+          document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === "visible") reg.update().catch(() => {});
+          });
         }).catch(() => {});
+        // Reload once the user-approved new worker takes control.
         let refreshing = false;
         navigator.serviceWorker.addEventListener("controllerchange", () => {
           if (refreshing) return;
@@ -8403,6 +8408,30 @@
         });
       });
     }
+  }
+
+  // Show a friendly, dismissible "new version ready" banner instead of
+  // reloading the page out from under the user.
+  let pendingUpdateWorker = null;
+  function offerUpdate(worker) {
+    pendingUpdateWorker = worker;
+    const banner = document.getElementById("updateBanner");
+    if (!banner) return;
+    const verEl = document.getElementById("updateVersion");
+    if (verEl && self.APP_VERSION) verEl.textContent = `Momentum v${self.APP_VERSION} is ready to install.`;
+    banner.hidden = false;
+    banner.classList.add("show");
+    const now = document.getElementById("updateNow");
+    const later = document.getElementById("updateDismiss");
+    if (now) now.onclick = () => {
+      now.disabled = true;
+      now.textContent = "Updating…";
+      // Ask the waiting worker to activate; controllerchange then reloads.
+      try { pendingUpdateWorker && pendingUpdateWorker.postMessage({ type: "skip-waiting" }); } catch (e) {}
+      // Safety net: if controllerchange doesn't fire shortly, reload anyway.
+      setTimeout(() => window.location.reload(), 2500);
+    };
+    if (later) later.onclick = () => { banner.classList.remove("show"); banner.hidden = true; };
   }
 
   // Nuke caches + service workers and hard-reload. Escape hatch for stuck updates.
