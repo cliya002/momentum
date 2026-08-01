@@ -2295,3 +2295,9 @@ body.compact .habit-list { gap: 0.35rem; }
   font-size: 1.2rem; line-height: 1;
 }
 .reminder-time-remove:hover { background: var(--danger-soft); color: var(--danger); border-color: var(--danger); }
+
+/* Quit-habit "days clean" flag */
+.clean-flag {
+  font-size: 0.68rem; font-weight: 700; color: var(--success);
+  background: var(--success-soft); padding: 1px 7px; border-radius: 999px; white-space: nowrap;
+}

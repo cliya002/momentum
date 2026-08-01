@@ -715,6 +715,7 @@
       nightPrevDay: !!h.nightPrevDay,
       noPush: !!h.noPush,
       archived: !!h.archived,
+      quit: !!h.quit,
       days: Array.isArray(h.days) && h.days.length ? h.days : [0,1,2,3,4,5,6],
       order: Number.isFinite(Number(h.order)) ? Number(h.order) : idx,
       createdAt: h.createdAt || new Date(now).toISOString(),
@@ -1472,7 +1473,7 @@
       `<div><h2 style="margin:0">${escapeHtml(habit.name)}</h2>` +
       `<span class="hint">${escapeHtml(habit.category)}${habit.archived ? " · archived" : ""}</span></div></div>`;
     html += `<div class="detail-stats">` +
-      `<div class="detail-stat"><div class="ds-num">🔥 ${cur}</div><div class="ds-lbl">current streak</div></div>` +
+      `<div class="detail-stat"><div class="ds-num">${habit.quit ? "🟢" : "🔥"} ${cur}</div><div class="ds-lbl">${habit.quit ? "days clean" : "current streak"}</div></div>` +
       `<div class="detail-stat"><div class="ds-num">🏆 ${longest}</div><div class="ds-lbl">longest</div></div>` +
       `<div class="detail-stat"><div class="ds-num">${stats ? stats.rate + "%" : "—"}</div><div class="ds-lbl">completion</div></div>` +
       `</div>`;
@@ -2476,6 +2477,7 @@
       daysPicker: $("#daysPicker"),
       habitNightPrevDay: $("#habitNightPrevDay"),
       habitNoPush: $("#habitNoPush"),
+      habitQuit: $("#habitQuit"),
       habitReminderMsg: $("#habitReminderMsg"),
       advancedToggle: $("#advancedToggle"),
       dayTimesWrap: $("#dayTimesWrap"),
@@ -3157,7 +3159,12 @@
       timeEl.textContent = timeChip + ((habit.dayTimes && habit.dayTimes[date.getDay()]) ? " ✎" : "");
       meta.appendChild(timeEl);
     }
-    if (atRisk) {
+    if (habit.quit && streak > 0) {
+      const s = document.createElement("span");
+      s.className = "clean-flag";
+      s.textContent = `🟢 ${streak} day${streak === 1 ? "" : "s"} clean`;
+      meta.appendChild(s);
+    } else if (atRisk) {
       const risk = document.createElement("span");
       risk.className = "risk-flag";
       risk.textContent = "⚠ streak";
@@ -4854,6 +4861,7 @@
     els.habitNotes.value = habit ? (habit.notes || "") : "";
     els.habitNightPrevDay.checked = habit ? !!habit.nightPrevDay : false;
     els.habitNoPush.checked = habit ? !!habit.noPush : false;
+    els.habitQuit.checked = habit ? !!habit.quit : false;
     els.habitTarget.value = habit && habit.type === "count" ? habit.target : "";
     els.habitUnit.value = habit ? habit.unit : "";
     els.habitIncrement.value = habit && habit.type === "count" ? habit.increment : "";
@@ -4966,6 +4974,7 @@
       reminderMsg: (els.habitReminderMsg.value || "").trim().slice(0, 120),
       nightPrevDay: !!els.habitNightPrevDay.checked,
       noPush: !!els.habitNoPush.checked,
+      quit: !!els.habitQuit.checked,
       notes: (els.habitNotes.value || "").trim().slice(0, 500),
       days: days.length ? days : [0,1,2,3,4,5,6],
       updatedAt: now,
@@ -6059,6 +6068,26 @@
         parts.push(r < 0
           ? "Your energy tends to be higher on lower-weight weeks."
           : "Your energy tends to rise along with your weight.");
+      }
+    }
+    // Correlation between weekly habit adherence and energy.
+    const enWeeks = measurementList().filter((e) => e.energy != null);
+    if (enWeeks.length >= 4) {
+      const ad = [], en = [];
+      for (const e of enWeeks) {
+        const parts2 = String(e.weekKey).split("-").map(Number);
+        if (parts2.length !== 3) continue;
+        const wkStart = new Date(parts2[0], parts2[1] - 1, parts2[2]);
+        const p = weekAdherencePct(wkStart);
+        if (p != null) { ad.push(p); en.push(e.energy); }
+      }
+      if (ad.length >= 4) {
+        const r = pearson(ad, en);
+        if (r != null && Math.abs(r) >= 0.5) {
+          parts.push(r > 0
+            ? "Your energy runs higher on weeks you keep your habits."
+            : "Interestingly, your energy dips on higher-adherence weeks — maybe you're pushing hard.");
+        }
       }
     }
     if (parts.length === 0) { card.hidden = true; return; }
