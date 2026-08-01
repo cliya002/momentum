@@ -6339,6 +6339,39 @@
     return n;
   }
 
+  // Strongest positive habit-to-habit link over the last ~60 days:
+  // "On days you do A, you also hit B N% of the time." Only surfaced when the
+  // conditional rate is high AND meaningfully above B's baseline.
+  function habitPairInsight() {
+    const active = state.habits.filter((h) => !h.archived && !h.nightPrevDay);
+    if (active.length < 2) return null;
+    const today = new Date();
+    const days = [];
+    for (let i = 1; i <= 60; i++) days.push(addDays(today, -i));
+    let best = null;
+    for (const A of active) {
+      for (const B of active) {
+        if (A.id === B.id) continue;
+        let aDone = 0, bGivenA = 0, bTotal = 0, shared = 0;
+        for (const d of days) {
+          if (!countsForAdherence(A, d) || !countsForAdherence(B, d)) continue;
+          shared++;
+          const bDone = isCompleted(B, d);
+          if (bDone) bTotal++;
+          if (isCompleted(A, d)) { aDone++; if (bDone) bGivenA++; }
+        }
+        if (aDone < 8 || shared < 12) continue;
+        const cond = bGivenA / aDone;
+        const base = bTotal / shared;
+        if (cond >= 0.7 && cond - base >= 0.15) {
+          if (!best || cond > best.cond) best = { A, B, cond };
+        }
+      }
+    }
+    if (!best) return null;
+    return { icon: "🔗", text: `On days you do ${best.A.icon || "•"} ${best.A.name}, you also hit ${best.B.name} ${Math.round(best.cond * 100)}% of the time.` };
+  }
+
   // Build a scannable list of plain-language findings from real data.
   function buildInsights() {
     const out = [];
@@ -6429,7 +6462,11 @@
       }
     }
 
-    // 8. Daily mood vs completion
+    // 8. Habit-to-habit link
+    const pi = habitPairInsight();
+    if (pi) out.push(pi);
+
+    // 9. Daily mood vs completion
     const mi = moodCompletionInsight();
     if (mi) out.push(mi);
 
@@ -8778,7 +8815,7 @@
       weekKeyOf, computeWeekReview, reviewTargetWeek,
       categoryMeta, getCategories,
       aiTodayInsight, weekdayAvgAdherence,
-      buildInsights, timeOfDayStats, slotForHabit, perfectDayCount, totalCheckins,
+      buildInsights, timeOfDayStats, slotForHabit, perfectDayCount, totalCheckins, habitPairInsight,
       evaluateAchievements, checkAchievements, maxLongestStreak, hasPerfectWeek,
       setMood, moodCompletionInsight, fireStackCues,
       buildMonthCalendar, timeAgo,
