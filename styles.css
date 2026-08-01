@@ -1527,16 +1527,52 @@ body.compact .habit-list { gap: 0.35rem; }
   border-radius: var(--radius-sm);
   padding: 0.4rem 0.6rem;
 }
-.category-row input {
+.category-row .cat-name-input {
   flex: 1;
+  min-width: 0;
   background: transparent;
   border: none;
   padding: 0.35rem 0.25rem;
   font-size: 0.9rem;
   font-weight: 600;
 }
-.category-row input:focus { outline: none; background: var(--bg-2); border-radius: 6px; }
-.category-row .cat-count { font-size: 0.72rem; color: var(--text-dim); flex-shrink: 0; }
+.category-row .cat-name-input:focus { outline: none; background: var(--bg-2); border-radius: 6px; }
+.category-row .cat-reorder { display: flex; flex-direction: column; gap: 1px; flex-shrink: 0; }
+.category-row .cat-move {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 0.62rem;
+  line-height: 1;
+  padding: 1px 2px;
+  cursor: pointer;
+}
+.category-row .cat-move:disabled { opacity: 0.25; cursor: default; }
+.category-row .cat-move:hover:not(:disabled) { color: var(--primary); }
+.category-row .cat-icon-input {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  text-align: center;
+  border: none;
+  border-radius: 8px;
+  font-size: 1.05rem;
+  color: #fff;
+  padding: 0;
+}
+.category-row .cat-icon-input:focus { outline: 2px solid var(--primary); }
+.category-row .cat-color-input {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+.category-row .cat-count { font-size: 0.72rem; color: var(--text-dim); flex-shrink: 0; min-width: 1.2rem; text-align: center; }
+.cat-head-icon { font-size: 0.9em; }
 .category-row .cat-del {
   background: transparent;
   border: none;

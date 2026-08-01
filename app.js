@@ -39,8 +39,20 @@
     lastBackup: "ht_last_backup",
   };
   const DEFAULT_CATEGORIES = ["Fitness","Nutrition","Sleep","Supplements","Custom"];
+  // Fallback color/icon per default category (used until the user customizes).
+  const DEFAULT_CATEGORY_META = {
+    Fitness: { color: "#6366f1", icon: "🏋️" },
+    Nutrition: { color: "#14b8a6", icon: "🥗" },
+    Sleep: { color: "#a855f7", icon: "😴" },
+    Supplements: { color: "#ec4899", icon: "💊" },
+    Custom: { color: "#64748b", icon: "🏷️" },
+  };
   function getCategories() {
     return (state.categories && state.categories.length) ? state.categories : DEFAULT_CATEGORIES;
+  }
+  function categoryMeta(name) {
+    const m = (state.categoryMeta && state.categoryMeta[name]) || DEFAULT_CATEGORY_META[name] || {};
+    return { color: m.color || "#64748b", icon: m.icon || "🏷️" };
   }
   // Legacy keys we can read from to migrate old data.
   const LEGACY_PLAIN_KEYS = ["habit-tracker.v2", "habit-tracker.v1"];
@@ -538,6 +550,7 @@
       goal: null,
       customMetrics: [],
       categories: [...DEFAULT_CATEGORIES],
+      categoryMeta: {},
       categoriesUpdatedAt: 0,
       workSchedule: { days: {}, notes: "", updatedAt: 0 },
       devices: {},
@@ -772,6 +785,17 @@
       st.categories = [...DEFAULT_CATEGORIES];
     }
     if (!st.categories.length) st.categories = [...DEFAULT_CATEGORIES];
+    // Per-category color/icon metadata (only kept for categories that exist).
+    st.categoryMeta = {};
+    if (s.categoryMeta && typeof s.categoryMeta === "object") {
+      for (const [name, m] of Object.entries(s.categoryMeta)) {
+        if (!m || typeof m !== "object") continue;
+        const entry = {};
+        if (typeof m.color === "string" && m.color) entry.color = m.color.slice(0, 24);
+        if (typeof m.icon === "string" && m.icon) entry.icon = m.icon.slice(0, 8);
+        if (entry.color || entry.icon) st.categoryMeta[String(name).slice(0, 30)] = entry;
+      }
+    }
     st.categoriesUpdatedAt = Number(s.categoriesUpdatedAt) || 0;
     // Work schedule
     st.workSchedule = { days: {}, notes: "", updatedAt: 0 };
@@ -1094,12 +1118,15 @@
     const rcu = Number(remote.categoriesUpdatedAt) || 0;
     if (rcu > lcu && Array.isArray(remote.categories) && remote.categories.length) {
       merged.categories = remote.categories.slice();
+      merged.categoryMeta = (remote.categoryMeta && typeof remote.categoryMeta === "object") ? { ...remote.categoryMeta } : {};
       merged.categoriesUpdatedAt = rcu;
     } else if (Array.isArray(local.categories) && local.categories.length) {
       merged.categories = local.categories.slice();
+      merged.categoryMeta = (local.categoryMeta && typeof local.categoryMeta === "object") ? { ...local.categoryMeta } : {};
       merged.categoriesUpdatedAt = lcu;
     } else {
       merged.categories = [...DEFAULT_CATEGORIES];
+      merged.categoryMeta = {};
       merged.categoriesUpdatedAt = Math.max(lcu, rcu);
     }
 
@@ -3291,7 +3318,10 @@
     chips.className = "detail-chips";
     const catBadge = document.createElement("span");
     catBadge.className = "category-badge";
-    catBadge.textContent = habit.category;
+    const cm = categoryMeta(habit.category);
+    catBadge.textContent = `${cm.icon} ${habit.category}`;
+    catBadge.style.borderColor = cm.color;
+    catBadge.style.color = cm.color;
     chips.appendChild(catBadge);
     if (streak > 0) {
       const st = document.createElement("span");
@@ -4858,7 +4888,8 @@
       const wrap = document.createElement("div");
       const heading = document.createElement("div");
       heading.className = "category-group-title";
-      heading.innerHTML = `<span>${cat}</span><span class="time-group-count">${list.length}</span>`;
+      const cmeta = categoryMeta(cat);
+      heading.innerHTML = `<span><span class="cat-head-icon" style="color:${escapeHtml(cmeta.color)}">${escapeHtml(cmeta.icon)}</span> ${escapeHtml(cat)}</span><span class="time-group-count">${list.length}</span>`;
       wrap.appendChild(heading);
 
       const ul = document.createElement("ul");
@@ -6939,27 +6970,96 @@
     wrap.innerHTML = "";
     const counts = {};
     for (const h of state.habits) counts[h.category] = (counts[h.category] || 0) + 1;
-    getCategories().forEach((cat, idx) => {
+    const cats = getCategories();
+    cats.forEach((cat, idx) => {
+      const meta = categoryMeta(cat);
       const row = document.createElement("div");
       row.className = "category-row";
+
+      // Reorder controls (up/down — reliable on touch)
+      const reorder = document.createElement("div");
+      reorder.className = "cat-reorder";
+      const up = document.createElement("button");
+      up.className = "cat-move"; up.textContent = "▲"; up.title = "Move up";
+      up.disabled = idx === 0;
+      up.addEventListener("click", () => moveCategory(idx, -1));
+      const down = document.createElement("button");
+      down.className = "cat-move"; down.textContent = "▼"; down.title = "Move down";
+      down.disabled = idx === cats.length - 1;
+      down.addEventListener("click", () => moveCategory(idx, 1));
+      reorder.appendChild(up); reorder.appendChild(down);
+      row.appendChild(reorder);
+
+      // Icon (single emoji) — swatch background reflects the color.
+      const iconInput = document.createElement("input");
+      iconInput.type = "text";
+      iconInput.className = "cat-icon-input";
+      iconInput.value = meta.icon;
+      iconInput.maxLength = 4;
+      iconInput.title = "Category icon";
+      iconInput.style.background = meta.color;
+      iconInput.addEventListener("change", () => setCategoryMeta(cat, { icon: iconInput.value.trim() || "🏷️" }));
+      row.appendChild(iconInput);
+
+      // Color
+      const colorInput = document.createElement("input");
+      colorInput.type = "color";
+      colorInput.className = "cat-color-input";
+      colorInput.value = toHexColor(meta.color);
+      colorInput.title = "Category color";
+      colorInput.addEventListener("change", () => setCategoryMeta(cat, { color: colorInput.value }));
+      row.appendChild(colorInput);
+
       const input = document.createElement("input");
       input.type = "text";
+      input.className = "cat-name-input";
       input.value = cat;
       input.maxLength = 30;
       input.addEventListener("change", () => renameCategory(idx, input.value.trim()));
+      row.appendChild(input);
+
       const count = document.createElement("span");
       count.className = "cat-count";
-      count.textContent = `${counts[cat] || 0} habit${(counts[cat] || 0) === 1 ? "" : "s"}`;
+      count.textContent = `${counts[cat] || 0}`;
+      count.title = `${counts[cat] || 0} habit${(counts[cat] || 0) === 1 ? "" : "s"}`;
+      row.appendChild(count);
+
       const del = document.createElement("button");
       del.className = "cat-del";
       del.textContent = "✕";
       del.title = "Remove category";
       del.addEventListener("click", () => removeCategory(idx));
-      row.appendChild(input);
-      row.appendChild(count);
       row.appendChild(del);
+
       wrap.appendChild(row);
     });
+  }
+
+  // Normalize a CSS color to a #rrggbb value for <input type="color">.
+  function toHexColor(c) {
+    if (typeof c === "string" && /^#[0-9a-fA-F]{6}$/.test(c)) return c;
+    return "#64748b";
+  }
+
+  function setCategoryMeta(name, patch) {
+    if (!state.categoryMeta) state.categoryMeta = {};
+    const cur = state.categoryMeta[name] || { ...(DEFAULT_CATEGORY_META[name] || {}) };
+    state.categoryMeta[name] = { ...cur, ...patch };
+    state.categoriesUpdatedAt = Date.now();
+    save();
+    renderCategoryManager();
+    if (currentView === "today") renderToday();
+    if (currentView === "habits") renderHabits();
+  }
+
+  function moveCategory(idx, dir) {
+    const cats = getCategories().slice();
+    const j = idx + dir;
+    if (j < 0 || j >= cats.length) return;
+    const tmp = cats[idx]; cats[idx] = cats[j]; cats[j] = tmp;
+    commitCategories(cats);
+    renderCategoryManager();
+    populateCategorySelects();
   }
 
   function commitCategories(newList) {
@@ -6976,6 +7076,11 @@
     cats[idx] = newName;
     // Move habits from old name to new
     for (const h of state.habits) if (h.category === old) { h.category = newName; h.updatedAt = Date.now(); }
+    // Carry the color/icon over to the new name.
+    if (state.categoryMeta && state.categoryMeta[old]) {
+      state.categoryMeta[newName] = state.categoryMeta[old];
+      delete state.categoryMeta[old];
+    }
     commitCategories(cats);
     renderCategoryManager();
     renderDataSummary();
@@ -6991,6 +7096,7 @@
     if (used > 0 && !confirm(`Move ${used} habit${used === 1 ? "" : "s"} from "${name}" to "${fallback}" and remove this category?`)) return;
     for (const h of state.habits) if (h.category === name) { h.category = fallback; h.updatedAt = Date.now(); }
     cats.splice(idx, 1);
+    if (state.categoryMeta && state.categoryMeta[name]) delete state.categoryMeta[name];
     commitCategories(cats);
     renderCategoryManager();
     renderDataSummary();
@@ -7574,6 +7680,7 @@
       clockFromTimeStr, habitFromTemplate,
       isWeekly, weeklyTarget, weeklyDoneCount, weeklyMet, todayStatus, weekAdherencePct,
       weekKeyOf, computeWeekReview, reviewTargetWeek,
+      categoryMeta, getCategories,
       getState: () => state, setState: (s) => { state = s; },
     };
   }
