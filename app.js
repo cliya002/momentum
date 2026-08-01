@@ -38,6 +38,9 @@
     onboardSeen: "ht_onboard_seen",
     lastBackup: "ht_last_backup",
     lastNotif: "ht_last_notif",
+    accent: "ht_accent",
+    textSize: "ht_text_size",
+    contrast: "ht_contrast",
   };
   const DEFAULT_CATEGORIES = ["Fitness","Nutrition","Sleep","Supplements","Custom"];
   // Fallback color/icon per default category (used until the user customizes).
@@ -2916,6 +2919,9 @@
       clearHistoryBtn: $("#clearHistoryBtn"),
       deletePhotosBtn: $("#deletePhotosBtn"),
       themeSelect: $("#themeSelect"),
+      accentPicker: $("#accentPicker"),
+      textSizeSelect: $("#textSizeSelect"),
+      contrastToggle: $("#contrastToggle"),
       compactToggle: $("#compactToggle"),
       timeFormatSelect: $("#timeFormatSelect"),
       showDetailsToggle: $("#showDetailsToggle"),
@@ -8220,6 +8226,9 @@
     els.syncGistIdInput.value = localStorage.getItem(KEYS.syncGistId) || "";
     els.autoSyncToggle.checked = isAutoSyncEnabled();
     els.themeSelect.value = localStorage.getItem(KEYS.theme) || "auto";
+    renderAccentPicker();
+    if (els.textSizeSelect) els.textSizeSelect.value = localStorage.getItem(KEYS.textSize) || "normal";
+    if (els.contrastToggle) els.contrastToggle.checked = localStorage.getItem(KEYS.contrast) === "true";
     els.remindersToggle.checked = remindersEnabled() && ("Notification" in window) && Notification.permission === "granted";
     els.compactToggle.checked = localStorage.getItem(KEYS.compact) === "true";
     els.timeFormatSelect.value = timeFmt();
@@ -8601,6 +8610,58 @@
     applyTheme();
   }
 
+  /* ---- Accent color, text size, high contrast ---- */
+  const ACCENTS = ["#6366f1", "#14b8a6", "#22c55e", "#3b82f6", "#ec4899", "#f59e0b", "#ef4444", "#a855f7"];
+  function hexToRgb(hex) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex || "");
+    if (!m) return null;
+    const n = parseInt(m[1], 16);
+    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+  }
+  function shade(hex, pct) {
+    const c = hexToRgb(hex); if (!c) return hex;
+    const f = (v) => Math.max(0, Math.min(255, Math.round(v + (pct < 0 ? v : 255 - v) * pct)));
+    const h = (v) => v.toString(16).padStart(2, "0");
+    return "#" + h(f(c.r)) + h(f(c.g)) + h(f(c.b));
+  }
+  function applyAccent() {
+    const hex = localStorage.getItem(KEYS.accent);
+    const root = document.documentElement;
+    if (!hex || !hexToRgb(hex)) {
+      // Clear overrides → fall back to the theme's default accent.
+      ["--primary", "--primary-hover", "--primary-soft", "--primary-tint"].forEach((v) => root.style.removeProperty(v));
+      return;
+    }
+    const c = hexToRgb(hex);
+    root.style.setProperty("--primary", hex);
+    root.style.setProperty("--primary-hover", shade(hex, -0.18));
+    root.style.setProperty("--primary-soft", `rgba(${c.r},${c.g},${c.b},0.12)`);
+    root.style.setProperty("--primary-tint", `rgba(${c.r},${c.g},${c.b},0.10)`);
+  }
+  function setAccent(hex) {
+    if (hex && hexToRgb(hex)) localStorage.setItem(KEYS.accent, hex);
+    else localStorage.removeItem(KEYS.accent);
+    applyAccent();
+    renderAccentPicker();
+  }
+  function renderAccentPicker() {
+    const el = getEls().accentPicker;
+    if (!el) return;
+    const cur = localStorage.getItem(KEYS.accent) || "";
+    el.innerHTML = ACCENTS.map((c) =>
+      `<button type="button" class="accent-swatch${cur.toLowerCase() === c ? " selected" : ""}" data-c="${c}" style="background:${c}" aria-label="Accent ${c}"></button>`
+    ).join("") + `<button type="button" class="accent-swatch accent-reset${cur ? "" : " selected"}" data-c="" title="Default" aria-label="Default accent">↺</button>`;
+    el.querySelectorAll(".accent-swatch").forEach((b) => b.addEventListener("click", () => setAccent(b.dataset.c)));
+  }
+  function applyTextSize() {
+    const size = localStorage.getItem(KEYS.textSize) || "normal";
+    const px = size === "xlarge" ? "17px" : size === "large" ? "16px" : "15px";
+    document.documentElement.style.fontSize = px;
+  }
+  function applyContrast() {
+    document.body.classList.toggle("hc", localStorage.getItem(KEYS.contrast) === "true");
+  }
+
   function exportData() {
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -8940,6 +9001,12 @@
 
     // Settings — Theme
     els.themeSelect.addEventListener("change", onThemeChange);
+    if (els.textSizeSelect) els.textSizeSelect.addEventListener("change", () => {
+      localStorage.setItem(KEYS.textSize, els.textSizeSelect.value); applyTextSize();
+    });
+    if (els.contrastToggle) els.contrastToggle.addEventListener("change", () => {
+      localStorage.setItem(KEYS.contrast, els.contrastToggle.checked ? "true" : "false"); applyContrast();
+    });
     els.unitsSelect.addEventListener("change", () => {
       localStorage.setItem(KEYS.units, els.unitsSelect.value === "metric" ? "metric" : "imperial");
       if (currentView === "progress") renderProgress();
@@ -9001,6 +9068,9 @@
       localStorage.setItem("ht_sync_migrated_v30", "1");
     }
     applyTheme();
+    applyAccent();
+    applyTextSize();
+    applyContrast();
     if (localStorage.getItem(KEYS.compact) === "true") document.body.classList.add("compact");
     wireEvents();
     populateCategorySelects();
@@ -9157,6 +9227,7 @@
       recordCompletionClock, suggestReminderTime, smartTimingSuggestions,
       keystoneId, getKeystoneHabit, setKeystone,
       logActivity, moveHabitToCategory, prunePhotosOlderThan,
+      shade, hexToRgb,
       getState: () => state, setState: (s) => { state = s; },
     };
   }
