@@ -6387,6 +6387,104 @@
     window.print();
   }
 
+  // Render a shareable progress summary to a PNG and share/download it.
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  async function shareProgressCard() {
+    const now = new Date();
+    const weekStart = addDays(startOfWeekMonday(now), weekOffset * 7);
+    const pct = weekAdherencePct(weekStart);
+    const checkins = totalCheckins();
+    const bestStreak = maxLongestStreak();
+    const curBest = (() => { let m = 0, h = null; for (const x of state.habits) { if (x.archived) continue; const s = currentStreak(x); if (s > m) { m = s; h = x; } } return { streak: m, habit: h }; })();
+    const earned = evaluateAchievements().filter((a) => a.unlocked).length;
+
+    const W = 1080, H = 1350, S = 1;
+    const canvas = document.createElement("canvas");
+    canvas.width = W * S; canvas.height = H * S;
+    const ctx = canvas.getContext("2d");
+    ctx.scale(S, S);
+
+    // Background gradient
+    const g = ctx.createLinearGradient(0, 0, W, H);
+    g.addColorStop(0, "#6366f1");
+    g.addColorStop(1, "#14b8a6");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.textAlign = "center";
+    ctx.fillStyle = "rgba(255,255,255,0.92)";
+    ctx.font = "700 64px system-ui, -apple-system, sans-serif";
+    ctx.fillText("Momentum", W / 2, 150);
+    ctx.font = "400 34px system-ui, -apple-system, sans-serif";
+    ctx.fillStyle = "rgba(255,255,255,0.75)";
+    const label = weekOffset === 0 ? "This week" : `Week of ${formatDateShort(weekStart)}`;
+    ctx.fillText(label, W / 2, 205);
+
+    // Big adherence ring number
+    ctx.fillStyle = "#fff";
+    ctx.font = "800 260px system-ui, -apple-system, sans-serif";
+    ctx.fillText(pct == null ? "—" : pct + "%", W / 2, 500);
+    ctx.font = "500 38px system-ui, -apple-system, sans-serif";
+    ctx.fillStyle = "rgba(255,255,255,0.8)";
+    ctx.fillText("adherence", W / 2, 560);
+
+    // Stat cards
+    const stats = [
+      { n: String(checkins), l: "check-ins" },
+      { n: "🔥 " + curBest.streak, l: "current streak" },
+      { n: "🏆 " + bestStreak, l: "best streak" },
+      { n: "🎖 " + earned, l: "achievements" },
+    ];
+    const cardW = 460, cardH = 190, gap = 40;
+    const startX = (W - (cardW * 2 + gap)) / 2;
+    let y0 = 660;
+    ctx.textAlign = "center";
+    stats.forEach((s, i) => {
+      const col = i % 2, row = Math.floor(i / 2);
+      const x = startX + col * (cardW + gap);
+      const y = y0 + row * (cardH + gap);
+      ctx.fillStyle = "rgba(255,255,255,0.15)";
+      roundRect(ctx, x, y, cardW, cardH, 28); ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.font = "800 84px system-ui, -apple-system, sans-serif";
+      ctx.fillText(s.n, x + cardW / 2, y + 100);
+      ctx.font = "500 34px system-ui, -apple-system, sans-serif";
+      ctx.fillStyle = "rgba(255,255,255,0.8)";
+      ctx.fillText(s.l, x + cardW / 2, y + 150);
+    });
+
+    // Footer line
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    ctx.font = "600 40px system-ui, -apple-system, sans-serif";
+    const foot = curBest.habit ? `${curBest.habit.icon || "•"} ${curBest.habit.name} — going strong` : "Small steps, every day.";
+    ctx.fillText(foot.slice(0, 34), W / 2, H - 90);
+
+    // Export → share or download
+    const blob = await new Promise((res) => canvas.toBlob(res, "image/png"));
+    if (!blob) { showToast("Couldn't build the image.", "error"); return; }
+    const file = new File([blob], `momentum-${todayKey()}.png`, { type: "image/png" });
+    try {
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: "My Momentum progress" });
+        return;
+      }
+    } catch (e) { /* fall back to download */ }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = file.name; a.click();
+    URL.revokeObjectURL(url);
+    showToast("Progress card saved.", "success");
+  }
+
   /* ================================================================
    * Schedule tab
    * ================================================================ */
@@ -8061,6 +8159,7 @@
     els.reportMenu.querySelectorAll("button").forEach((b) => {
       b.addEventListener("click", () => {
         els.reportMenu.classList.add("hidden");
+        if (b.dataset.action === "share-card") shareProgressCard();
         if (b.dataset.action === "csv-week") downloadWeekCsv();
         if (b.dataset.action === "csv-all") downloadAllCsv();
         if (b.dataset.action === "print") printReport();
