@@ -428,6 +428,17 @@
           </div>
 
           <div class="card">
+            <div class="card-title">Adherence trend
+              <select id="trendRangeSelect" class="filter-select" style="margin-left:auto" aria-label="Trend range">
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+            </div>
+            <div id="adherenceTrend" class="adherence-trend"></div>
+            <p id="adherenceTrendEmpty" class="empty-inline" hidden>Log a couple of weeks to see your trend.</p>
+          </div>
+
+          <div class="card">
             <div class="card-title">By category</div>
             <div id="categoryBreakdown" class="progress-list">
               <p class="empty-inline">No data yet.</p>
@@ -905,6 +916,34 @@
           <button type="submit" class="btn-primary">Save</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- ===================== Habit Detail Modal ===================== -->
+  <div id="habitDetailModal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-content">
+      <div id="habitDetailBody"></div>
+      <div class="modal-actions">
+        <button type="button" id="detailArchiveBtn" class="btn-secondary" style="margin-right:auto">Archive</button>
+        <button type="button" id="detailCloseBtn" class="btn-secondary">Close</button>
+        <button type="button" id="detailEditBtn" class="btn-primary">Edit</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Onboarding Modal ===================== -->
+  <div id="onboardModal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-content">
+      <h2>Welcome to Momentum 👋</h2>
+      <p class="card-sub">Pick a starter pack to add a few habits — you can tweak or remove any later.</p>
+      <div id="onboardTemplates" class="onboard-templates"></div>
+      <label style="display:block;margin-top:1rem">Default reminder time <span class="hint">(optional)</span>
+        <input type="time" id="onboardReminder" />
+      </label>
+      <div class="modal-actions">
+        <button type="button" id="onboardSkipBtn" class="btn-secondary" style="margin-right:auto">Skip for now</button>
+        <button type="button" id="onboardAddBtn" class="btn-primary">Add habits</button>
+      </div>
     </div>
   </div>
 

@@ -1449,6 +1449,97 @@
     el.textContent = msg;
   }
 
+  /* ---- Per-habit detail view ---- */
+  let detailHabitId = null;
+  const DOW_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  function openHabitDetail(habit) {
+    const els = getEls();
+    if (!els.habitDetailModal) return;
+    detailHabitId = habit.id;
+    resetRenderCaches();
+    const cur = currentStreak(habit);
+    const longest = longestStreak(habit);
+    const stats = habitCompletionStats(habit);
+    const frozenToday = isFrozen(habit.id, new Date());
+    let html = `<div class="detail-head"><span class="habit-icon" style="background:${escapeHtml(habit.color)}">${escapeHtml(habit.icon || "🎯")}</span>` +
+      `<div><h2 style="margin:0">${escapeHtml(habit.name)}</h2>` +
+      `<span class="hint">${escapeHtml(habit.category)}${habit.archived ? " · archived" : ""}</span></div></div>`;
+    html += `<div class="detail-stats">` +
+      `<div class="detail-stat"><div class="ds-num">🔥 ${cur}</div><div class="ds-lbl">current streak</div></div>` +
+      `<div class="detail-stat"><div class="ds-num">🏆 ${longest}</div><div class="ds-lbl">longest</div></div>` +
+      `<div class="detail-stat"><div class="ds-num">${stats ? stats.rate + "%" : "—"}</div><div class="ds-lbl">completion</div></div>` +
+      `</div>`;
+    if (stats && stats.best) {
+      html += `<p class="detail-line">Best day: <b>${DOW_LABELS[stats.best.dow]}</b> (${Math.round(stats.best.rate * 100)}%) · Toughest: <b>${DOW_LABELS[stats.worst.dow]}</b> (${Math.round(stats.worst.rate * 100)}%)</p>`;
+      html += `<p class="detail-line hint">${stats.done} of ${stats.sched} scheduled days completed.</p>`;
+    } else {
+      html += `<p class="detail-line hint">Not enough history yet — check in for a few days to see your stats.</p>`;
+    }
+    // 14-day mini history strip
+    html += `<div class="detail-hist">`;
+    for (let i = 13; i >= 0; i--) {
+      const d = addDays(new Date(), -i);
+      let cls = "off";
+      if (isHabitActiveOn(habit, d)) {
+        if (isCompleted(habit, d)) cls = "done";
+        else if (isFrozen(habit.id, d)) cls = "frozen";
+        else if (isSkipped(habit, d)) cls = "notdone";
+        else cls = "pending";
+      }
+      html += `<span class="dh ${cls}" title="${d.toLocaleDateString()}"></span>`;
+    }
+    html += `</div>`;
+    html += `<label class="toggle-row" style="margin-top:0.8rem"><span><b>❄️ Freeze today</b><br><span class="hint">A planned rest/sick day won't break the streak.</span></span>` +
+      `<input type="checkbox" id="detailFreezeToday" ${frozenToday ? "checked" : ""} /></label>`;
+    els.habitDetailBody.innerHTML = html;
+    const fz = document.getElementById("detailFreezeToday");
+    if (fz) fz.addEventListener("change", () => { setFreeze(habit.id, new Date(), fz.checked); openHabitDetail(habit); });
+    els.detailArchiveBtn.textContent = habit.archived ? "Unarchive" : "Archive";
+    els.habitDetailModal.classList.remove("hidden");
+  }
+  function closeHabitDetail() { const e = getEls(); if (e.habitDetailModal) e.habitDetailModal.classList.add("hidden"); detailHabitId = null; }
+
+  /* ---- First-run onboarding ---- */
+  function maybeOnboard() {
+    const els = getEls();
+    if (!els.onboardModal) return;
+    if (localStorage.getItem(KEYS.onboardSeen) === "true") return;
+    if (state.habits.length > 0 || (state.trash && state.trash.length > 0)) return;
+    // A few friendly starter packs (subset of the template library).
+    const picks = ["🏋️ Fitness & movement", "🥗 Nutrition & hydration", "😴 Sleep & recovery", "🧠 Mind & wellbeing", "☀️ Morning routine"];
+    const sections = TEMPLATE_LIBRARY.filter((s) => picks.includes(s.title));
+    els.onboardTemplates.innerHTML = sections.map((s, i) =>
+      `<label class="onboard-pack"><input type="checkbox" data-sec="${TEMPLATE_LIBRARY.indexOf(s)}" ${i === 0 ? "checked" : ""} /> <span>${escapeHtml(s.title)} <span class="hint">(${s.items.length})</span></span></label>`
+    ).join("");
+    els.onboardModal.classList.remove("hidden");
+  }
+  function finishOnboard(add) {
+    const els = getEls();
+    if (add) {
+      const now = Date.now();
+      const rt = /^\d{2}:\d{2}$/.test(els.onboardReminder.value) ? els.onboardReminder.value : "";
+      let count = 0;
+      els.onboardTemplates.querySelectorAll("input[data-sec]:checked").forEach((cb) => {
+        const sec = TEMPLATE_LIBRARY[Number(cb.dataset.sec)];
+        if (!sec) return;
+        for (const item of sec.items) {
+          state.habits.push({
+            id: uid(), createdAt: new Date(now).toISOString(), updatedAt: now,
+            ...TEMPLATE_ITEM_DEFAULTS, ...item,
+            reminderTime: rt || (item.reminderTime || ""),
+          });
+          count++;
+        }
+      });
+      if (rt) localStorage.setItem(KEYS.reminderDefault, rt);
+      save();
+      showToast(`Added ${count} habit${count === 1 ? "" : "s"}. Welcome aboard! 🎉`, "success");
+    }
+    localStorage.setItem(KEYS.onboardSeen, "true");
+    els.onboardModal.classList.add("hidden");
+    switchView("today");
+  }
+
   function setHabitArchived(id, archived) {
     const h = state.habits.find((x) => x.id === id);
     if (!h) return;
@@ -2335,6 +2426,18 @@
       dayTimesGrid: $("#dayTimesGrid"),
       cancelBtn: $("#cancelBtn"),
       deleteBtn: $("#deleteBtn"),
+      // habit detail modal
+      habitDetailModal: $("#habitDetailModal"),
+      habitDetailBody: $("#habitDetailBody"),
+      detailArchiveBtn: $("#detailArchiveBtn"),
+      detailCloseBtn: $("#detailCloseBtn"),
+      detailEditBtn: $("#detailEditBtn"),
+      // onboarding
+      onboardModal: $("#onboardModal"),
+      onboardTemplates: $("#onboardTemplates"),
+      onboardReminder: $("#onboardReminder"),
+      onboardSkipBtn: $("#onboardSkipBtn"),
+      onboardAddBtn: $("#onboardAddBtn"),
       // report
       weekLabel: $("#weekLabel"),
       prevWeek: $("#prevWeek"),
@@ -2344,6 +2447,9 @@
       statStreak: $("#statStreak"),
       dayAdherence: $("#dayAdherence"),
       reportHeatmap: $("#reportHeatmap"),
+      trendRangeSelect: $("#trendRangeSelect"),
+      adherenceTrend: $("#adherenceTrend"),
+      adherenceTrendEmpty: $("#adherenceTrendEmpty"),
       weeklyBreakdown: $("#weeklyBreakdown"),
       reportCategoryFilter: $("#reportCategoryFilter"),
       reportMenuBtn: $("#reportMenuBtn"),
@@ -4545,7 +4651,7 @@
           li.appendChild(cb);
           li.addEventListener("click", () => toggleBulkSelect(habit.id));
         } else {
-          li.addEventListener("click", () => openHabitModal(habit));
+          li.addEventListener("click", () => openHabitDetail(habit));
         }
 
         const icon = document.createElement("div");
@@ -4828,6 +4934,8 @@
     renderReportInsight(rows, pct, dayTotals, weekStart);
     // 5-week heatmap
     renderReportHeatmap(habitsInScope);
+    // Adherence trend line
+    renderAdherenceTrend(habitsInScope);
     // Category breakdown
     renderCategoryBreakdown(catTotals);
 
@@ -4911,6 +5019,100 @@
       wrap.appendChild(cells);
       els.weeklyBreakdown.appendChild(wrap);
     }
+  }
+
+  // Adherence % over a [start, endExclusive) date range (excludes archived +
+  // freeze days; only counts past/today). Returns null if nothing scheduled.
+  function rangeAdherence(habits, start, endExcl) {
+    const now = new Date();
+    let sched = 0, done = 0;
+    let d = new Date(start);
+    while (d < endExcl) {
+      if (d <= now) {
+        for (const h of habits) {
+          if (h.archived) continue;
+          if (countsForAdherence(h, d)) { sched++; if (isCompleted(h, d)) done++; }
+        }
+      }
+      d = addDays(d, 1);
+    }
+    return sched === 0 ? null : Math.round((done / sched) * 100);
+  }
+
+  function renderAdherenceTrend(habits) {
+    const els = getEls();
+    if (!els.adherenceTrend) return;
+    const mode = els.trendRangeSelect ? els.trendRangeSelect.value : "weekly";
+    const now = new Date();
+    const points = []; // {label, pct|null}
+    if (mode === "monthly") {
+      for (let i = 11; i >= 0; i--) {
+        const first = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const next = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
+        points.push({ label: first.toLocaleDateString(undefined, { month: "short" }), pct: rangeAdherence(habits, first, next) });
+      }
+    } else {
+      const thisWeek = startOfWeekMonday(now);
+      for (let i = 11; i >= 0; i--) {
+        const ws = addDays(thisWeek, -7 * i);
+        points.push({ label: `${ws.getMonth() + 1}/${ws.getDate()}`, pct: rangeAdherence(habits, ws, addDays(ws, 7)) });
+      }
+    }
+    const haveData = points.some((p) => p.pct !== null);
+    els.adherenceTrendEmpty.hidden = haveData;
+    els.adherenceTrend.innerHTML = "";
+    if (!haveData) return;
+
+    const W = 320, H = 120, padL = 8, padR = 8, padT = 10, padB = 22;
+    const n = points.length;
+    const xAt = (i) => padL + (i * (W - padL - padR)) / (n - 1);
+    const yAt = (pct) => padT + (1 - pct / 100) * (H - padT - padB);
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    svg.setAttribute("class", "trend-svg");
+    // gridlines at 0/50/100
+    [0, 50, 100].forEach((g) => {
+      const ln = document.createElementNS(ns, "line");
+      ln.setAttribute("x1", padL); ln.setAttribute("x2", W - padR);
+      ln.setAttribute("y1", yAt(g)); ln.setAttribute("y2", yAt(g));
+      ln.setAttribute("class", "trend-grid");
+      svg.appendChild(ln);
+    });
+    // polyline segments (break on null)
+    let seg = [];
+    const flush = () => {
+      if (seg.length >= 2) {
+        const pl = document.createElementNS(ns, "polyline");
+        pl.setAttribute("points", seg.map((p) => `${p.x},${p.y}`).join(" "));
+        pl.setAttribute("class", "trend-line");
+        svg.appendChild(pl);
+      }
+      seg = [];
+    };
+    points.forEach((p, i) => {
+      if (p.pct === null) { flush(); return; }
+      const x = xAt(i), y = yAt(p.pct);
+      seg.push({ x, y });
+      const dot = document.createElementNS(ns, "circle");
+      dot.setAttribute("cx", x); dot.setAttribute("cy", y); dot.setAttribute("r", 2.5);
+      dot.setAttribute("class", "trend-dot");
+      const t = document.createElementNS(ns, "title");
+      t.textContent = `${p.label}: ${p.pct}%`;
+      dot.appendChild(t);
+      svg.appendChild(dot);
+    });
+    flush();
+    // x labels (first, middle, last)
+    [0, Math.floor((n - 1) / 2), n - 1].forEach((i) => {
+      const tx = document.createElementNS(ns, "text");
+      tx.setAttribute("x", xAt(i)); tx.setAttribute("y", H - 6);
+      tx.setAttribute("class", "trend-xlabel");
+      tx.setAttribute("text-anchor", i === 0 ? "start" : i === n - 1 ? "end" : "middle");
+      tx.textContent = points[i].label;
+      svg.appendChild(tx);
+    });
+    els.adherenceTrend.appendChild(svg);
   }
 
   function renderReportHeatmap(habits) {
@@ -6578,6 +6780,22 @@
     els.bulkDeleteBtn.addEventListener("click", bulkDeleteSelected);
     els.bulkDoneBtn.addEventListener("click", () => setBulkMode(false));
     els.addBtn.addEventListener("click", () => openHabitModal(null));
+
+    // Habit detail modal
+    els.detailCloseBtn.addEventListener("click", closeHabitDetail);
+    els.habitDetailModal.addEventListener("click", (e) => { if (e.target === els.habitDetailModal) closeHabitDetail(); });
+    els.detailEditBtn.addEventListener("click", () => {
+      const h = state.habits.find((x) => x.id === detailHabitId);
+      closeHabitDetail();
+      if (h) openHabitModal(h);
+    });
+    els.detailArchiveBtn.addEventListener("click", () => {
+      const h = state.habits.find((x) => x.id === detailHabitId);
+      if (h) { setHabitArchived(h.id, !h.archived); closeHabitDetail(); }
+    });
+    // Onboarding
+    els.onboardAddBtn.addEventListener("click", () => finishOnboard(true));
+    els.onboardSkipBtn.addEventListener("click", () => finishOnboard(false));
     els.deleteAllBtn.addEventListener("click", deleteAllHabits);
     els.cancelBtn.addEventListener("click", closeModal);
     els.deleteBtn.addEventListener("click", () => {
@@ -6620,6 +6838,7 @@
     els.prevWeek.addEventListener("click", () => { weekOffset--; renderReport(); });
     els.nextWeek.addEventListener("click", () => { if (weekOffset < 0) { weekOffset++; renderReport(); } });
     els.reportCategoryFilter.addEventListener("change", (e) => { reportCategoryFilter = e.target.value; renderReport(); });
+    if (els.trendRangeSelect) els.trendRangeSelect.addEventListener("change", () => renderReport());
     els.reportMenuBtn.addEventListener("click", (e) => { e.stopPropagation(); els.reportMenu.classList.toggle("hidden"); });
     els.reportMenu.querySelectorAll("button").forEach((b) => {
       b.addEventListener("click", () => {
@@ -6840,6 +7059,7 @@
       history.replaceState(null, "", location.pathname);
     }
     switchView(currentView);
+    maybeOnboard();
 
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {

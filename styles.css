@@ -2255,3 +2255,32 @@ body.compact .habit-list { gap: 0.35rem; }
 }
 .row-archive:hover { background: var(--card-soft); color: var(--text); }
 .habit-item.archived { opacity: 0.7; }
+
+/* Per-habit detail modal */
+.detail-head { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
+.detail-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; margin-bottom: 0.8rem; }
+.detail-stat { background: var(--card-soft); border-radius: var(--radius-sm); padding: 0.7rem 0.5rem; text-align: center; }
+.detail-stat .ds-num { font-size: 1.2rem; font-weight: 700; }
+.detail-stat .ds-lbl { font-size: 0.68rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+.detail-line { margin: 0.35rem 0; font-size: 0.9rem; }
+.detail-hist { display: flex; gap: 3px; margin: 0.6rem 0; flex-wrap: wrap; }
+.detail-hist .dh { width: 14px; height: 14px; border-radius: 3px; background: var(--card-soft); border: 1px solid var(--border); }
+.detail-hist .dh.done { background: var(--primary); border-color: transparent; }
+.detail-hist .dh.notdone { background: var(--danger-soft); border-color: var(--danger); }
+.detail-hist .dh.frozen { background: #bae6fd; border-color: #38bdf8; }
+.detail-hist .dh.off { opacity: 0.35; }
+
+/* History cell freeze marker (Report/day views) */
+.day-cell.frozen, .sp.frozen { background: #bae6fd !important; border-color: #38bdf8 !important; }
+
+/* Onboarding */
+.onboard-templates { display: flex; flex-direction: column; gap: 0.5rem; }
+.onboard-pack { display: flex; align-items: center; gap: 0.6rem; background: var(--card-soft); border-radius: var(--radius-sm); padding: 0.6rem 0.75rem; }
+.onboard-pack input { width: auto; }
+
+/* Adherence trend chart */
+.adherence-trend .trend-svg { width: 100%; height: auto; }
+.trend-grid { stroke: var(--border); stroke-width: 1; }
+.trend-line { fill: none; stroke: var(--primary); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.trend-dot { fill: var(--primary); }
+.trend-xlabel { fill: var(--text-dim); font-size: 9px; }
