@@ -574,6 +574,11 @@
       achievements: {},
       // Daily mood/energy: dateKey -> { mood: 1-5, updatedAt }
       moods: {},
+      // Vacation / pause mode: a date range where reminders pause and streaks
+      // are protected (treated like global freeze days).
+      vacation: { start: null, end: null, note: "", updatedAt: 0 },
+      // Per-week keystone focus habit: weekKey -> habitId
+      keystone: {},
     };
   }
 
@@ -929,6 +934,25 @@
         if (mood >= 1 && mood <= 5) st.moods[day] = { mood, updatedAt: Number(m.updatedAt) || now };
       }
     }
+    // Vacation / pause range.
+    st.vacation = { start: null, end: null, note: "", updatedAt: 0 };
+    if (s.vacation && typeof s.vacation === "object") {
+      const dk = /^\d{4}-\d{2}-\d{2}$/;
+      const start = dk.test(s.vacation.start) ? s.vacation.start : null;
+      const end = dk.test(s.vacation.end) ? s.vacation.end : null;
+      st.vacation = {
+        start, end,
+        note: String(s.vacation.note || "").slice(0, 120),
+        updatedAt: Number(s.vacation.updatedAt) || 0,
+      };
+    }
+    // Keystone habit per week: weekKey -> habitId
+    st.keystone = {};
+    if (s.keystone && typeof s.keystone === "object") {
+      for (const [wk, id] of Object.entries(s.keystone)) {
+        if (typeof id === "string" && id) st.keystone[wk] = id;
+      }
+    }
     return st;
   }
 
@@ -1209,6 +1233,17 @@
       }
     }
 
+    // Vacation: newest updatedAt wins for the whole range.
+    const lv = local.vacation || { updatedAt: 0 };
+    const rv = remote.vacation || { updatedAt: 0 };
+    merged.vacation = (Number(rv.updatedAt) || 0) > (Number(lv.updatedAt) || 0) ? rv : lv;
+
+    // Keystone: union by week key (both sides usually agree; prefer local).
+    merged.keystone = {};
+    for (const src of [remote.keystone || {}, local.keystone || {}]) {
+      for (const [wk, id] of Object.entries(src)) if (id) merged.keystone[wk] = id;
+    }
+
     return merged;
   }
 
@@ -1302,9 +1337,19 @@
   }
 
   /* ---- Streak freeze (grace days) ---- */
+  // Is a date inside the active vacation range? (inclusive)
+  function inVacation(date) {
+    const v = state.vacation;
+    if (!v || !v.start || !v.end) return false;
+    const dk = dateKey(date);
+    return dk >= v.start && dk <= v.end;
+  }
+  function vacationActiveNow() { return inVacation(new Date()); }
+
   function isFrozen(habitId, date) {
     const dk = dateKey(date);
     const f = state.freezes || {};
+    if (inVacation(date)) return true; // vacation days are neutral for streaks/adherence
     return !!(f.days && f.days[dk]) || !!(f.habitDays && f.habitDays[habitId + "|" + dk]);
   }
   function setFreeze(habitId, date, on) {
@@ -2676,6 +2721,14 @@
       detailCloseBtn: $("#detailCloseBtn"),
       detailEditBtn: $("#detailEditBtn"),
       moodStrip: $("#moodStrip"),
+      // vacation mode
+      vacationBanner: $("#vacationBanner"),
+      vacationStatus: $("#vacationStatus"),
+      vacationStart: $("#vacationStart"),
+      vacationEnd: $("#vacationEnd"),
+      vacationNote: $("#vacationNote"),
+      vacationSaveBtn: $("#vacationSaveBtn"),
+      vacationClearBtn: $("#vacationClearBtn"),
       // weekly review
       reviewPrompt: $("#reviewPrompt"),
       reviewModal: $("#reviewModal"),
@@ -2966,6 +3019,7 @@
     }
     els.todayGreetingSub.textContent = `${dateStr} · ${leftMsg}`;
 
+    renderVacationBanner();
     renderReviewPrompt();
     renderMoodStrip();
     renderFasting();
@@ -4254,6 +4308,7 @@
   function scheduleReminders() {
     if (typeof window === "undefined") return; // no-op outside the browser (tests)
     clearReminderTimers();
+    if (vacationActiveNow()) { updateBadge(); return; } // paused during vacation
     if (pushEnabled()) {
       // The Worker delivers every scheduled reminder (even when the app is
       // closed), so we must NOT also fire local timers — that would double up.
@@ -4374,6 +4429,7 @@
     if (pushEnabled()) return; // the Worker already delivers these
     if (!("Notification" in window) || Notification.permission !== "granted") return;
     if (!remindersEnabled()) return;
+    if (vacationActiveNow()) return; // paused during vacation
     const now = new Date();
     const nowMin = now.getHours() * 60 + now.getMinutes();
     const notified = getNotifiedToday();
@@ -4583,6 +4639,7 @@
 
   function buildPushSchedule() {
     const entries = [];
+    if (vacationActiveNow()) return entries; // no background pushes during vacation
     const today = new Date();
     const byTime = new Map();
     for (const h of state.habits) {
@@ -5554,6 +5611,71 @@
       localStorage.setItem("ht_review_dismissed", wk);
       el.classList.add("hidden");
     });
+  }
+
+  /* ---- Vacation / pause mode ---- */
+  function setVacation(start, end, note) {
+    if (!start || !end) return;
+    if (end < start) { const t = start; start = end; end = t; }
+    state.vacation = { start, end, note: (note || "").slice(0, 120), updatedAt: Date.now() };
+    save();
+    scheduleReminders();      // pauses timers + re-syncs push (empty during vacation)
+    renderVacationBanner();
+    renderVacationSettings();
+    if (currentView === "today") renderToday();
+    showToast("🏝️ Vacation mode on — reminders paused, streaks safe.", "success");
+  }
+  function clearVacation() {
+    state.vacation = { start: null, end: null, note: "", updatedAt: Date.now() };
+    save();
+    scheduleReminders();      // restore the normal reminder + push schedule
+    renderVacationBanner();
+    renderVacationSettings();
+    if (currentView === "today") renderToday();
+    showToast("Vacation mode off — welcome back.", "success");
+  }
+  function fmtVacRange() {
+    const v = state.vacation;
+    if (!v || !v.start || !v.end) return "";
+    const s = new Date(v.start + "T00:00:00"), e = new Date(v.end + "T00:00:00");
+    return `${formatDateShort(s)} – ${formatDateShort(e)}`;
+  }
+  function renderVacationBanner() {
+    const el = getEls().vacationBanner;
+    if (!el) return;
+    if (!vacationActiveNow()) { el.classList.add("hidden"); el.innerHTML = ""; return; }
+    const v = state.vacation;
+    el.classList.remove("hidden");
+    el.innerHTML =
+      `<span class="vac-icon">🏝️</span>
+       <div class="vac-text"><b>Vacation mode${v.note ? " · " + escapeHtml(v.note) : ""}</b>
+       <span class="hint">Reminders paused, streaks protected · ${escapeHtml(fmtVacRange())}</span></div>
+       <button type="button" id="vacEndBtn" class="vac-end">End</button>`;
+    const btn = el.querySelector("#vacEndBtn");
+    if (btn) btn.addEventListener("click", clearVacation);
+  }
+  function renderVacationSettings() {
+    const els = getEls();
+    if (!els.vacationStart) return;
+    const v = state.vacation || {};
+    const active = !!(v.start && v.end);
+    els.vacationStart.value = v.start || "";
+    els.vacationEnd.value = v.end || "";
+    els.vacationNote.value = v.note || "";
+    els.vacationClearBtn.hidden = !active;
+    els.vacationSaveBtn.textContent = active ? "Update vacation" : "Start vacation";
+    if (els.vacationStatus) {
+      if (active) {
+        const on = vacationActiveNow();
+        els.vacationStatus.hidden = false;
+        els.vacationStatus.className = "vacation-status " + (on ? "on" : "scheduled");
+        els.vacationStatus.textContent = on
+          ? `🏝️ Active now · ${fmtVacRange()}`
+          : `📅 Scheduled · ${fmtVacRange()}`;
+      } else {
+        els.vacationStatus.hidden = true;
+      }
+    }
   }
 
   /* ---- Daily mood / energy quick-log ---- */
@@ -7606,6 +7728,7 @@
     renderDataSummary();
     renderDeviceList();
     renderCategoryManager();
+    renderVacationSettings();
   }
 
   function renderDeviceList() {
@@ -8215,6 +8338,12 @@
     });
     els.testReminderBtn.addEventListener("click", testReminder);
     if (els.reminderHealthBtn) els.reminderHealthBtn.addEventListener("click", toggleReminderHealth);
+    if (els.vacationSaveBtn) els.vacationSaveBtn.addEventListener("click", () => {
+      const s = els.vacationStart.value, e = els.vacationEnd.value;
+      if (!s || !e) { showToast("Pick both a start and end date.", "warn"); return; }
+      setVacation(s, e, els.vacationNote.value);
+    });
+    if (els.vacationClearBtn) els.vacationClearBtn.addEventListener("click", clearVacation);
     els.morningDigest.addEventListener("change", () => {
       if (els.morningDigest.value) localStorage.setItem(KEYS.morningDigest, els.morningDigest.value);
       else localStorage.removeItem(KEYS.morningDigest);
@@ -8467,6 +8596,7 @@
       evaluateAchievements, checkAchievements, maxLongestStreak, hasPerfectWeek,
       setMood, moodCompletionInsight, fireStackCues,
       buildMonthCalendar, timeAgo,
+      inVacation, vacationActiveNow, setVacation, clearVacation,
       getState: () => state, setState: (s) => { state = s; },
     };
   }

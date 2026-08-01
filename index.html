@@ -183,6 +183,8 @@
             </div>
           </div>
 
+          <div id="vacationBanner" class="vacation-banner hidden"></div>
+
           <div id="reviewPrompt" class="review-prompt hidden"></div>
 
           <div id="moodStrip" class="mood-strip"></div>
@@ -724,6 +726,23 @@
                 <button id="pushResetBtn" class="btn-secondary" type="button">Re-register device</button>
               </div>
               <div id="pushStatus" class="sync-status" hidden></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">🏝️ Vacation / pause mode</div>
+            <p class="card-sub">Pause all reminders and protect your streaks for a date range — holidays, sick days, a break. Habits won't count against you.</p>
+            <div id="vacationStatus" class="vacation-status" hidden></div>
+            <div class="vacation-range">
+              <label>From <input type="date" id="vacationStart" /></label>
+              <label>To <input type="date" id="vacationEnd" /></label>
+            </div>
+            <label style="display:block;margin-top:0.5rem">Note <span class="hint">(optional)</span>
+              <input type="text" id="vacationNote" maxlength="120" placeholder="e.g. Trip to Italy" />
+            </label>
+            <div class="row-actions" style="margin-top:0.6rem">
+              <button id="vacationClearBtn" class="btn-secondary" type="button" hidden>Clear vacation</button>
+              <button id="vacationSaveBtn" class="btn-primary" type="button">Start vacation</button>
             </div>
           </div>
 
