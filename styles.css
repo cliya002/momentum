@@ -2240,3 +2240,18 @@ body.compact .habit-list { gap: 0.35rem; }
 .last-night-group .fold-toggle .fold-caret {
   margin-left: 0.4rem; font-size: 0.75rem; color: var(--text-dim);
 }
+
+/* Habits Active/Archived filter chips */
+.habit-view-chips { display: flex; gap: 0.5rem; margin-bottom: 0.9rem; }
+.view-chip {
+  border: 1px solid var(--border); background: var(--card); color: var(--text-dim);
+  border-radius: var(--radius-pill); padding: 0.35rem 0.85rem; font-size: 0.82rem; font-weight: 600;
+}
+.view-chip.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.row-archive {
+  background: transparent; border: none; color: var(--text-dim);
+  width: 34px; height: 34px; border-radius: 50%; font-size: 1rem;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0; padding: 0;
+}
+.row-archive:hover { background: var(--card-soft); color: var(--text); }
+.habit-item.archived { opacity: 0.7; }

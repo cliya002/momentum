@@ -34,6 +34,9 @@
     pushVapid: "ht_push_vapid",
     pushEnabled: "ht_push_enabled",
     pushDeviceId: "ht_push_device_id",
+    timeFormat: "ht_time_format",
+    onboardSeen: "ht_onboard_seen",
+    lastBackup: "ht_last_backup",
   };
   const DEFAULT_CATEGORIES = ["Fitness","Nutrition","Sleep","Supplements","Custom"];
   function getCategories() {
@@ -548,6 +551,8 @@
         history: [],         // [{ start, end, targetHours, goalMet }]
         updatedAt: 0,
       },
+      trash: [],
+      freezes: { updatedAt: 0, days: {}, habitDays: {} },
       deletions: { habits: {} },
     };
   }
@@ -699,8 +704,10 @@
       })(),
       notes: (h.notes || "").slice(0, 500),
       reminderTime: /^\d{2}:\d{2}$/.test(h.reminderTime) ? h.reminderTime : "",
+      reminderMsg: (h.reminderMsg || "").slice(0, 120),
       nightPrevDay: !!h.nightPrevDay,
       noPush: !!h.noPush,
+      archived: !!h.archived,
       days: Array.isArray(h.days) && h.days.length ? h.days : [0,1,2,3,4,5,6],
       order: Number.isFinite(Number(h.order)) ? Number(h.order) : idx,
       createdAt: h.createdAt || new Date(now).toISOString(),
@@ -825,6 +832,29 @@
     if (s.deletions && s.deletions.habits) {
       for (const [id, ts] of Object.entries(s.deletions.habits)) {
         st.deletions.habits[id] = Number(ts) || 0;
+      }
+    }
+    // Trash: recoverable deleted habits (full definition + completion snapshot).
+    st.trash = [];
+    if (Array.isArray(s.trash)) {
+      for (const e of s.trash) {
+        if (!e || !e.habit || !e.habit.id) continue;
+        const comp = {};
+        if (e.completions && typeof e.completions === "object") {
+          for (const [d, v] of Object.entries(e.completions)) comp[d] = Number(v) || 0;
+        }
+        st.trash.push({ habit: e.habit, completions: comp, trashedAt: Number(e.trashedAt) || now });
+      }
+    }
+    // Streak freezes (global by date + per-habit by "id|date").
+    st.freezes = { updatedAt: 0, days: {}, habitDays: {} };
+    if (s.freezes && typeof s.freezes === "object") {
+      st.freezes.updatedAt = Number(s.freezes.updatedAt) || 0;
+      if (s.freezes.days && typeof s.freezes.days === "object") {
+        for (const [d, v] of Object.entries(s.freezes.days)) if (v) st.freezes.days[d] = true;
+      }
+      if (s.freezes.habitDays && typeof s.freezes.habitDays === "object") {
+        for (const [k, v] of Object.entries(s.freezes.habitDays)) if (v) st.freezes.habitDays[k] = true;
       }
     }
     return st;
@@ -1049,6 +1079,31 @@
       merged.categoriesUpdatedAt = Math.max(lcu, rcu);
     }
 
+    // Trash: union by habit id (newest trashedAt); drop if the habit survived
+    // as active, or a newer tombstone permanently deleted it.
+    const trashMap = new Map();
+    for (const e of [...(local.trash || []), ...(remote.trash || [])]) {
+      if (!e || !e.habit || !e.habit.id) continue;
+      const ex = trashMap.get(e.habit.id);
+      if (!ex || (Number(e.trashedAt) || 0) > (Number(ex.trashedAt) || 0)) trashMap.set(e.habit.id, e);
+    }
+    merged.trash = [];
+    for (const [id, e] of trashMap) {
+      if (survivingIds.has(id)) continue;
+      if ((mergedDel[id] || 0) > (Number(e.trashedAt) || 0)) continue;
+      merged.trash.push(e);
+    }
+
+    // Freezes: newest updatedAt wins for the whole object.
+    const lFreeze = local.freezes || { updatedAt: 0, days: {}, habitDays: {} };
+    const rFreeze = remote.freezes || { updatedAt: 0, days: {}, habitDays: {} };
+    const pFreeze = (Number(rFreeze.updatedAt) || 0) > (Number(lFreeze.updatedAt) || 0) ? rFreeze : lFreeze;
+    merged.freezes = {
+      updatedAt: Number(pFreeze.updatedAt) || 0,
+      days: (pFreeze.days && typeof pFreeze.days === "object") ? pFreeze.days : {},
+      habitDays: (pFreeze.habitDays && typeof pFreeze.habitDays === "object") ? pFreeze.habitDays : {},
+    };
+
     return merged;
   }
 
@@ -1115,6 +1170,31 @@
     spark7Cache = new Map();
   }
 
+  /* ---- Streak freeze (grace days) ---- */
+  function isFrozen(habitId, date) {
+    const dk = dateKey(date);
+    const f = state.freezes || {};
+    return !!(f.days && f.days[dk]) || !!(f.habitDays && f.habitDays[habitId + "|" + dk]);
+  }
+  function setFreeze(habitId, date, on) {
+    if (!state.freezes) state.freezes = { updatedAt: 0, days: {}, habitDays: {} };
+    const f = state.freezes;
+    const dk = dateKey(date);
+    if (habitId === "*") {
+      if (on) f.days[dk] = true; else delete f.days[dk];
+    } else {
+      const k = habitId + "|" + dk;
+      if (on) f.habitDays[k] = true; else delete f.habitDays[k];
+    }
+    f.updatedAt = Date.now();
+    resetRenderCaches();
+    save();
+  }
+  // Does this scheduled day count toward adherence? (Frozen days don't.)
+  function countsForAdherence(habit, date) {
+    return isHabitActiveOn(habit, date) && !isFrozen(habit.id, date);
+  }
+
   function currentStreak(habit) {
     if (streakCache.has(habit.id)) return streakCache.get(habit.id);
     let streak = 0;
@@ -1122,12 +1202,54 @@
     for (let i = 0; i < 365; i++) {
       if (isHabitActiveOn(habit, d)) {
         if (isCompleted(habit, d)) streak++;
+        else if (isFrozen(habit.id, d)) { /* frozen: neutral, skip without breaking */ }
         else if (i !== 0) break;
       }
       d = addDays(d, -1);
     }
     streakCache.set(habit.id, streak);
     return streak;
+  }
+
+  // Longest run of completed scheduled days over the last ~2 years (freeze = neutral).
+  function longestStreak(habit) {
+    let best = 0, run = 0;
+    let d = new Date();
+    for (let i = 0; i < 730; i++) {
+      if (isHabitActiveOn(habit, d)) {
+        if (isCompleted(habit, d)) { run++; if (run > best) best = run; }
+        else if (isFrozen(habit.id, d)) { /* neutral */ }
+        else run = 0;
+      }
+      d = addDays(d, -1);
+    }
+    return best;
+  }
+
+  // Completion-rate + best/worst weekday over the habit's tracked history
+  // (freeze days excluded from the denominator). Returns null if no data.
+  function habitCompletionStats(habit) {
+    const byDow = Array.from({ length: 7 }, () => ({ sched: 0, done: 0 }));
+    let sched = 0, done = 0;
+    let d = new Date();
+    const today = new Date();
+    for (let i = 0; i < 730; i++) {
+      if (d <= today && countsForAdherence(habit, d)) {
+        const dow = d.getDay();
+        sched++; byDow[dow].sched++;
+        if (isCompleted(habit, d)) { done++; byDow[dow].done++; }
+      }
+      d = addDays(d, -1);
+    }
+    if (sched === 0) return null;
+    let best = null, worst = null;
+    for (let i = 0; i < 7; i++) {
+      if (byDow[i].sched < 1) continue;
+      const rate = byDow[i].done / byDow[i].sched;
+      if (best === null || rate > best.rate) best = { dow: i, rate };
+      if (worst === null || rate < worst.rate) worst = { dow: i, rate };
+    }
+    return { rate: Math.round((done / sched) * 100), sched, done, best, worst };
   }
 
   // A habit is "at risk" if it has a running streak but is still pending today.
@@ -1180,10 +1302,11 @@
     const now = new Date();
     let scheduled = 0, done = 0;
     for (const habit of state.habits) {
+      if (habit.archived) continue;
       for (let i = 0; i < 7; i++) {
         const d = addDays(weekStart, i);
         if (d > now && !sameDay(d, now)) continue;
-        if (isHabitActiveOn(habit, d)) {
+        if (countsForAdherence(habit, d)) {
           scheduled++;
           if (isCompleted(habit, d)) done++;
         }
@@ -1203,14 +1326,21 @@
       renderToday();
     });
   }
+  // Delete = move to Trash (recoverable for 7 days). Permanent removal happens
+  // via trashPurge / permanentDeleteFromTrash, which write the tombstone.
   function deleteHabitById(id, opts = { confirm: true }) {
     const habit = state.habits.find((h) => h.id === id);
     if (!habit) return false;
-    if (opts.confirm && !confirm(`Delete "${habit.name}"? Its history will also be removed.`)) return false;
-    state.habits = state.habits.filter((h) => h.id !== id);
-    tombstoneHabit(id);
+    if (opts.confirm && !confirm(`Move "${habit.name}" to Trash? You can restore it for 7 days.`)) return false;
+    const snap = {};
     for (const day of Object.keys(state.completions)) {
-      if (state.completions[day][id]) {
+      if (state.completions[day][id] != null) snap[day] = state.completions[day][id];
+    }
+    if (!state.trash) state.trash = [];
+    state.trash.push({ habit, completions: snap, trashedAt: Date.now() });
+    state.habits = state.habits.filter((h) => h.id !== id);
+    for (const day of Object.keys(state.completions)) {
+      if (state.completions[day][id] != null) {
         delete state.completions[day][id];
         state.completionsUpdatedAt[day] = Date.now();
         if (Object.keys(state.completions[day]).length === 0) {
@@ -1222,6 +1352,62 @@
     save();
     if (typeof scheduleReminders === "function") scheduleReminders();
     return true;
+  }
+
+  function setHabitArchived(id, archived) {
+    const h = state.habits.find((x) => x.id === id);
+    if (!h) return;
+    h.archived = !!archived;
+    h.updatedAt = Date.now();
+    resetRenderCaches();
+    save();
+    if (typeof scheduleReminders === "function") scheduleReminders();
+    showToast(archived ? `Archived "${h.name}".` : `Unarchived "${h.name}".`, "success");
+    renderHabits();
+  }
+
+  const TRASH_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+  function restoreFromTrash(id) {
+    if (!state.trash) return false;
+    const idx = state.trash.findIndex((e) => e.habit && e.habit.id === id);
+    if (idx < 0) return false;
+    const entry = state.trash[idx];
+    const h = entry.habit;
+    // Ensure it outlives any tombstone from a prior permanent delete.
+    const tomb = (state.deletions.habits && state.deletions.habits[id]) || 0;
+    h.updatedAt = Math.max(Date.now(), tomb + 1);
+    if (state.deletions.habits) delete state.deletions.habits[id];
+    state.habits.push(h);
+    for (const [day, v] of Object.entries(entry.completions || {})) {
+      if (!state.completions[day]) state.completions[day] = {};
+      state.completions[day][id] = v;
+      state.completionsUpdatedAt[day] = Date.now();
+    }
+    state.trash.splice(idx, 1);
+    save();
+    if (typeof scheduleReminders === "function") scheduleReminders();
+    return true;
+  }
+  function permanentDeleteFromTrash(id) {
+    if (!state.trash) return;
+    state.trash = state.trash.filter((e) => !(e.habit && e.habit.id === id));
+    tombstoneHabit(id);
+    save();
+  }
+  // Auto-purge trash entries older than the retention period (writes tombstones).
+  function purgeTrash(nowMs) {
+    if (!state.trash || !state.trash.length) return 0;
+    const cutoff = (nowMs || Date.now()) - TRASH_RETENTION_MS;
+    const keep = [];
+    let purged = 0;
+    for (const e of state.trash) {
+      if ((Number(e.trashedAt) || 0) <= cutoff) {
+        if (e.habit && e.habit.id) tombstoneHabit(e.habit.id);
+        purged++;
+      } else keep.push(e);
+    }
+    state.trash = keep;
+    return purged;
   }
   function deleteAllHabits() {
     if (state.habits.length === 0) { showToast("You don't have any habits yet."); return; }
@@ -2249,8 +2435,8 @@
     return {
       isPrev: info.isPrev,
       date: info.date,
-      nightHabits: habits.filter((h) => h.nightPrevDay && isHabitActiveOn(h, info.date)),
-      scheduled: habits.filter((h) => !h.nightPrevDay && isHabitActiveOn(h, now)),
+      nightHabits: habits.filter((h) => !h.archived && h.nightPrevDay && isHabitActiveOn(h, info.date)),
+      scheduled: habits.filter((h) => !h.archived && !h.nightPrevDay && isHabitActiveOn(h, now)),
     };
   }
 
@@ -3413,6 +3599,7 @@
   }
 
   function scheduleReminders() {
+    if (typeof window === "undefined") return; // no-op outside the browser (tests)
     clearReminderTimers();
     if (pushEnabled()) {
       // The Worker delivers every scheduled reminder (even when the app is
@@ -3431,6 +3618,7 @@
     // adjusted time rather than the original fixed reminder time.
     const groups = new Map(); // "HH:MM" -> [habitId]
     for (const h of state.habits) {
+      if (h.archived) continue;
       if (!h.reminderTime || !/^\d{2}:\d{2}$/.test(h.reminderTime)) continue;
       if (!isHabitActiveOn(h, now)) continue;
       const rt = effectiveReminderTime(h, now);
@@ -3538,6 +3726,7 @@
     const notified = getNotifiedToday();
     const overdue = [];
     for (const h of state.habits) {
+      if (h.archived) continue;
       if (!h.reminderTime || !/^\d{2}:\d{2}$/.test(h.reminderTime)) continue;
       if (!isHabitActiveOn(h, now)) continue;
       const rt = effectiveReminderTime(h, now);
@@ -3737,6 +3926,7 @@
     const today = new Date();
     const byTime = new Map();
     for (const h of state.habits) {
+      if (h.archived) continue;
       if (!h.reminderTime || !/^\d{2}:\d{2}$/.test(h.reminderTime)) continue;
       if (h.noPush) continue; // habit opted out of background reminders
       const [qh, qm] = h.reminderTime.split(":").map(Number);
@@ -4103,6 +4293,7 @@
 
   /* ---- Habits management ---- */
   let habitSearchTerm = "";
+  let habitsView = "active"; // "active" | "archived"
   let bulkMode = false;
   const bulkSelected = new Set();
 
@@ -4167,9 +4358,27 @@
     els.bulkToggleBtn.classList.remove("hidden");
 
     const term = (habitSearchTerm || "").trim().toLowerCase();
-    const visible = term
-      ? state.habits.filter((h) => (h.name || "").toLowerCase().includes(term) || (h.notes || "").toLowerCase().includes(term))
-      : state.habits;
+    const archivedCount = state.habits.filter((h) => h.archived).length;
+    // Active / Archived filter chips (only when there are archived habits).
+    if (archivedCount > 0) {
+      const chips = document.createElement("div");
+      chips.className = "habit-view-chips";
+      const activeCount = state.habits.length - archivedCount;
+      chips.innerHTML =
+        `<button type="button" class="view-chip${habitsView === "active" ? " on" : ""}" data-view="active">Active (${activeCount})</button>` +
+        `<button type="button" class="view-chip${habitsView === "archived" ? " on" : ""}" data-view="archived">Archived (${archivedCount})</button>`;
+      chips.querySelectorAll(".view-chip").forEach((b) =>
+        b.addEventListener("click", () => { habitsView = b.dataset.view; renderHabits(); }));
+      els.habitsGroups.appendChild(chips);
+    } else if (habitsView === "archived") {
+      habitsView = "active";
+    }
+
+    const visible = state.habits.filter((h) => {
+      if (habitsView === "archived" ? !h.archived : h.archived) return false;
+      if (term) return (h.name || "").toLowerCase().includes(term) || (h.notes || "").toLowerCase().includes(term);
+      return true;
+    });
 
     const cats = getCategories();
     const groupMap = new Map();
@@ -4178,8 +4387,10 @@
       if (!groupMap.has(h.category)) groupMap.set(h.category, []); // preserve unknown categories
       groupMap.get(h.category).push(h);
     }
-    if (term && visible.length === 0) {
-      els.habitsGroups.innerHTML = `<div class="empty-state"><p>No habits match “${escapeHtml(term)}”.</p></div>`;
+    if (visible.length === 0) {
+      const msg = term ? `No habits match “${escapeHtml(term)}”.`
+        : habitsView === "archived" ? "No archived habits." : "No active habits.";
+      els.habitsGroups.insertAdjacentHTML("beforeend", `<div class="empty-state"><p>${msg}</p></div>`);
       return;
     }
 
@@ -4243,6 +4454,17 @@
         chev.className = "row-chevron";
         chev.textContent = "›";
 
+        const arch = document.createElement("button");
+        arch.className = "row-archive";
+        arch.type = "button";
+        arch.textContent = habit.archived ? "⤴" : "🗄";
+        arch.title = habit.archived ? "Unarchive" : "Archive (pause)";
+        arch.setAttribute("aria-label", (habit.archived ? "Unarchive " : "Archive ") + habit.name);
+        arch.addEventListener("click", (e) => {
+          e.stopPropagation();
+          setHabitArchived(habit.id, !habit.archived);
+        });
+
         const del = document.createElement("button");
         del.className = "row-delete";
         del.type = "button";
@@ -4256,6 +4478,7 @@
         li.appendChild(icon);
         li.appendChild(info);
         if (!bulkMode) {
+          li.appendChild(arch);
           li.appendChild(chev);
           li.appendChild(del);
         }
@@ -4435,9 +4658,9 @@
       : `${formatDateShort(weekStart)} – ${formatDateShort(weekEnd)}`;
     els.nextWeek.disabled = weekOffset >= 0;
 
-    const habitsInScope = reportCategoryFilter === "all"
+    const habitsInScope = (reportCategoryFilter === "all"
       ? state.habits
-      : state.habits.filter((h) => h.category === reportCategoryFilter);
+      : state.habits.filter((h) => h.category === reportCategoryFilter)).filter((h) => !h.archived);
 
     let scheduledCount = 0, completedCount = 0, bestStreak = 0;
     const dayTotals = Array.from({ length: 7 }, () => ({ scheduled: 0, done: 0 }));
@@ -6425,6 +6648,7 @@
     updateSyncIndicator(navigator.onLine ? "idle" : "offline");
     if (isAutoSyncEnabled()) startAutoSync();
     cleanupNotifiedKeys();
+    if (purgeTrash()) save(); // drop trash older than 7 days (writes tombstones)
     scheduleReminders();
     catchUpReminders();
     maybeFireWeeklyReport();
@@ -6518,7 +6742,14 @@
 
   // Expose internals for the automated test harness (harmless in the browser).
   if (typeof self !== "undefined") {
-    self.__momentumTest = { mergeStates, normalizeState, defaultState, currentStreak, startOfWeekMonday, dateKey, addDays, parseScheduleText, effectiveTime, suggestFit, nightLogInfo, splitNightHabits, isHabitActiveOn };
+    self.__momentumTest = {
+      mergeStates, normalizeState, defaultState, currentStreak, longestStreak,
+      startOfWeekMonday, dateKey, addDays, parseScheduleText, effectiveTime, suggestFit,
+      nightLogInfo, splitNightHabits, isHabitActiveOn, isFrozen, setFreeze,
+      habitCompletionStats, purgeTrash, countsForAdherence, resetRenderCaches,
+      restoreFromTrash, permanentDeleteFromTrash, deleteHabitById,
+      getState: () => state, setState: (s) => { state = s; },
+    };
   }
 
   // Only boot in a real browser (guarded so the file can be loaded in Node for tests).
