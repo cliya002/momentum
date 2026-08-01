@@ -1523,11 +1523,7 @@
         const sec = TEMPLATE_LIBRARY[Number(cb.dataset.sec)];
         if (!sec) return;
         for (const item of sec.items) {
-          state.habits.push({
-            id: uid(), createdAt: new Date(now).toISOString(), updatedAt: now,
-            ...TEMPLATE_ITEM_DEFAULTS, ...item,
-            reminderTime: rt || (item.reminderTime || ""),
-          });
+          state.habits.push(habitFromTemplate(item, { defaultReminder: rt }));
           count++;
         }
       });
@@ -2211,6 +2207,7 @@
         const metaParts = [];
         if (item.time) metaParts.push(item.time);
         if (item.notes) metaParts.push(item.notes);
+        if (clockFromTimeStr(item.time)) metaParts.push("🔔 auto-reminder");
         meta.textContent = metaParts.join(" · ");
         info.appendChild(name);
         if (metaParts.length) info.appendChild(meta);
@@ -2269,21 +2266,45 @@
     els.templateAddBtn.disabled = n === 0;
   }
 
+  // Extract "HH:MM" (24h) from a time string like "8:00 AM · with meal" or "".
+  function clockFromTimeStr(t) {
+    const m = /(\d{1,2}):(\d{2})\s*(AM|PM)?/i.exec(t || "");
+    if (!m) return "";
+    let hh = parseInt(m[1], 10); const mm = parseInt(m[2], 10); const ap = (m[3] || "").toUpperCase();
+    if (ap === "PM" && hh < 12) hh += 12;
+    if (ap === "AM" && hh === 12) hh = 0;
+    if (hh > 23 || mm > 59) return "";
+    return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+  }
+  // Build a full habit from a template item, filling in smart defaults:
+  //  • auto reminder time derived from the item's clock time (else defaultReminder)
+  //  • supplement dose/notes carried into the custom reminder message
+  function habitFromTemplate(item, opts) {
+    const now = Date.now();
+    const h = {
+      id: uid(),
+      createdAt: new Date(now).toISOString(),
+      updatedAt: now,
+      ...TEMPLATE_ITEM_DEFAULTS,
+      ...item,
+    };
+    if (!h.reminderTime) {
+      const c = clockFromTimeStr(item.time);
+      if (c) h.reminderTime = c;
+      else if (opts && opts.defaultReminder) h.reminderTime = opts.defaultReminder;
+    }
+    if (!h.reminderMsg && h.notes && h.category === "Supplements") h.reminderMsg = h.notes.slice(0, 120);
+    return h;
+  }
+
   function addSelectedTemplates() {
     if (templateSelected.size === 0) return;
-    const now = Date.now();
     let count = 0;
     templateSelected.forEach((key) => {
       const [si, ii] = key.split(":").map(Number);
       const item = TEMPLATE_LIBRARY[si] && TEMPLATE_LIBRARY[si].items[ii];
       if (!item) return;
-      state.habits.push({
-        id: uid(),
-        createdAt: new Date(now).toISOString(),
-        updatedAt: now,
-        ...TEMPLATE_ITEM_DEFAULTS,
-        ...item,
-      });
+      state.habits.push(habitFromTemplate(item));
       count++;
     });
     save();
@@ -7110,6 +7131,7 @@
       habitCompletionStats, purgeTrash, countsForAdherence, resetRenderCaches,
       restoreFromTrash, permanentDeleteFromTrash, deleteHabitById,
       fmtClockLabel, formatClock, timeFmt, timeChipLabel, applyBackup,
+      clockFromTimeStr, habitFromTemplate,
       getState: () => state, setState: (s) => { state = s; },
     };
   }
