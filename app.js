@@ -3774,7 +3774,7 @@
   async function ghTotalCaloriesByDay() {
     const civ = (d) => ({ date: { year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate() } });
     const today = new Date();
-    const body = { range: { start: civ(addDays(today, -3)), end: civ(addDays(today, 1)) }, windowSizeDays: 1 };
+    const body = { range: { start: civ(addDays(today, -10)), end: civ(addDays(today, 1)) }, windowSizeDays: 1 };
     const data = await ghApiPost("v4/users/me/dataTypes/total-calories/dataPoints:dailyRollUp", body);
     const pts = (data && data.rollupDataPoints) || [];
     const pad = (n) => String(n).padStart(2, "0");
@@ -10989,14 +10989,20 @@
       if (btn) { btn.disabled = false; btn.textContent = "📊 Compare Google total burn"; }
     }
   }
-  // The most recent COMPLETE day's Google total burn (prefers a finished day
-  // over today, which is still accumulating). Returns { dayKey, kcal } or null.
-  function latestGoogleTotal(c) {
+  // Google's measured daily burn, averaged over the last `n` COMPLETE days
+  // (today is excluded because it's still accumulating and would understate the
+  // true daily total). Falls back to today only if that's all we have.
+  // Returns { kcal, days, from, to, partial } or null.
+  function latestGoogleTotal(c, n) {
     const byDay = (c || loadCalorie()).totalByDay || {};
     const todayKeyStr = dateKey(new Date());
     const complete = Object.keys(byDay).filter((k) => k < todayKeyStr).sort();
-    if (complete.length) { const k = complete[complete.length - 1]; return { dayKey: k, kcal: byDay[k] }; }
-    if (byDay[todayKeyStr] != null) return { dayKey: todayKeyStr, kcal: byDay[todayKeyStr] };
+    if (complete.length) {
+      const use = complete.slice(-(n || 7));
+      const sum = use.reduce((a, k) => a + (Number(byDay[k]) || 0), 0);
+      return { kcal: Math.round(sum / use.length), days: use.length, from: use[0], to: use[use.length - 1], partial: false };
+    }
+    if (byDay[todayKeyStr] != null) return { kcal: byDay[todayKeyStr], days: 0, from: todayKeyStr, to: todayKeyStr, partial: true };
     return null;
   }
   // Compare Google's Total Calories (TDEE) with our maintenance+exercise estimate,
@@ -11014,7 +11020,7 @@
     const exer = exEl && exEl.value !== "" ? Number(exEl.value) : (c.exerciseBurn || 0);
     const estimate = Math.round(base + exer);
     const diff = googleTotal - estimate;
-    const when = g.dayKey === dateKey(new Date()) ? "today (partial)" : formatDateShort(parseDateKey(g.dayKey));
+    const when = g.partial ? "today (partial)" : (g.days > 1 ? `avg of ${g.days} days` : formatDateShort(parseDateKey(g.from)));
     const bigGap = estimate > 0 && Math.abs(diff) > 0.2 * googleTotal;
     el.hidden = false;
     let html =
