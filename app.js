@@ -884,7 +884,9 @@
 
   let state = defaultState();
   let weekOffset = 0;
-  let progressOffset = 0;
+  // The day the Progress "Log an entry" form is currently editing (a dateKey).
+  // Measurements are keyed by day, so you can log as often as you like.
+  let progressDateKey = null;
   let editingId = null;
   let currentView = "today";
   let todayCategoryFilter = "all";
@@ -2789,7 +2791,7 @@
   // overwriting a value you entered yourself. Returns a short status suffix.
   function importWeightKg(kg) {
     const lb = Math.round(kg * KG_TO_LB * 10) / 10;
-    const wk = weekKeyOf(new Date());
+    const wk = dateKey(new Date()); // log to today's entry
     const prev = state.measurements[wk] || {};
     if (prev.weight != null) return ""; // don't clobber a manual entry
     state.measurements[wk] = Object.assign({}, prev, { date: wk, weight: lb, updatedAt: Date.now() });
@@ -2819,6 +2821,8 @@
         return;
       }
       const disp = round1(wDisp(round1(kg * KG_TO_LB)));
+      progressDateKey = dateKey(new Date()); // pulled weight logs to today
+      if (typeof renderProgress === "function") renderProgress();
       const input = document.getElementById("mWeight");
       if (input) { input.value = disp; input.focus(); }
       showToast(`⚖️ Pulled ${disp} ${wUnit()} — tap Save to log it`, "success");
@@ -4758,6 +4762,7 @@
       prevWeekP: $("#prevWeekP"),
       nextWeekP: $("#nextWeekP"),
       measurementForm: $("#measurementForm"),
+      mDate: $("#mDate"),
       mWeight: $("#mWeight"),
       mWaist: $("#mWaist"),
       mEnergy: $("#mEnergy"),
@@ -4872,7 +4877,7 @@
     }
     if (view === "today") { scrollToNowPending = true; renderToday(); }
     else if (view === "habits") renderHabits();
-    else if (view === "progress") { progressOffset = 0; renderProgress(); }
+    else if (view === "progress") { progressDateKey = dateKey(new Date()); renderProgress(); }
     else if (view === "report") { weekOffset = 0; renderReport(); }
     else if (view === "schedule") renderSchedule();
     else if (view === "settings") hydrateSettings();
@@ -9579,8 +9584,8 @@
       }
     }
     lines.push("");
-    lines.push("WEEKLY MEASUREMENTS");
-    const mHeader = ["Week", "Weight(lb)", "Waist(in)", "Energy", "Strength", "Notes"];
+    lines.push("MEASUREMENTS");
+    const mHeader = ["Date", "Weight(lb)", "Waist(in)", "Energy", "Strength", "Notes"];
     const customCols = state.customMetrics.map((c) => c.name);
     lines.push([...mHeader, ...customCols].map(csvEscape).join(","));
     for (const wk of Object.keys(state.measurements).sort()) {
@@ -10015,29 +10020,36 @@
   }
 
   /* ---- Progress / Measurements ---- */
-  function currentWeekKey(offset) {
-    const now = new Date();
-    const weekStart = addDays(startOfWeekMonday(now), offset * 7);
-    return dateKey(weekStart);
+  // Parse a "YYYY-MM-DD" key to a local Date (midnight).
+  function parseDateKey(key) {
+    const p = String(key || "").split("-").map(Number);
+    return (p.length === 3 && !p.some(isNaN)) ? new Date(p[0], p[1] - 1, p[2]) : new Date();
+  }
+  // A friendly label for the entry date, e.g. "Today", "Yesterday", or a date.
+  function entryDateLabel(key) {
+    const today = dateKey(new Date());
+    const yest = dateKey(addDays(new Date(), -1));
+    if (key === today) return "Today · " + formatDateShort(parseDateKey(key));
+    if (key === yest) return "Yesterday · " + formatDateShort(parseDateKey(key));
+    return formatDateShort(parseDateKey(key));
   }
 
   function renderProgress() {
     const els = getEls();
     const now = new Date();
+    const todayKey = dateKey(now);
+    if (!progressDateKey) progressDateKey = todayKey;
     const pw = document.getElementById("pullWeightBtn");
     if (pw) pw.hidden = !ghConnected(); // only show when Google Health is connected
-    const weekStart = addDays(startOfWeekMonday(now), progressOffset * 7);
-    const weekEnd = addDays(weekStart, 6);
-    els.weekLabelP.textContent = progressOffset === 0
-      ? `${formatDateShort(weekStart)} – ${formatDateShort(weekEnd)} · This week`
-      : `${formatDateShort(weekStart)} – ${formatDateShort(weekEnd)}`;
-    els.nextWeekP.disabled = progressOffset >= 0;
+    els.weekLabelP.textContent = entryDateLabel(progressDateKey);
+    els.nextWeekP.disabled = progressDateKey >= todayKey; // no logging in the future
+    if (els.mDate) { els.mDate.max = todayKey; els.mDate.value = progressDateKey; }
 
     // Update unit labels in the form
     document.querySelectorAll(".unit-w").forEach((e) => (e.textContent = wUnit()));
     document.querySelectorAll(".unit-l").forEach((e) => (e.textContent = lUnit()));
 
-    const wk = dateKey(weekStart);
+    const wk = progressDateKey;
     const m = state.measurements[wk];
     els.mWeight.value = m && m.weight != null ? round1(wDisp(m.weight)) : "";
     els.mWaist.value = m && m.waist != null ? round1(lDisp(m.waist)) : "";
@@ -10151,7 +10163,7 @@
     if (!file) return;
     try {
       const dataUrl = await compressImage(file);
-      const wk = currentWeekKey(progressOffset);
+      const wk = progressDateKey || dateKey(new Date());
       setPhoto(wk, dataUrl);
       e.target.value = "";
       renderPhotoField(wk);
@@ -10162,7 +10174,7 @@
     }
   }
   function removePhoto() {
-    const wk = currentWeekKey(progressOffset);
+    const wk = progressDateKey || dateKey(new Date());
     setPhoto(wk, null);
     renderPhotoField(wk);
     renderHistory();
@@ -10655,8 +10667,9 @@
       const row = document.createElement("div");
       row.className = "history-row";
       const wk = document.createElement("div");
-      const weekNum = list.findIndex((x) => x.weekKey === m.weekKey) + 1;
-      wk.innerHTML = `<div class="history-week">Week ${weekNum}</div><div class="history-date">${m.weekKey}</div>`;
+      const dObj = parseDateKey(m.weekKey);
+      const weekday = dObj.toLocaleDateString(undefined, { weekday: "short" });
+      wk.innerHTML = `<div class="history-week">${escapeHtml(weekday)}</div><div class="history-date">${m.weekKey}</div>`;
       const photo = getPhoto(m.weekKey);
       if (photo) {
         const img = document.createElement("img");
@@ -10709,14 +10722,10 @@
       editBtn.className = "history-btn";
       editBtn.textContent = "Edit";
       editBtn.addEventListener("click", () => {
-        // Jump the form to this week
-        const now = new Date();
-        const thisWeekStart = dateKey(startOfWeekMonday(now));
-        const targetStart = m.weekKey;
-        const diffWeeks = Math.round((new Date(targetStart) - new Date(thisWeekStart)) / (7 * 86400000));
-        progressOffset = diffWeeks;
+        // Load this entry's day into the form.
+        progressDateKey = m.weekKey;
         renderProgress();
-        getEls().mWeight.scrollIntoView({ behavior: "smooth", block: "center" });
+        getEls().mDate.scrollIntoView({ behavior: "smooth", block: "center" });
       });
       const delBtn = document.createElement("button");
       delBtn.className = "history-btn del";
@@ -10741,7 +10750,7 @@
   function saveMeasurement(e) {
     e.preventDefault();
     const els = getEls();
-    const wk = currentWeekKey(progressOffset);
+    const wk = progressDateKey || dateKey(new Date());
     const wVal = numOrNull(els.mWeight.value);
     const waistVal = numOrNull(els.mWaist.value);
     // Custom metric values from the dynamic fields
@@ -10784,13 +10793,13 @@
 
   function clearMeasurement() {
     const els = getEls();
-    const wk = currentWeekKey(progressOffset);
+    const wk = progressDateKey || dateKey(new Date());
     if (!state.measurements[wk]) {
       els.mWeight.value = els.mWaist.value = els.mEnergy.value = els.mNotes.value = "";
       els.mStrength.value = "";
       return;
     }
-    if (!confirm("Clear this week's measurement?")) return;
+    if (!confirm("Clear this entry?")) return;
     delete state.measurements[wk];
     save();
     renderProgress();
@@ -11550,8 +11559,18 @@
     document.addEventListener("click", (e) => {
       if (!els.reportMenu.contains(e.target) && e.target !== els.reportMenuBtn) els.reportMenu.classList.add("hidden");
     });
-    els.prevWeekP.addEventListener("click", () => { progressOffset--; renderProgress(); });
-    els.nextWeekP.addEventListener("click", () => { if (progressOffset < 0) { progressOffset++; renderProgress(); } });
+    els.prevWeekP.addEventListener("click", () => {
+      progressDateKey = dateKey(addDays(parseDateKey(progressDateKey || dateKey(new Date())), -1));
+      renderProgress();
+    });
+    els.nextWeekP.addEventListener("click", () => {
+      const next = dateKey(addDays(parseDateKey(progressDateKey || dateKey(new Date())), 1));
+      if (next <= dateKey(new Date())) { progressDateKey = next; renderProgress(); }
+    });
+    if (els.mDate) els.mDate.addEventListener("change", () => {
+      const v = els.mDate.value;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(v)) { progressDateKey = v > dateKey(new Date()) ? dateKey(new Date()) : v; renderProgress(); }
+    });
     els.measurementForm.addEventListener("submit", saveMeasurement);
     els.clearMeasurementBtn.addEventListener("click", clearMeasurement);
     els.addMetricBtn.addEventListener("click", addCustomMetric);

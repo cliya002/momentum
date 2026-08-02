@@ -247,9 +247,9 @@
               <p class="subtitle">Body measurements, goal &amp; trends</p>
             </div>
             <div class="page-actions">
-              <button id="prevWeekP" class="icon-btn" aria-label="Previous week">‹</button>
+              <button id="prevWeekP" class="icon-btn" aria-label="Previous day">‹</button>
               <span id="weekLabelP" class="pill"></span>
-              <button id="nextWeekP" class="icon-btn" aria-label="Next week">›</button>
+              <button id="nextWeekP" class="icon-btn" aria-label="Next day">›</button>
             </div>
           </div>
 
@@ -277,9 +277,13 @@
           </div>
 
           <div class="card p-order-form">
-            <div class="card-title">This week's numbers <button type="button" id="pullWeightBtn" class="detail-edit" style="margin-left:auto" hidden>⚖️ Pull weight ›</button></div>
-            <p class="card-sub">Log once a week — same day and time works best.</p>
+            <div class="card-title">Log an entry <button type="button" id="pullWeightBtn" class="detail-edit" style="margin-left:auto" hidden>⚖️ Pull weight ›</button></div>
+            <p class="card-sub">Log as often as you like — pick a date, fill what you measured, and Save.</p>
             <form id="measurementForm" class="measurement-form">
+              <label>
+                Date
+                <input id="mDate" type="date" />
+              </label>
               <label>
                 Weight (<span class="unit-w">lb</span>)
                 <input id="mWeight" type="number" inputmode="decimal" step="0.1" min="0" placeholder="e.g. 240" />
