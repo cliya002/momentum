@@ -1511,9 +1511,53 @@ body.compact .habit-list { gap: 0.35rem; }
 }
 
 .app-footer { text-align: center; color: var(--text-dim); font-size: 0.75rem; margin-top: 2rem; }
-.app-credit { text-align: center; color: var(--text-dim); font-size: 0.72rem; margin-top: 0.3rem; opacity: 0.85; line-height: 1.6; }
-.app-credit a { color: var(--primary); text-decoration: none; }
-.app-credit a:hover { text-decoration: underline; }
+/* "Made by" credit */
+.made-by {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 1.1rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--border);
+}
+.made-by-label {
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.made-by-name {
+  font-size: 1.02rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  background: linear-gradient(90deg, var(--primary), #ec4899);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: var(--primary); /* fallback */
+}
+.made-by-mail {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.15rem;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--primary);
+  text-decoration: none;
+  background: var(--card-soft);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  transition: border-color 0.15s ease, transform 0.15s ease, background 0.15s ease;
+}
+.made-by-mail:hover {
+  border-color: var(--primary);
+  transform: translateY(-1px);
+}
+.made-by-mail:active { transform: translateY(0); }
+.made-by-mail .mail-ico { font-size: 0.9rem; -webkit-text-fill-color: initial; }
 
 /* Sync state line */
 .sync-state-line {
