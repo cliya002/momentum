@@ -2815,7 +2815,7 @@
           ? `⚖️ ${hint}`
           : ghWeightErr
             ? `⚖️ Couldn't read weight: ${ghWeightErr}`
-            : "⚖️ No weight found in Google Health for the last 90 days. Weigh in on your scale or Fitbit app, then try again.");
+            : `⚖️ No weight found in Google Health for the last 90 days. Weigh in on your scale or Fitbit app, then try again.${ghWeightDbg}`);
         return;
       }
       const disp = round1(wDisp(round1(kg * KG_TO_LB)));
@@ -3354,12 +3354,12 @@
     }
     return null;
   }
-  let ghWeightErr = "";
+  let ghWeightErr = "", ghWeightDbg = "";
   // Most recent weight in kg. The filter member for weight is rejected the same
   // way sleep's is, so try a couple of variants then fall back to an unfiltered
   // list and let latestWeightKg pick the newest sample. Returns kg or null.
   async function ghWeightKg() {
-    ghWeightErr = "";
+    ghWeightErr = ""; ghWeightDbg = "";
     const path = "v4/users/me/dataTypes/weight/dataPoints";
     const utc = isoHoursAgo(24 * 90);
     const candidates = [
@@ -3371,7 +3371,11 @@
     for (const f of candidates) {
       try {
         const raw = await ghAllPages(path, f, 5);
-        return latestWeightKg(raw);
+        ghWeightErr = ""; // this request succeeded — don't leak a prior filter error
+        const dps = (raw && raw.dataPoints) || [];
+        const kg = latestWeightKg(raw);
+        if (kg == null && dps.length) ghWeightDbg = " · weight keys: " + JSON.stringify(Object.keys(dps[0] || {}));
+        return kg;
       } catch (e) {
         const msg = String((e && e.message) || e);
         ghWeightErr = msg;
