@@ -118,6 +118,27 @@ console.log("recentSleepHours (client-side windowing)");
   assert(T.recentSleepHours(null, 40) === 0, "null -> 0h (no throw)");
   // Session with no end time (only duration) is kept (can't be windowed out).
   assert(T.recentSleepHours([{ sleep: { activeDuration: "27000s" } }], 40) === 7.5, "duration-only session counted -> 7.5h");
+
+  // Double-counting guard: the SAME night reported by two sources (overlapping
+  // intervals) must be counted once, not summed.
+  const nightStart = iso(-6 * 3600 * 1000);          // fell asleep 6h ago
+  const nightEnd = iso(-1.75 * 3600 * 1000);         // woke 1h45m ago -> 4.25h
+  const srcA = { sleep: { interval: { startTime: nightStart, endTime: nightEnd } } };
+  const srcB = { sleep: { interval: { startTime: iso(-5.9 * 3600 * 1000), endTime: iso(-1.8 * 3600 * 1000) } } };
+  const merged = T.recentSleepHours([srcA, srcB], 40);
+  assert(merged >= 4.2 && merged <= 4.4, "two sources of the same night merge to ~4.25h (got " + merged + ")");
+  assert(merged < 8, "does NOT sum overlapping sources into ~8.5h");
+
+  // Contiguous stage segments (light/deep/REM) within one night still add up.
+  const stage1 = { sleep: { interval: { startTime: iso(-6 * 3600 * 1000), endTime: iso(-4.5 * 3600 * 1000) } } };
+  const stage2 = { sleep: { interval: { startTime: iso(-4.5 * 3600 * 1000), endTime: iso(-3 * 3600 * 1000) } } };
+  const stages = T.recentSleepHours([stage1, stage2], 40);
+  assert(stages === 3, "two contiguous stage segments sum to full 3h span (got " + stages + ")");
+
+  // A parent session point plus its child stage points don't double-count.
+  const parent = { sleep: { interval: { startTime: iso(-6 * 3600 * 1000), endTime: iso(-3 * 3600 * 1000) } } };
+  const withStages = T.recentSleepHours([parent, stage1, stage2], 40);
+  assert(withStages === 3, "parent session + child stages still 3h, not 6h (got " + withStages + ")");
 }
 
 console.log("ghScopeHint");

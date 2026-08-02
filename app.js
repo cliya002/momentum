@@ -2910,18 +2910,47 @@
     if (p.endTime) return Date.parse(p.endTime) || 0;
     return 0;
   }
-  // Sum sleep hours from sessions that ended within the last `hoursBack` hours
-  // (client-side window, so it works even when the server can't filter sleep).
+  // Start time (ms) of a sleep session (mirror of sleepSessionEndMs).
+  function sleepSessionStartMs(p) {
+    if (!p) return 0;
+    const s = p.sleep || p.value || p;
+    const iv = s.interval || p.interval || {};
+    if (iv.startTime) return Date.parse(iv.startTime) || 0;
+    if (iv.endTime) { const en = Date.parse(iv.endTime) || 0; return en ? en - sleepSessionSeconds(p) * 1000 : 0; }
+    if (p.startTime) return Date.parse(p.startTime) || 0;
+    return 0;
+  }
+  // Total sleep hours for sessions that ended within the last `hoursBack` hours.
+  // Instead of summing every dataPoint's duration (which double-counts when the
+  // same night is reported by multiple sources — phone + watch + Fitbit — or
+  // split into stage segments), we MERGE the time intervals and count each
+  // covered minute once. Overlapping duplicates collapse; contiguous stages
+  // still add up to the real span. Duration-only points (no timestamps) can't
+  // be placed on a timeline, so they're added as-is (rare fallback).
   function recentSleepHours(dataPoints, hoursBack) {
     const cutoff = Date.now() - (hoursBack || 40) * 3600 * 1000;
-    let sec = 0;
+    const intervals = [];
+    let looseSec = 0;
     for (const p of (dataPoints || [])) {
       if (!p) continue;
       const end = sleepSessionEndMs(p);
       if (end && end < cutoff) continue; // older than the window
-      sec += sleepSessionSeconds(p);
+      const start = sleepSessionStartMs(p);
+      if (start && end && end > start) intervals.push([start, end]);
+      else looseSec += sleepSessionSeconds(p); // no usable timeline → add duration
     }
-    return Math.round((sec / 3600) * 10) / 10;
+    let mergedSec = 0;
+    if (intervals.length) {
+      intervals.sort((a, b) => a[0] - b[0]);
+      let curStart = intervals[0][0], curEnd = intervals[0][1];
+      for (let i = 1; i < intervals.length; i++) {
+        const iv = intervals[i];
+        if (iv[0] <= curEnd) { if (iv[1] > curEnd) curEnd = iv[1]; } // overlap → extend
+        else { mergedSec += (curEnd - curStart) / 1000; curStart = iv[0]; curEnd = iv[1]; }
+      }
+      mergedSec += (curEnd - curStart) / 1000;
+    }
+    return Math.round(((mergedSec + looseSec) / 3600) * 10) / 10;
   }
   function isSleepHabit(habit) { return /\bsleep\b/i.test((habit && habit.name) || ""); }
   // A habit that maps to a logged workout (generic or a specific activity).
@@ -11634,7 +11663,7 @@
       translate, availableLangs, b64url,
       buildGoogleAuthUrl, googleTodayFilter, mapExerciseDataPoints, sumStepsDataPoints, latestWeightKg,
       mapSleepHours, parseDurationSeconds, mapWorkoutSessions, workoutHabitMatch,
-      recentSleepHours, sleepSessionSeconds, sleepSessionEndMs, ghScopeHint,
+      recentSleepHours, sleepSessionSeconds, sleepSessionEndMs, sleepSessionStartMs, ghScopeHint,
       getState: () => state, setState: (s) => { state = s; },
     };
   }
