@@ -151,9 +151,11 @@ export default {
         // Only allow the versioned Health API surface; reject anything else.
         const safePath = String(body.path).replace(/^\/+/, "");
         if (!/^v\d+\/users\/[^?]*$/.test(safePath)) return json({ error: "bad path" }, 400);
-        let target = "https://health.googleapis.com/" + safePath;
-        if (body.filter) target += "?filter=" + encodeURIComponent(body.filter);
-        const r = await fetch(target, { headers: { Authorization: "Bearer " + body.access_token, Accept: "application/json" } });
+        const target = new URL("https://health.googleapis.com/" + safePath);
+        if (body.filter) target.searchParams.set("filter", body.filter);
+        if (body.pageToken) target.searchParams.set("pageToken", String(body.pageToken));
+        if (body.pageSize) target.searchParams.set("pageSize", String(body.pageSize));
+        const r = await fetch(target.toString(), { headers: { Authorization: "Bearer " + body.access_token, Accept: "application/json" } });
         const data = await r.json().catch(() => ({}));
         return json(data, r.ok ? 200 : (r.status || 400));
       }

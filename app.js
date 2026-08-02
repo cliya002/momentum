@@ -3008,16 +3008,29 @@
   }
 
   // Module-level Health API GET (via the Worker proxy). Throws on error.
-  async function ghApiGet(path, filter) {
+  async function ghApiGet(path, filter, pageToken, pageSize) {
     const at = await ghAccessToken();
     if (!at) throw new Error("Sign in to Google again");
     const r = await fetch(ghWorkerBase() + "/google/health", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ access_token: at, path, filter }),
+      body: JSON.stringify({ access_token: at, path, filter, pageToken: pageToken || "", pageSize: pageSize || 0 }),
     });
     const j = await r.json();
     if (!r.ok) throw new Error((j && (j.error && j.error.message || j.error)) || ("HTTP " + r.status));
     return j;
+  }
+  // Sum ALL pages of a steps window (intraday buckets can span many pages, so
+  // reading only the first page undercounts the day). Follows nextPageToken.
+  async function ghStepsSumAllPages(kind) {
+    const filter = stepsFilterFor(kind);
+    let total = 0, pageToken = "", pages = 0;
+    do {
+      const json = await ghApiGet("v4/users/me/dataTypes/steps/dataPoints", filter, pageToken, 1000);
+      total += sumStepsDataPoints(json);
+      pageToken = (json && json.nextPageToken) ? json.nextPageToken : "";
+      pages++;
+    } while (pageToken && pages < 25);
+    return total;
   }
 
   function civilAtHour(h) {
@@ -3045,7 +3058,7 @@
   }
   async function ghStepsFor(kind) {
     let n = 0;
-    try { n = sumStepsDataPoints(await ghApiGet("v4/users/me/dataTypes/steps/dataPoints", stepsFilterFor(kind))); } catch (e) {}
+    try { n = await ghStepsSumAllPages(kind); } catch (e) {}
     if (n === 0 && kind === "allday") { // fall back to the day's workout steps
       try { n = mapExerciseDataPoints(await ghApiGet("v4/users/me/dataTypes/exercise/dataPoints", googleTodayFilter())).steps; } catch (e) {}
     }
