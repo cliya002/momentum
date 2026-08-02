@@ -2517,7 +2517,25 @@ body.hc .btn-secondary { border-color: var(--border); }
 }
 .daypart-done-strip.daypart-collapsed.is-now { border-color: var(--primary); }
 .pull-steps-mini { font-size: 1rem; line-height: 1; }
-.today-sync-gh { padding: 0 0.7rem; font-size: 1rem; line-height: 1; }
+.today-sync-gh {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--primary);
+  background: var(--primary-soft);
+  border: 1px solid var(--primary);
+  border-radius: 999px;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.today-sync-gh:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25); }
+.today-sync-gh:active { transform: translateY(0); }
+.today-sync-gh:disabled { opacity: 0.65; cursor: default; transform: none; box-shadow: none; }
 .daypart-done-strip.daypart-collapsed .now-chip { margin-left: 0.4rem; }
 
 /* Confetti */

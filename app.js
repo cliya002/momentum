@@ -3156,7 +3156,7 @@
     if (ghInFlight) return;
     ghInFlight = true;
     const btn = document.getElementById("todaySyncGhBtn");
-    if (btn) { btn.disabled = true; btn.textContent = "⏳"; }
+    if (btn) { btn.disabled = true; btn.textContent = "⏳ Syncing…"; }
     try {
       const today = new Date();
       const active = state.habits.filter((h) => !h.archived && isHabitActiveOn(h, today));
@@ -3199,7 +3199,7 @@
     } finally {
       ghInFlight = false;
       const b = document.getElementById("todaySyncGhBtn");
-      if (b) { b.disabled = false; b.textContent = "🔄"; }
+      if (b) { b.disabled = false; b.textContent = "🔄 Sync health"; }
     }
   }
   // Pull last night's sleep into a sleep habit. Fills a count habit with hours;
