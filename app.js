@@ -590,6 +590,89 @@
         { name: "Notifications off after 9pm", icon: "🔕", color: "#3b82f6", category: "Sleep", time: "9:00 PM", notes: "Protect your attention — set the phone out of reach." },
       ],
     },
+    {
+      title: "💼 Work & career",
+      items: [
+        { name: "Shutdown ritual", icon: "🔚", color: "#6366f1", category: "Custom", time: "Evening", days: [1,2,3,4,5], notes: "Close tabs, note tomorrow's top 3, and log off. A clear end protects your evening." },
+        { name: "Standup prep",    icon: "🗒️", color: "#3b82f6", category: "Custom", time: "Morning", days: [1,2,3,4,5], notes: "Jot yesterday / today / blockers before the meeting so you're ready." },
+        { name: "One networking touch", icon: "🤝", color: "#ec4899", category: "Custom", time: "Afternoon", days: [1,2,3,4,5], notes: "One message — a thank-you, intro, or check-in. Small and steady builds a network." },
+        { name: "Job applications", icon: "📮", color: "#14b8a6", category: "Custom", time: "All day", notes: "Quality over quantity — tailor each one.", type: "count", target: 3, unit: "", increment: 1 },
+        { name: "Learn a work skill", icon: "📈", color: "#f59e0b", category: "Custom", time: "Morning", notes: "15 focused minutes on a skill that compounds.", type: "count", target: 15, unit: "min", increment: 5 },
+        { name: "Weekly work review", icon: "🔍", color: "#a855f7", category: "Custom", time: "Afternoon", days: [5], notes: "Review wins, tidy the backlog, and plan next week." },
+      ],
+    },
+    {
+      title: "🧠 ADHD & focus support",
+      items: [
+        { name: "Morning brain-dump", icon: "🧠", color: "#a855f7", category: "Custom", time: "Morning", notes: "Empty your head onto paper — every task, worry, idea. Then pick just one to start." },
+        { name: "One thing at a time", icon: "🎯", color: "#6366f1", category: "Custom", time: "All day", notes: "Single-task. Close the other tabs and let the rest wait." },
+        { name: "Focus sprints",   icon: "⏱️", color: "#3b82f6", category: "Custom", time: "All day", notes: "Short timed bursts (e.g. 25 min) with a break between. Tap one per sprint.", type: "count", target: 4, unit: "sprints", increment: 1 },
+        { name: "Tidy one surface", icon: "🧹", color: "#14b8a6", category: "Custom", time: "Evening", notes: "Reset a single surface — desk or nightstand. Done beats perfect." },
+        { name: "Meds check",      icon: "💊", color: "#ef4444", category: "Supplements", time: "8:00 AM", notes: "Take as prescribed, same time daily. General reminder — follow your provider.", reminderTimes: ["08:00"] },
+        { name: "Body doubling",   icon: "👥", color: "#ec4899", category: "Custom", time: "All day", notes: "Work alongside someone (in person or on a call) to stay on task." },
+      ],
+    },
+    {
+      title: "🌸 Cycle & hormonal health",
+      items: [
+        { name: "Log cycle day",   icon: "🌸", color: "#ec4899", category: "Custom", time: "All day", notes: "Note where you are in your cycle to spot patterns in energy, mood and appetite. General wellness, not medical advice." },
+        { name: "Iron-rich meal",  icon: "🥬", color: "#22c55e", category: "Nutrition", time: "All day", notes: "Around your period, add iron (leafy greens, legumes, red meat) with vitamin C to help absorption." },
+        { name: "Cycle-synced movement", icon: "🧘", color: "#a855f7", category: "Fitness", time: "Morning", notes: "Match training to how you feel — easier days when you need them, harder when energy is up." },
+        { name: "Track symptoms & mood", icon: "📝", color: "#3b82f6", category: "Custom", time: "Evening", notes: "A quick daily note builds a useful picture over months." },
+      ],
+    },
+    {
+      title: "🤰 Pregnancy & prenatal",
+      items: [
+        { name: "Prenatal vitamin", icon: "🤰", color: "#ec4899", category: "Supplements", time: "8:00 AM", notes: "Take with food. General wellness reminder — always follow your provider's guidance.", reminderTimes: ["08:00"] },
+        { name: "Daily walk",      icon: "🚶", color: "#22c55e", category: "Fitness", time: "Morning", notes: "A gentle walk most days, as comfortable. Stop if anything feels off." },
+        { name: "Pelvic floor (Kegels)", icon: "🌷", color: "#a855f7", category: "Fitness", time: "All day", notes: "A few short sets through the day.", type: "count", target: 3, unit: "sets", increment: 1 },
+        { name: "Kick counts",     icon: "👣", color: "#f59e0b", category: "Custom", time: "Evening", notes: "Same relaxed time daily in later pregnancy. Not medical advice — follow your provider's instructions." },
+        { name: "Hydrate",         icon: "💧", color: "#38bdf8", category: "Nutrition", time: "All day", notes: "Sip steadily through the day.", type: "count", target: 8, unit: "glasses", increment: 1 },
+      ],
+    },
+    {
+      title: "🐕 Pet care",
+      items: [
+        { name: "Walk the dog",    icon: "🐕", color: "#f59e0b", category: "Custom", time: "8:00 AM & 6:00 PM", notes: "Morning and evening.", type: "count", target: 2, unit: "", increment: 1, reminderTimes: ["07:30", "18:00"] },
+        { name: "Feed pet",        icon: "🦴", color: "#14b8a6", category: "Custom", time: "8:00 AM & 6:00 PM", notes: "AM & PM meals.", type: "count", target: 2, unit: "", increment: 1, reminderTimes: ["08:00", "18:00"] },
+        { name: "Fresh water",     icon: "💧", color: "#38bdf8", category: "Custom", time: "Morning", notes: "Refill and rinse the bowl daily." },
+        { name: "Pet meds / flea & tick", icon: "💊", color: "#ef4444", category: "Custom", time: "Morning", notes: "As directed by your vet." },
+        { name: "Playtime / enrichment", icon: "🎾", color: "#22c55e", category: "Custom", time: "Evening", notes: "10 min of play or training keeps them happy and settled." },
+        { name: "Litter / waste",  icon: "🧴", color: "#6366f1", category: "Custom", time: "Evening", notes: "Scoop or clean up daily — little and often." },
+      ],
+    },
+    {
+      title: "⚖️ Weight-loss focus",
+      items: [
+        { name: "Calorie target",  icon: "🎯", color: "#14b8a6", category: "Nutrition", time: "All day", notes: "Stay in a modest deficit — steady beats drastic, and it's easier to keep." },
+        { name: "Weekly weigh-in", icon: "⚖️", color: "#3b82f6", category: "Custom", time: "Morning", days: [1], notes: "Same time weekly. Watch the trend over weeks, not the daily blip." },
+        { name: "10,000 steps",    icon: "🚶", color: "#22c55e", category: "Fitness", time: "All day", notes: "Move more across the day — short walks add up.", type: "count", target: 10000, unit: "steps", increment: 1000 },
+        { name: "Protein target",  icon: "🍗", color: "#ec4899", category: "Nutrition", time: "All day", notes: "Protein keeps you full and protects muscle in a deficit.", type: "count", target: 120, unit: "g", increment: 20 },
+        { name: "No liquid calories", icon: "🥤", color: "#f59e0b", category: "Nutrition", time: "All day", notes: "Skip sugary drinks and juices — an easy, high-impact win.", quit: true },
+      ],
+    },
+    {
+      title: "🧳 Travel & jet-lag",
+      items: [
+        { name: "Shift sleep to destination", icon: "🕰️", color: "#a855f7", category: "Sleep", time: "Evening", notes: "A few days before, nudge bedtime toward the new time zone." },
+        { name: "Hydrate while flying", icon: "💧", color: "#38bdf8", category: "Nutrition", time: "All day", notes: "Water over alcohol and caffeine in the air." },
+        { name: "Morning light on arrival", icon: "🌞", color: "#f59e0b", category: "Sleep", time: "Morning", notes: "Get outside early in the new zone to reset your body clock." },
+        { name: "Walk after landing", icon: "🚶", color: "#22c55e", category: "Fitness", time: "All day", notes: "A short walk fights stiffness and jet lag." },
+        { name: "Limit caffeine after noon", icon: "☕", color: "#ef4444", category: "Nutrition", time: "Afternoon", notes: "Protect that first night's sleep in the new zone." },
+      ],
+    },
+    {
+      title: "👵 Healthy aging & mobility",
+      items: [
+        { name: "Balance practice", icon: "🧍", color: "#6366f1", category: "Fitness", time: "Morning", notes: "Stand on one foot (hold a counter) while brushing teeth — builds stability and prevents falls." },
+        { name: "Strength 2×/week", icon: "💪", color: "#f59e0b", category: "Fitness", time: "Morning", notes: "Maintaining muscle protects independence. Two sessions a week is plenty.", freqType: "weekly", weeklyTarget: 2 },
+        { name: "Social call",     icon: "📞", color: "#ec4899", category: "Custom", time: "Evening", notes: "Connection is as good for health as exercise — reach out to someone." },
+        { name: "Brain game",      icon: "🧩", color: "#a855f7", category: "Custom", time: "Afternoon", notes: "A puzzle, cards, or reading — keep the mind active." },
+        { name: "Protein at each meal", icon: "🍗", color: "#22c55e", category: "Nutrition", time: "All day", notes: "Helps preserve muscle as we age — include some at every meal." },
+        { name: "Vitamin D",       icon: "☀️", color: "#f59e0b", category: "Supplements", time: "Morning", notes: "Supports bone and muscle. Take with a meal that has some fat." },
+      ],
+    },
   ];
 
   const TEMPLATE_ITEM_DEFAULTS = {
