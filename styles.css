@@ -2527,6 +2527,19 @@ body.hc .btn-secondary { border-color: var(--border); }
 .recovery-label { font-weight: 600; color: var(--text); }
 .recovery-grid { margin-top: 0.75rem; }
 .recovery-grid .stat-value { font-size: 1.35rem; }
+/* Calorie balance & forecast */
+.cal-balance { margin: 0.5rem 0 0.75rem; font-weight: 700; font-size: 1.05rem; }
+.cal-balance .cal-deficit { color: #22c55e; }
+.cal-balance .cal-surplus { color: #ef4444; }
+.cal-balance .cal-sub { display: block; font-weight: 500; font-size: 0.8rem; color: var(--text-dim); margin-top: 2px; }
+.cal-forecast { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; }
+.cal-fc { background: var(--primary-soft, rgba(99,102,241,0.12)); border-radius: 10px; padding: 8px 10px; text-align: center; }
+.cal-fc-label { font-size: 0.68rem; color: var(--text-dim); }
+.cal-fc-change { font-weight: 700; font-size: 1.05rem; margin: 2px 0; }
+.cal-fc-change.loss { color: #22c55e; }
+.cal-fc-change.gain { color: #ef4444; }
+.cal-fc-proj { font-size: 0.72rem; color: var(--text-dim); }
+
 .recovery-trend { display: flex; align-items: stretch; gap: 6px; height: 140px; }
 .rtrend-bar { flex: 1; display: flex; flex-direction: column; align-items: center; min-width: 0; }
 .rtrend-score { font-size: 0.72rem; font-weight: 700; margin-bottom: 3px; }

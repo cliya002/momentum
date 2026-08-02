@@ -57,5 +57,31 @@ console.log("buildAllCsv (mood + supplement sections)");
   assert(!csv2.includes("SUPPLEMENTS"), "no supplement habits -> no supplements section");
 }
 
+console.log("calorieForecast (energy balance → weight projection)");
+{
+  // 500 kcal/day deficit, 200 lb. 500/3500 = 0.142857 lb/day.
+  const f = T.calorieForecast({ weightLb: 200, caloriesIn: 2000, baseBurn: 2200, exerciseBurn: 300, metric: false });
+  assert(f.deficit === 500, "deficit = base+exercise−intake = 500");
+  assert(Math.abs(f.perWeekDisp - 1) < 0.05, "~1 lb/week at 500 kcal deficit (" + f.perWeekDisp + ")");
+  const wk4 = f.horizons.find((h) => h.days === 28);
+  assert(Math.abs(wk4.changeDisp - 4) < 0.1, "4 weeks ≈ 4 lb lost (" + wk4.changeDisp + ")");
+  assert(Math.abs(wk4.projectedDisp - 196) < 0.1, "4 weeks ≈ 196 lb projected (" + wk4.projectedDisp + ")");
+  const mo4 = f.horizons.find((h) => h.days === 120);
+  assert(mo4.changeDisp > 0 && mo4.projectedDisp < 200, "4 months shows continued loss");
+  assert(f.horizons.length === 6, "six horizons (7d,4w,1m,2m,3m,4m)");
+
+  // Surplus → gaining (negative change means weight goes up).
+  const g = T.calorieForecast({ weightLb: 180, caloriesIn: 3000, baseBurn: 2200, exerciseBurn: 0, metric: false });
+  assert(g.deficit < 0, "intake over burn → negative deficit (surplus)");
+  assert(g.horizons.find((h) => h.days === 30).projectedDisp > 180, "1 month projects weight gain");
+
+  // Metric mode converts to kg.
+  const m = T.calorieForecast({ weightLb: 220, caloriesIn: 2000, baseBurn: 2500, exerciseBurn: 0, metric: true });
+  assert(m.unit === "kg", "metric mode reports kg");
+
+  assert(T.calorieForecast({ weightLb: null }) === null, "no weight → null");
+  assert(T.estimateMaintenanceKcal(200) === 2800, "maintenance estimate ~14 kcal/lb (200→2800)");
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

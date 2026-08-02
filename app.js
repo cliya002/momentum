@@ -60,6 +60,7 @@
     ghImportWeight: "ht_gh_import_weight",
     collapseToday: "ht_collapse_today",
     recovery: "ht_recovery", // recovery snapshots by day (device-local, not synced)
+    calorie: "ht_calorie",   // calorie balance inputs (device-local)
   };
   const DEFAULT_CATEGORIES = ["Fitness","Nutrition","Sleep","Supplements","Custom"];
   // Fallback color/icon per default category (used until the user customizes).
@@ -3755,6 +3756,11 @@
       }
     }
     return null;
+  }
+  // Total calories burned by today's logged exercise (kcal). null on failure.
+  async function ghExerciseKcalToday() {
+    try { return Math.round(mapExerciseDataPoints(await ghAllPages("v4/users/me/dataTypes/exercise/dataPoints", googleTodayFilter())).caloriesKcal) || 0; }
+    catch (e) { return null; }
   }
   async function ghWorkoutSessions() {
     try { return mapWorkoutSessions(await ghAllPages("v4/users/me/dataTypes/exercise/dataPoints", googleTodayFilter())); }
@@ -10425,6 +10431,7 @@
     renderPhotoField(wk);
     renderGoal();
     renderProgressSummary();
+    renderCalorieForecast();
     renderInsight();
     renderTrendMetricOptions();
     renderTrendChart();
@@ -10655,6 +10662,121 @@
     return Math.round((b - a) / (7 * 86400000));
   }
   function measurementsWithWeight() { return measurementList().filter((e) => e.weight !== null); }
+
+  /* ---- Calorie balance & weight-loss forecast ---- */
+  const KCAL_PER_LB = 3500;    // ≈ energy in 1 lb of body fat
+  const CAL_HORIZONS = [
+    { label: "7 days", days: 7 }, { label: "4 weeks", days: 28 }, { label: "1 month", days: 30 },
+    { label: "2 months", days: 60 }, { label: "3 months", days: 90 }, { label: "4 months", days: 120 },
+  ];
+  function loadCalorie() { try { return JSON.parse(localStorage.getItem(KEYS.calorie)) || {}; } catch (e) { return {}; } }
+  function saveCalorie(c) { localStorage.setItem(KEYS.calorie, JSON.stringify(c)); }
+  // Rough maintenance estimate when the user hasn't set one (~14 kcal per lb).
+  function estimateMaintenanceKcal(weightLb) { return weightLb ? Math.round(weightLb * 14) : null; }
+  // Pure energy-balance forecast. Positive deficit → weight loss. Computes in lb
+  // internally (3500 kcal/lb), converts to the display unit. Tested.
+  function calorieForecast(opts) {
+    const weightLb = opts && opts.weightLb;
+    if (weightLb == null) return null;
+    const inK = Number(opts.caloriesIn) || 0;
+    const base = Number(opts.baseBurn) || 0;
+    const exer = Number(opts.exerciseBurn) || 0;
+    const deficit = base + exer - inK;               // kcal/day, +ve = deficit
+    const lossPerDayLb = deficit / KCAL_PER_LB;       // lb/day (+ve = losing)
+    const metric = !!opts.metric;
+    const toDisp = (lb) => (metric ? lb * 0.453592 : lb);
+    const horizons = CAL_HORIZONS.map((h) => {
+      const changeLb = lossPerDayLb * h.days;         // +ve = lost
+      return {
+        label: h.label, days: h.days,
+        changeDisp: Math.round(toDisp(changeLb) * 10) / 10,
+        projectedDisp: Math.round(toDisp(weightLb - changeLb) * 10) / 10,
+      };
+    });
+    return {
+      deficit,
+      perWeekDisp: Math.round(toDisp(lossPerDayLb * 7) * 10) / 10,
+      unit: metric ? "kg" : "lb",
+      horizons,
+    };
+  }
+  function renderCalorieForecast() {
+    const balEl = document.getElementById("calBalance");
+    const fcEl = document.getElementById("calForecast");
+    const pullBtn = document.getElementById("calPullBtn");
+    if (pullBtn) pullBtn.hidden = !ghConnected();
+    if (!balEl || !fcEl) return;
+    const c = loadCalorie();
+    const inEl = document.getElementById("calIn");
+    const baseEl = document.getElementById("calBase");
+    const exEl = document.getElementById("calExercise");
+    const wl = measurementsWithWeight();
+    const weightLb = wl.length ? wl[wl.length - 1].weight : null;
+    // Prefill fields (don't stomp what the user is typing).
+    const doc = typeof document !== "undefined" ? document : null;
+    if (inEl && doc && doc.activeElement !== inEl) inEl.value = c.caloriesIn != null ? c.caloriesIn : "";
+    if (baseEl && doc && doc.activeElement !== baseEl) baseEl.value = c.baseBurn != null ? c.baseBurn : (estimateMaintenanceKcal(weightLb) || "");
+    if (exEl && doc && doc.activeElement !== exEl) exEl.value = c.exerciseBurn != null ? c.exerciseBurn : "";
+    if (weightLb == null) {
+      balEl.innerHTML = '<span class="cal-sub">Log your weight above to see a forecast.</span>';
+      fcEl.innerHTML = "";
+      return;
+    }
+    const baseBurn = baseEl && baseEl.value !== "" ? Number(baseEl.value) : (c.baseBurn != null ? c.baseBurn : estimateMaintenanceKcal(weightLb));
+    const f = calorieForecast({
+      weightLb,
+      caloriesIn: inEl ? Number(inEl.value) : c.caloriesIn,
+      baseBurn,
+      exerciseBurn: exEl ? Number(exEl.value) : c.exerciseBurn,
+      metric: isMetric(),
+    });
+    if (!f) { balEl.innerHTML = ""; fcEl.innerHTML = ""; return; }
+    const losing = f.deficit > 0;
+    const word = losing ? "deficit" : "surplus";
+    const cls = losing ? "cal-deficit" : "cal-surplus";
+    balEl.innerHTML = `<span class="${cls}">${Math.abs(Math.round(f.deficit))} kcal/day ${word}</span>` +
+      `<span class="cal-sub">${losing ? "Losing" : "Gaining"} about ${Math.abs(f.perWeekDisp)} ${f.unit}/week at this rate</span>`;
+    fcEl.innerHTML = f.horizons.map((h) => {
+      const lost = h.changeDisp > 0;
+      const sign = h.changeDisp > 0 ? "−" : h.changeDisp < 0 ? "+" : "";
+      return `<div class="cal-fc">
+        <div class="cal-fc-label">${h.label}</div>
+        <div class="cal-fc-change ${lost ? "loss" : "gain"}">${sign}${Math.abs(h.changeDisp)} ${f.unit}</div>
+        <div class="cal-fc-proj">${h.projectedDisp} ${f.unit}</div>
+      </div>`;
+    }).join("");
+  }
+  async function pullExerciseCalories() {
+    if (!ghConnected()) { showToast("Connect Google Health in Settings first.", "warn"); return; }
+    if (!navigator.onLine) { showToast("You're offline.", "warn"); return; }
+    if (ghInFlight) return;
+    ghInFlight = true;
+    const btn = document.getElementById("calPullBtn");
+    if (btn) { btn.disabled = true; btn.textContent = "⏳ Pulling…"; }
+    try {
+      const kcal = await ghExerciseKcalToday();
+      if (kcal == null) { showGhBanner("⚡ Couldn't read exercise calories from Google Health."); return; }
+      const c = loadCalorie(); c.exerciseBurn = kcal; c.updatedAt = Date.now(); saveCalorie(c);
+      const exEl = document.getElementById("calExercise"); if (exEl) exEl.value = kcal;
+      renderCalorieForecast();
+      showToast(kcal > 0 ? `⚡ Pulled ${kcal} kcal from today's exercise` : "⚡ No exercise calories logged today yet.", kcal > 0 ? "success" : "warn");
+    } catch (e) {
+      showToast("Exercise pull failed: " + (e.message || e), "error");
+    } finally {
+      ghInFlight = false;
+      if (btn) { btn.disabled = false; btn.textContent = "⚡ Pull today's exercise"; }
+    }
+  }
+  function onCalorieInput() {
+    const c = loadCalorie();
+    const num = (id) => { const el = document.getElementById(id); return el && el.value !== "" ? Number(el.value) : null; };
+    c.caloriesIn = num("calIn");
+    c.baseBurn = num("calBase");
+    c.exerciseBurn = num("calExercise");
+    c.updatedAt = Date.now();
+    saveCalorie(c);
+    renderCalorieForecast();
+  }
 
   function setDeltaCard(el, delta, unit) {
     el.classList.remove("up", "down");
@@ -11148,6 +11270,7 @@
     setTimeout(() => (els.mSaved.hidden = true), 1500);
     renderGoal();
     renderProgressSummary();
+    renderCalorieForecast();
     renderInsight();
     renderTrendMetricOptions();
     renderTrendChart();
@@ -11947,6 +12070,12 @@
     if (pullWeightBtn) pullWeightBtn.addEventListener("click", pullWeightForProgress);
     const recoverySyncBtn = $("#recoverySyncBtn");
     if (recoverySyncBtn) recoverySyncBtn.addEventListener("click", syncRecovery);
+    const calPullBtn = $("#calPullBtn");
+    if (calPullBtn) calPullBtn.addEventListener("click", pullExerciseCalories);
+    ["calIn", "calBase", "calExercise"].forEach((id) => {
+      const el = $("#" + id);
+      if (el) el.addEventListener("input", onCalorieInput);
+    });
     // Photos
     els.mPhoto.addEventListener("change", onPhotoPick);
     els.mPhotoRemove.addEventListener("click", removePhoto);
@@ -12325,6 +12454,7 @@
       isWorkoutHabit, isSleepHabit, isTempHabit, latestSkinTempDeltaC, fmtSkinTemp,
       metricNumber, dailyPointMs, recoveryScore, seriesBaseline, recoveryTrend,
       isRecoveryHabit, isRhrHabit, isHrvHabit, isSpo2Habit, buildAllCsv,
+      calorieForecast, estimateMaintenanceKcal,
       getState: () => state, setState: (s) => { state = s; },
     };
   }

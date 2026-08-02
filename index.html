@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=4.80.3" />
+  <link rel="stylesheet" href="styles.css?v=4.81.0" />
 </head>
 <body>
 
@@ -328,6 +328,31 @@
               </div>
             </form>
             <p id="mSaved" class="saved-note" hidden>Saved.</p>
+          </div>
+
+          <!-- Calorie balance & weight-loss forecast -->
+          <div class="card">
+            <div class="card-title">🔥 Calorie burn &amp; forecast</div>
+            <p class="card-sub">Enter your intake, pull exercise burn from Google Health, and see a projected weight change. A linear estimate — real loss slows over time. Not medical advice.</p>
+            <form id="calorieForm" class="measurement-form" onsubmit="return false">
+              <label>
+                Calorie intake (kcal/day)
+                <input id="calIn" type="number" inputmode="numeric" step="10" min="0" placeholder="e.g. 2000" />
+              </label>
+              <label>
+                Maintenance burn (kcal/day)
+                <input id="calBase" type="number" inputmode="numeric" step="10" min="0" placeholder="est. from weight" />
+              </label>
+              <label>
+                Exercise burn (kcal/day)
+                <input id="calExercise" type="number" inputmode="numeric" step="10" min="0" placeholder="0" />
+              </label>
+              <div class="row-actions full">
+                <button type="button" id="calPullBtn" class="btn-secondary" hidden>⚡ Pull today's exercise</button>
+              </div>
+            </form>
+            <div id="calBalance" class="cal-balance"></div>
+            <div id="calForecast" class="cal-forecast"></div>
           </div>
 
           <div class="card insight-card" id="insightCard" hidden>
