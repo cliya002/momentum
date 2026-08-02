@@ -3141,9 +3141,17 @@
     } while (pageToken && pages < 25);
     return { dataPoints: all };
   }
+  let ghSleepErr = "";
+  // Recognise "missing scope" errors so we can tell the user to reconnect.
+  function ghScopeHint(err) {
+    return /scope|permission|insufficient|forbidden|\b403\b/i.test(String(err || ""))
+      ? "Sleep access not granted — Settings → Google Health → Disconnect, then Connect again."
+      : "";
+  }
   async function ghSleepHours() {
+    ghSleepErr = "";
     try { return mapSleepHours(await ghAllPages("v4/users/me/dataTypes/sleep/dataPoints", `sleep.interval.civil_start_time >= "${civilDayHour(1, 12)}"`)); }
-    catch (e) { return 0; }
+    catch (e) { ghSleepErr = String((e && e.message) || e); return 0; }
   }
   async function ghWorkoutSessions() {
     try { return mapWorkoutSessions(await ghAllPages("v4/users/me/dataTypes/exercise/dataPoints", googleTodayFilter())); }
@@ -3176,10 +3184,13 @@
           if (s > 0) applyStepsToHabit(h, s, today, msgs);
         }
       }
+      let sleepNote = "";
       if (sleepHabits.length) {
         const hrs = await ghSleepHours();
-        for (const h of sleepHabits) {
-          if (hrs > 0) { const met = applySleepToHabit(h, hrs, today); msgs.push(`😴 ${h.name} ${hrs}h${met ? " ✓" : ""}`); }
+        if (hrs > 0) {
+          for (const h of sleepHabits) { const met = applySleepToHabit(h, hrs, today); msgs.push(`😴 ${h.name} ${hrs}h${met ? " ✓" : ""}`); }
+        } else {
+          sleepNote = ghScopeHint(ghSleepErr) || (ghSleepErr ? "😴 sleep: " + ghSleepErr : "😴 no sleep data yet");
         }
       }
       if (workoutHabits.length) {
@@ -3192,7 +3203,8 @@
       localStorage.setItem(KEYS.ghLastSync, String(Date.now()));
       renderToday();
       renderGoogleState();
-      if (msgs.length) showToast("✓ Synced · " + msgs.join(" · "), "success");
+      if (msgs.length) showToast("✓ Synced · " + msgs.join(" · ") + (sleepNote ? " · " + sleepNote : ""), "success");
+      else if (sleepNote) showGhBanner("😴 " + sleepNote);
       else showGhBanner("🔄 Nothing to sync yet — no steps, sleep, or workouts found for today. Sync your watch or Fitbit app and try again.");
     } catch (e) {
       showToast("Sync failed: " + (e.message || e), "error");
@@ -3222,8 +3234,10 @@
       } catch (e) { dbg = " · sleep err: " + (e.message || e); }
       const today = new Date();
       if (hrs <= 0) {
-        // Friendly "no data" banner rather than an error.
-        showGhBanner(`😴 No sleep logged for last night yet. Sync your watch or Fitbit app, then tap 😴 again.${dbg}`);
+        const hint = ghScopeHint(dbg);
+        showGhBanner(hint
+          ? `😴 ${hint}`
+          : `😴 No sleep logged for last night yet. Sync your watch or Fitbit app, then tap 😴 again.${dbg}`);
         return;
       }
       const met = applySleepToHabit(habit, hrs, today);
