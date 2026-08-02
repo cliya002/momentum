@@ -3379,7 +3379,7 @@
       localStorage.setItem(KEYS.ghLastSync, String(Date.now()));
       renderToday();
       renderGoogleState();
-      if (msgs.length) showToast("✓ Synced · " + msgs.join(" · ") + (sleepNote ? " · " + sleepNote : ""), "success");
+      if (msgs.length) showToast("✓ Synced", "success");
       else if (sleepNote) showGhBanner("😴 " + sleepNote);
       else showGhBanner("🔄 Nothing to sync yet — no steps, sleep, workouts, or temperature found for today. Sync your watch or Fitbit app and try again.");
       ok = true;
