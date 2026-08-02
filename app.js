@@ -10792,6 +10792,7 @@
       if (notFocused(baseEl)) baseEl.value = c.baseBurn != null ? c.baseBurn : "";
       balEl.innerHTML = '<span class="cal-sub">Log your weight above to see a forecast.</span>';
       fcEl.innerHTML = "";
+      renderExerciseList();
       return;
     }
     const profileComplete = prof.heightCm > 0 && prof.age > 0 && (prof.sex === "male" || prof.sex === "female");
@@ -10824,6 +10825,7 @@
         <div class="cal-fc-proj">${h.projectedDisp} ${f.unit}</div>
       </div>`;
     }).join("");
+    renderExerciseList();
   }
   // Average daily exercise kcal over the last `n` days (including zero days),
   // from the stored per-day history — a realistic daily burn for the forecast.
@@ -10833,6 +10835,31 @@
     for (let i = 0; i < days; i++) sum += Number((byDay || {})[dateKey(addDays(new Date(), -i))]) || 0;
     return Math.round(sum / days);
   }
+  // Title-case an exercise type like "stair_climbing_machine" → "Stair Climbing Machine".
+  function prettyExerciseType(t) {
+    return String(t || "").replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase()).trim();
+  }
+  function renderExerciseList() {
+    const el = document.getElementById("calExerciseList");
+    if (!el) return;
+    const list = (loadCalorie().exerciseSessions) || [];
+    if (!list.length) { el.innerHTML = ""; return; }
+    const MAX = 25;
+    const shown = list.slice(0, MAX);
+    let html = '<div class="cal-ex-title">🏋️ Pulled exercises</div>';
+    let lastDay = null;
+    for (const s of shown) {
+      if (s.dateKey !== lastDay) {
+        lastDay = s.dateKey;
+        html += `<div class="cal-ex-day">${escapeHtml(formatDateShort(parseDateKey(s.dateKey)))}</div>`;
+      }
+      const label = s.name || prettyExerciseType(s.type) || "Workout";
+      const right = `${s.minutes ? s.minutes + " min · " : ""}${s.kcal} kcal`;
+      html += `<div class="cal-ex-row"><span>${escapeHtml(label)}</span><span>${escapeHtml(right)}</span></div>`;
+    }
+    if (list.length > MAX) html += `<div class="cal-ex-more">+ ${list.length - MAX} more</div>`;
+    el.innerHTML = html;
+  }
   async function pullExerciseCalories() {
     if (!ghConnected()) { showToast("Connect Google Health in Settings first.", "warn"); return; }
     if (!navigator.onLine) { showToast("You're offline.", "warn"); return; }
@@ -10841,10 +10868,23 @@
     const btn = document.getElementById("calPullBtn");
     if (btn) { btn.disabled = true; btn.textContent = "⏳ Pulling…"; }
     try {
-      const byDay = await ghExerciseByDay(30);
-      if (byDay == null) { showGhBanner("⚡ Couldn't read exercise calories from Google Health."); return; }
+      let raw;
+      try { raw = await ghAllPages("v4/users/me/dataTypes/exercise/dataPoints", `exercise.interval.civil_start_time >= "${civilDaysAgo(30)}"`); }
+      catch (e) { showGhBanner("⚡ Couldn't read exercise calories from Google Health."); return; }
+      const byDay = groupExerciseKcalByDay(raw.dataPoints || []);
+      // Keep the individual sessions so we can list them (newest first).
+      const sessions = mapWorkoutSessions(raw)
+        .map((s) => ({
+          dateKey: s.startTime ? dateKey(new Date(s.startTime)) : "",
+          startTime: s.startTime || "", name: s.name || "", type: s.type || "",
+          kcal: Math.round(s.kcal) || 0, minutes: s.minutes || 0,
+        }))
+        .filter((s) => s.dateKey)
+        .sort((a, b) => (a.startTime < b.startTime ? 1 : a.startTime > b.startTime ? -1 : 0))
+        .slice(0, 60);
       const c = loadCalorie();
       c.exerciseByDay = Object.assign({}, c.exerciseByDay, byDay); // save per-day history
+      c.exerciseSessions = sessions;
       const avg = avgExerciseKcal(c.exerciseByDay, 14);
       c.exerciseBurn = avg; // forecast uses the recent daily average
       c.updatedAt = Date.now();

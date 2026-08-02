@@ -2539,6 +2539,12 @@ body.hc .btn-secondary { border-color: var(--border); }
 .cal-fc-change.loss { color: #22c55e; }
 .cal-fc-change.gain { color: #ef4444; }
 .cal-fc-proj { font-size: 0.72rem; color: var(--text-dim); }
+.cal-ex-list { margin-top: 0.85rem; }
+.cal-ex-title { font-weight: 700; font-size: 0.85rem; margin-bottom: 0.35rem; }
+.cal-ex-day { font-size: 0.72rem; color: var(--text-dim); font-weight: 600; margin: 0.5rem 0 0.2rem; }
+.cal-ex-row { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--border, rgba(148,163,184,0.15)); font-size: 0.82rem; }
+.cal-ex-row span:last-child { color: var(--text-dim); white-space: nowrap; }
+.cal-ex-more { font-size: 0.72rem; color: var(--text-dim); margin-top: 0.4rem; }
 
 .recovery-trend { display: flex; align-items: stretch; gap: 6px; height: 140px; }
 .rtrend-bar { flex: 1; display: flex; flex-direction: column; align-items: center; min-width: 0; }
