@@ -2518,6 +2518,16 @@ body.hc .btn-secondary { border-color: var(--border); }
   border-color: var(--border);
 }
 .daypart-done-strip.daypart-collapsed.is-now { border-color: var(--primary); }
+/* Recovery tab */
+.recovery-score-card .recovery-score-wrap { display: flex; align-items: center; gap: 1rem; margin: 0.25rem 0 0.5rem; }
+.recovery-score { font-size: 2.6rem; font-weight: 800; line-height: 1; min-width: 3.5rem; }
+.recovery-score.good { color: #22c55e; }
+.recovery-score.mid { color: #f59e0b; }
+.recovery-score.low { color: #ef4444; }
+.recovery-label { font-weight: 600; color: var(--text); }
+.recovery-grid { margin-top: 0.75rem; }
+.recovery-grid .stat-value { font-size: 1.35rem; }
+
 .pull-steps-mini { font-size: 1rem; line-height: 1; }
 /* In-progress state while pulling from Google Health */
 .pull-steps-mini.is-loading { animation: pull-spin 0.9s linear infinite; opacity: 0.85; cursor: default; }

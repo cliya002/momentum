@@ -59,6 +59,7 @@
     ghHabitId: "ht_gh_habit_id",
     ghImportWeight: "ht_gh_import_weight",
     collapseToday: "ht_collapse_today",
+    recovery: "ht_recovery", // recovery snapshots by day (device-local, not synced)
   };
   const DEFAULT_CATEGORIES = ["Fitness","Nutrition","Sleep","Supplements","Custom"];
   // Fallback color/icon per default category (used until the user customizes).
@@ -3401,6 +3402,149 @@
     }
     return null;
   }
+  // ---- Recovery metrics (device-local snapshot; GH data is per-account) ----
+  // Deep-scan a daily dataPoint for the first plausible numeric value in a
+  // range, skipping time/name/source keys. Robust to unknown field names since
+  // each metric is pulled from its own data-type endpoint (so the range is
+  // enough to identify the value). Pure + tested.
+  function metricNumber(p, lo, hi) {
+    let best = null;
+    const skip = /time|date|name|source|version|\bid\b|zone|offset/i;
+    const walk = (o, depth) => {
+      if (best != null || !o || typeof o !== "object" || depth > 4) return;
+      for (const k of Object.keys(o)) {
+        if (skip.test(k)) continue;
+        const v = o[k];
+        if (typeof v === "number") { if (v >= lo && v <= hi) { best = Math.round(v * 10) / 10; return; } }
+        else if (v && typeof v === "object") walk(v, depth + 1);
+      }
+    };
+    walk(p, 0);
+    return best;
+  }
+  // Timestamp (ms) of a daily dataPoint (handles nested sampleTime.physicalTime).
+  function dailyPointMs(p) {
+    const cands = [p && p.sampleTime, p && p.startTime, p && p.date, p && p.interval && p.interval.startTime, p && p.endTime];
+    for (const c of cands) {
+      if (!c) continue;
+      if (typeof c === "string") { const t = Date.parse(c); if (t) return t; }
+      else if (typeof c === "object" && c.physicalTime) { const t = Date.parse(c.physicalTime); if (t) return t; }
+    }
+    return 0;
+  }
+  // Latest value of a daily metric: try filter variants, fall back to unfiltered.
+  async function ghDailyMetric(dataType, member, lo, hi) {
+    const path = `v4/users/me/dataTypes/${dataType}/dataPoints`;
+    const utc = isoHoursAgo(24 * 10);
+    const cands = [`${member}.start_time >= "${utc}"`, `${member}.sample_time >= "${utc}"`, null];
+    for (const f of cands) {
+      try {
+        const raw = await ghAllPages(path, f, 5);
+        const dps = raw.dataPoints || [];
+        let best = null, bestTs = -1;
+        for (const p of dps) {
+          const v = metricNumber(p, lo, hi);
+          if (v == null) continue;
+          const ts = dailyPointMs(p);
+          if (ts >= bestTs) { bestTs = ts; best = v; }
+        }
+        return best;
+      } catch (e) {
+        const msg = String((e && e.message) || e);
+        if (/INVALID_DATA_POINT_FILTER|filter/i.test(msg)) continue; // bad filter → try next
+        return null; // other error (e.g. scope) → stop
+      }
+    }
+    return null;
+  }
+  function ghRestingHr() { return ghDailyMetric("daily-resting-heart-rate", "daily_resting_heart_rate", 30, 120); }
+  function ghHrvMs()     { return ghDailyMetric("daily-heart-rate-variability", "daily_heart_rate_variability", 3, 300); }
+  function ghSpo2()      { return ghDailyMetric("daily-oxygen-saturation", "daily_oxygen_saturation", 70, 100); }
+  function ghRespRate()  { return ghDailyMetric("daily-respiratory-rate", "daily_respiratory_rate", 4, 45); }
+  // Turn a recovery snapshot into a 0-100 score + label. Averages whatever
+  // sub-scores are available (each metric optional). Transparent heuristic, not
+  // medical advice. Pure + tested.
+  function recoveryScore(s) {
+    if (!s) return null;
+    const clamp = (n) => Math.max(0, Math.min(100, n));
+    const parts = [];
+    if (s.sleepHrs != null)  parts.push(clamp(((s.sleepHrs - 4) / 4) * 100));        // 4h→0, 8h→100
+    if (s.hrvMs != null)     parts.push(clamp(((s.hrvMs - 20) / 60) * 100));         // 20→0, 80→100
+    if (s.restingHr != null) parts.push(clamp(((80 - s.restingHr) / 40) * 100));     // 80→0, 40→100
+    if (s.spo2 != null)      parts.push(clamp(((s.spo2 - 90) / 8) * 100));           // 90→0, 98→100
+    if (s.respRate != null)  parts.push(clamp(100 - Math.abs(s.respRate - 14) * 8)); // ideal ~14/min
+    if (s.skinTempC != null) parts.push(clamp(100 - Math.abs(s.skinTempC) * 40));    // near baseline → high
+    if (!parts.length) return null;
+    const score = Math.round(parts.reduce((a, b) => a + b, 0) / parts.length);
+    const tier = score >= 75 ? "good" : score >= 50 ? "mid" : "low";
+    const label = tier === "good" ? "Ready to train" : tier === "mid" ? "Moderate — take it steady" : "Prioritise rest";
+    return { score, label, tier };
+  }
+  function loadRecovery() { try { return JSON.parse(localStorage.getItem(KEYS.recovery)) || { days: {} }; } catch (e) { return { days: {} }; } }
+  function saveRecovery(r) { localStorage.setItem(KEYS.recovery, JSON.stringify(r)); }
+  function latestRecovery() {
+    const r = loadRecovery();
+    const keys = Object.keys(r.days || {}).sort();
+    return keys.length ? Object.assign({ dateKey: keys[keys.length - 1] }, r.days[keys[keys.length - 1]]) : null;
+  }
+  async function syncRecovery() {
+    if (!ghConnected()) { showToast("Connect Google Health in Settings first.", "warn"); return; }
+    if (!navigator.onLine) { showToast("You're offline.", "warn"); return; }
+    if (ghInFlight) return;
+    ghInFlight = true;
+    const btn = document.getElementById("recoverySyncBtn");
+    if (btn) { btn.disabled = true; btn.textContent = "⏳ Syncing…"; }
+    try {
+      const [hrvMs, restingHr, spo2, respRate, sleepHrs, skinTempC] = await Promise.all([
+        ghHrvMs(), ghRestingHr(), ghSpo2(), ghRespRate(), ghSleepHours(), ghSkinTempC(),
+      ]);
+      const snap = { hrvMs, restingHr, spo2, respRate,
+        sleepHrs: sleepHrs > 0 ? sleepHrs : null, skinTempC, updatedAt: Date.now() };
+      const any = ["hrvMs", "restingHr", "spo2", "respRate", "sleepHrs", "skinTempC"].some((k) => snap[k] != null);
+      if (!any) { showGhBanner("🫀 No recovery data found yet. Recovery metrics are measured overnight — sync your watch or Fitbit app, then try again."); return; }
+      const r = loadRecovery();
+      r.days[dateKey(new Date())] = snap;
+      r.updatedAt = Date.now();
+      saveRecovery(r);
+      renderRecovery();
+      showToast("🫀 Recovery synced", "success");
+    } catch (e) {
+      showToast("Recovery sync failed: " + (e.message || e), "error");
+    } finally {
+      ghInFlight = false;
+      if (btn) { btn.disabled = false; btn.textContent = "🔄 Sync"; }
+    }
+  }
+  function renderRecovery() {
+    const notice = document.getElementById("recoveryConnectNotice");
+    const btn = document.getElementById("recoverySyncBtn");
+    const connected = ghConnected();
+    if (notice) notice.hidden = connected;
+    if (btn) btn.hidden = !connected;
+    const s = latestRecovery();
+    const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+    const dash = "—";
+    set("recHrv", s && s.hrvMs != null ? `${s.hrvMs} ms` : dash);
+    set("recRhr", s && s.restingHr != null ? `${s.restingHr} bpm` : dash);
+    set("recSpo2", s && s.spo2 != null ? `${s.spo2}%` : dash);
+    set("recResp", s && s.respRate != null ? `${s.respRate}` : dash);
+    set("recSleep", s && s.sleepHrs != null ? `${s.sleepHrs} h` : dash);
+    set("recTemp", s && s.skinTempC != null ? fmtSkinTemp(s.skinTempC) : dash);
+    const scoreEl = document.getElementById("recoveryScore");
+    const labelEl = document.getElementById("recoveryLabel");
+    const updEl = document.getElementById("recoveryUpdated");
+    if (scoreEl) scoreEl.classList.remove("good", "mid", "low");
+    const rs = recoveryScore(s);
+    if (rs) {
+      if (scoreEl) { scoreEl.textContent = String(rs.score); scoreEl.classList.add(rs.tier); }
+      if (labelEl) labelEl.textContent = rs.label;
+    } else {
+      if (scoreEl) scoreEl.textContent = "—";
+      if (labelEl) labelEl.textContent = connected ? "Tap Sync to read your latest recovery metrics." : "Connect Google Health in Settings to see recovery.";
+    }
+    if (updEl) updEl.textContent = s && s.updatedAt ? "Updated " + new Date(s.updatedAt).toLocaleDateString() : "";
+  }
+
   let ghWeightErr = "", ghWeightDbg = "";
   // Most recent weight in kg. The filter member for weight is rejected the same
   // way sleep's is, so try a couple of variants then fall back to an unfiltered
@@ -4617,6 +4761,7 @@
         today: $("#page-today"),
         habits: $("#page-habits"),
         progress: $("#page-progress"),
+        recovery: $("#page-recovery"),
         report: $("#page-report"),
         schedule: $("#page-schedule"),
         settings: $("#page-settings"),
@@ -4878,6 +5023,7 @@
     if (view === "today") { scrollToNowPending = true; renderToday(); }
     else if (view === "habits") renderHabits();
     else if (view === "progress") { progressDateKey = dateKey(new Date()); renderProgress(); }
+    else if (view === "recovery") renderRecovery();
     else if (view === "report") { weekOffset = 0; renderReport(); }
     else if (view === "schedule") renderSchedule();
     else if (view === "settings") hydrateSettings();
@@ -11582,6 +11728,8 @@
     $("#goalClearBtn").addEventListener("click", clearGoal);
     const pullWeightBtn = $("#pullWeightBtn");
     if (pullWeightBtn) pullWeightBtn.addEventListener("click", pullWeightForProgress);
+    const recoverySyncBtn = $("#recoverySyncBtn");
+    if (recoverySyncBtn) recoverySyncBtn.addEventListener("click", syncRecovery);
     // Photos
     els.mPhoto.addEventListener("change", onPhotoPick);
     els.mPhotoRemove.addEventListener("click", removePhoto);
@@ -11958,6 +12106,7 @@
       mapSleepHours, parseDurationSeconds, mapWorkoutSessions, workoutHabitMatch,
       recentSleepHours, sleepSessionSeconds, sleepSessionEndMs, sleepSessionStartMs, ghScopeHint,
       isWorkoutHabit, isSleepHabit, isTempHabit, latestSkinTempDeltaC, fmtSkinTemp,
+      metricNumber, recoveryScore,
       getState: () => state, setState: (s) => { state = s; },
     };
   }

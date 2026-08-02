@@ -56,6 +56,9 @@
           <button class="nav-item" data-tab="progress">
             <span class="nav-icon">📈</span> <span data-i18n="nav.progress">Progress</span>
           </button>
+          <button class="nav-item" data-tab="recovery">
+            <span class="nav-icon">🫀</span> <span>Recovery</span>
+          </button>
           <button class="nav-item" data-tab="report">
             <span class="nav-icon">📊</span> <span data-i18n="nav.report">Report</span>
           </button>
@@ -377,6 +380,66 @@
             <div class="card-title">Weekly log</div>
             <div id="measurementHistory" class="measurement-history">
               <p class="empty-inline">No entries yet.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============ Recovery ============ -->
+        <div class="page" id="page-recovery">
+          <div class="page-header">
+            <div>
+              <h1>Recovery</h1>
+              <p class="subtitle">Overnight recovery signals from Google Health</p>
+            </div>
+            <div class="page-actions">
+              <button id="recoverySyncBtn" class="icon-btn today-sync-gh" hidden>🔄 Sync</button>
+            </div>
+          </div>
+
+          <div id="recoveryConnectNotice" class="card" hidden>
+            <div class="card-title">⌚ Connect Google Health</div>
+            <p class="card-sub">Recovery pulls HRV, resting heart rate, SpO₂, breathing rate, sleep and skin temperature from Google Health / Fitbit. Connect it in Settings → Google Health, then tap Sync.</p>
+          </div>
+
+          <div class="card recovery-score-card">
+            <div class="card-title">Recovery score <span id="recoveryUpdated" class="pill" style="margin-left:auto"></span></div>
+            <div class="recovery-score-wrap">
+              <div id="recoveryScore" class="recovery-score">—</div>
+              <div id="recoveryLabel" class="recovery-label">Tap Sync to read your latest recovery metrics.</div>
+            </div>
+            <p class="card-sub">A simple guide based on the metrics below — not medical advice. Higher HRV and lower resting heart rate generally mean better recovery.</p>
+          </div>
+
+          <div class="stat-grid recovery-grid">
+            <div class="stat-card">
+              <div class="stat-label">❤️ HRV</div>
+              <div class="stat-value" id="recHrv">—</div>
+              <div class="stat-meta">overnight avg</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">💓 Resting HR</div>
+              <div class="stat-value" id="recRhr">—</div>
+              <div class="stat-meta">beats / min</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">🫁 SpO₂</div>
+              <div class="stat-value" id="recSpo2">—</div>
+              <div class="stat-meta">blood oxygen</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">🌬️ Breathing</div>
+              <div class="stat-value" id="recResp">—</div>
+              <div class="stat-meta">breaths / min</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">😴 Sleep</div>
+              <div class="stat-value" id="recSleep">—</div>
+              <div class="stat-meta">last night</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">🌡️ Skin temp</div>
+              <div class="stat-value" id="recTemp">—</div>
+              <div class="stat-meta">vs baseline</div>
             </div>
           </div>
         </div>
@@ -995,6 +1058,7 @@
       <button class="nav-item bottom-tab active" data-tab="today"><span class="nav-icon">☀️</span><span class="bt-label">Today</span></button>
       <button class="nav-item bottom-tab" data-tab="habits"><span class="nav-icon">🎯</span><span class="bt-label">Habits</span></button>
       <button class="nav-item bottom-tab" data-tab="progress"><span class="nav-icon">📈</span><span class="bt-label">Progress</span></button>
+      <button class="nav-item bottom-tab" data-tab="recovery"><span class="nav-icon">🫀</span><span class="bt-label">Recovery</span></button>
       <button class="nav-item bottom-tab" data-tab="report"><span class="nav-icon">📊</span><span class="bt-label">Report</span></button>
       <button class="nav-item bottom-tab" data-tab="schedule"><span class="nav-icon">💼</span><span class="bt-label">Work</span></button>
       <button class="nav-item bottom-tab" data-tab="settings"><span class="nav-icon">⚙️</span><span class="bt-label">Settings</span></button>

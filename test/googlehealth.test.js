@@ -244,5 +244,32 @@ console.log("skin temperature (daily-sleep-temperature-derivations)");
   assert(!T.isTempHabit({ name: "Morning walk" }), "'Morning walk' is not a temp habit");
 }
 
+console.log("recovery: metricNumber (deep plausible-range scan)");
+{
+  // Resting HR nested under a type key, ignoring the sampleTime numbers.
+  const rhr = { name: "x", dataSource: {}, sampleTime: { civilTime: { time: { hours: 6 } } }, dailyRestingHeartRate: { beatsPerMinute: 54 } };
+  assert(T.metricNumber(rhr, 30, 120) === 54, "finds resting HR 54, ignores time fields");
+  // HRV as {value, unit}.
+  assert(T.metricNumber({ dailyHeartRateVariability: { value: 62.4 } }, 3, 300) === 62.4, "finds HRV 62.4");
+  // SpO2 percent.
+  assert(T.metricNumber({ value: { percent: 97 } }, 70, 100) === 97, "finds SpO2 97%");
+  // Out-of-range numbers are skipped (e.g. a year in a date-ish field slips only if named).
+  assert(T.metricNumber({ foo: 5000 }, 30, 120) === null, "ignores out-of-range values");
+  assert(T.metricNumber({}, 30, 120) === null, "empty -> null");
+}
+
+console.log("recovery: recoveryScore (heuristic)");
+{
+  const strong = T.recoveryScore({ sleepHrs: 8, hrvMs: 80, restingHr: 45, spo2: 98, respRate: 14, skinTempC: 0 });
+  assert(strong.score >= 90 && strong.tier === "good", "great metrics -> high score, good tier (" + strong.score + ")");
+  const poor = T.recoveryScore({ sleepHrs: 4, hrvMs: 20, restingHr: 80, spo2: 90, respRate: 22, skinTempC: 1.5 });
+  assert(poor.score <= 25 && poor.tier === "low", "poor metrics -> low score, low tier (" + poor.score + ")");
+  assert(T.recoveryScore(null) === null, "no snapshot -> null");
+  assert(T.recoveryScore({}) === null, "no metrics -> null");
+  // Works with only some metrics present (averages what's available).
+  const partial = T.recoveryScore({ sleepHrs: 7 });
+  assert(partial && partial.score >= 70, "single strong metric still scores (" + (partial && partial.score) + ")");
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
