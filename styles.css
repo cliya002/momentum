@@ -1511,38 +1511,80 @@ body.compact .habit-list { gap: 0.35rem; }
 }
 
 .app-footer { text-align: center; color: var(--text-dim); font-size: 0.75rem; margin-top: 2rem; }
-/* "Made by" credit */
+/* "Made by" signature card */
 .made-by {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.35rem;
-  margin-top: 1.1rem;
-  padding-top: 1.1rem;
-  border-top: 1px solid var(--border);
+  gap: 0.4rem;
+  max-width: 330px;
+  margin: 1.5rem auto 0.4rem;
+  padding: 1.3rem 1.1rem 1.15rem;
+  border-radius: 20px;
+  border: 1.5px solid transparent;
+  /* gradient border via double background */
+  background:
+    linear-gradient(var(--card), var(--card)) padding-box,
+    linear-gradient(120deg, var(--primary), #ec4899 55%, #f59e0b) border-box;
+  box-shadow: 0 10px 34px rgba(99, 102, 241, 0.14);
+  overflow: hidden;
+}
+/* soft glow blob behind the avatar */
+.made-by::before {
+  content: "";
+  position: absolute;
+  top: -40px;
+  left: 50%;
+  width: 160px;
+  height: 160px;
+  transform: translateX(-50%);
+  background: radial-gradient(circle, rgba(236, 72, 153, 0.20), transparent 70%);
+  pointer-events: none;
+}
+.made-by-avatar {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 1.05rem;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: linear-gradient(135deg, var(--primary), #ec4899);
+  box-shadow: 0 6px 18px rgba(236, 72, 153, 0.4);
 }
 .made-by-label {
-  font-size: 0.68rem;
-  letter-spacing: 0.08em;
+  position: relative;
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text-dim);
 }
 .made-by-name {
-  font-size: 1.02rem;
+  position: relative;
+  font-size: 1.08rem;
   font-weight: 800;
   letter-spacing: -0.01em;
-  background: linear-gradient(90deg, var(--primary), #ec4899);
+  background: linear-gradient(90deg, var(--primary), #ec4899, #f59e0b, var(--primary));
+  background-size: 300% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
   color: var(--primary); /* fallback */
+  animation: creditShimmer 7s linear infinite;
 }
+@keyframes creditShimmer { to { background-position: 300% 0; } }
 .made-by-mail {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  margin-top: 0.15rem;
-  padding: 0.4rem 0.8rem;
+  margin-top: 0.25rem;
+  padding: 0.45rem 0.9rem;
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--primary);
@@ -1550,14 +1592,19 @@ body.compact .habit-list { gap: 0.35rem; }
   background: var(--card-soft);
   border: 1px solid var(--border);
   border-radius: 999px;
-  transition: border-color 0.15s ease, transform 0.15s ease, background 0.15s ease;
+  transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
 }
 .made-by-mail:hover {
   border-color: var(--primary);
   transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.25);
 }
 .made-by-mail:active { transform: translateY(0); }
 .made-by-mail .mail-ico { font-size: 0.9rem; -webkit-text-fill-color: initial; }
+@media (prefers-reduced-motion: reduce) {
+  .made-by-name { animation: none; }
+  .made-by-mail { transition: none; }
+}
 
 /* Sync state line */
 .sync-state-line {
