@@ -3117,6 +3117,65 @@
     }
   }
 
+  /* ---- Bulk "Time of day" from reminder times ---- */
+  // The clock summary a habit's reminder times would produce, e.g. "8:00 AM &
+  // 8:00 PM". Empty string when the habit has no valid reminder times. Pure.
+  function timeSummaryFromReminders(habit) {
+    const times = (habit.reminderTimes && habit.reminderTimes.length)
+      ? habit.reminderTimes.filter((t) => /^\d{2}:\d{2}$/.test(t))
+      : (/^\d{2}:\d{2}$/.test(habit.reminderTime) ? [habit.reminderTime] : []);
+    if (!times.length) return "";
+    return times.slice().sort().map(fmtClockLabel).join(" & ");
+  }
+  // Apply that summary to each habit's "Time of day". When overwrite is false,
+  // only fills blanks and refreshes auto-generated clock summaries — custom
+  // labels like "8:00 AM · with meal" or "Morning" are preserved. Returns count.
+  function applyTimeFromReminders(overwrite) {
+    let n = 0;
+    for (const h of state.habits) {
+      const summary = timeSummaryFromReminders(h);
+      if (!summary) continue;
+      const cur = (h.time || "").trim();
+      if (cur === summary) continue;
+      if (overwrite || cur === "" || isAutoTimeSummary(cur)) {
+        h.time = summary;
+        h.updatedAt = Date.now();
+        n++;
+      }
+    }
+    if (n && typeof document !== "undefined") { save(); if (currentView === "habits") renderHabits(); if (currentView === "today") renderToday(); }
+    return n;
+  }
+  // One button: refresh "Time of day" from reminder times for all habits. Fills
+  // blanks/auto summaries silently, then offers to overwrite custom labels too.
+  function syncTimeFromRemindersAll() {
+    let blanks = 0, autos = 0, customDiffs = 0;
+    for (const h of state.habits) {
+      const summary = timeSummaryFromReminders(h);
+      if (!summary) continue;
+      const cur = (h.time || "").trim();
+      if (cur === summary) continue;
+      if (cur === "") blanks++;
+      else if (isAutoTimeSummary(cur)) autos++;
+      else customDiffs++;
+    }
+    const el = getEls().smartFillStatus;
+    if (blanks === 0 && autos === 0 && customDiffs === 0) {
+      showToast("Time of day already matches your reminder times.", "success");
+      if (el) { el.hidden = false; el.className = "sync-status success"; el.textContent = "Time of day already matches your reminders."; }
+      return;
+    }
+    const filled = applyTimeFromReminders(false); // blanks + auto summaries
+    if (customDiffs > 0 && confirm(`${customDiffs} habit${customDiffs === 1 ? " has a custom time label" : "s have custom time labels"} (e.g. "with meal"). Replace ${customDiffs === 1 ? "it" : "them"} with the reminder times too?`)) {
+      const more = applyTimeFromReminders(true);
+      if (el) { el.hidden = false; el.className = "sync-status success"; el.textContent = `Updated Time of day on ${filled + more} habit${filled + more === 1 ? "" : "s"}.`; }
+      showToast(`Updated Time of day on ${filled + more} habit${filled + more === 1 ? "" : "s"}.`, "success");
+      return;
+    }
+    if (el) { el.hidden = false; el.className = "sync-status success"; el.textContent = `Updated Time of day on ${filled} habit${filled === 1 ? "" : "s"}.`; }
+    showToast(`Updated Time of day on ${filled} habit${filled === 1 ? "" : "s"}.`, "success");
+  }
+
   function addSelectedTemplates() {
     if (templateSelected.size === 0) return;
     let count = 0;
@@ -3445,6 +3504,7 @@
       browseTemplatesBtn: $("#browseTemplatesBtn"),
       smartFillBtn: $("#smartFillBtn"),
       fillNotesBtn: $("#fillNotesBtn"),
+      syncTimeBtn: $("#syncTimeBtn"),
       smartFillStatus: $("#smartFillStatus"),
       // template picker modal
       templateModal: $("#templateModal"),
@@ -10134,6 +10194,7 @@
     els.browseTemplatesBtn.addEventListener("click", openTemplateModal);
     els.smartFillBtn.addEventListener("click", smartFillReminders);
     if (els.fillNotesBtn) els.fillNotesBtn.addEventListener("click", syncNotesFromTemplates);
+    if (els.syncTimeBtn) els.syncTimeBtn.addEventListener("click", syncTimeFromRemindersAll);
     els.templateCancelBtn.addEventListener("click", closeTemplateModal);
     els.templateCloseBtn.addEventListener("click", closeTemplateModal);
     els.templateSelectAll.addEventListener("click", templateSelectAll);
@@ -10335,6 +10396,7 @@
       restoreFromTrash, permanentDeleteFromTrash, deleteHabitById,
       fmtClockLabel, formatClock, timeFmt, timeChipLabel, applyBackup,
       clockFromTimeStr, habitFromTemplate, templateNoteMap, fillNotesFromTemplates,
+      timeSummaryFromReminders, applyTimeFromReminders, isAutoTimeSummary,
       isWeekly, weeklyTarget, weeklyDoneCount, weeklyMet, todayStatus, weekAdherencePct,
       dayPartsForHabit, dayPartForTime, isAutoTimeSummary, doseSlots, doseStatus, toggleDose,
       weekKeyOf, computeWeekReview, reviewTargetWeek,
