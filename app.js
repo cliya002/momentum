@@ -5868,12 +5868,26 @@
         pull.textContent = ico;
         pull.title = "Pull " + what + " from Google Health";
         pull.setAttribute("aria-label", "Pull " + what + " for " + habit.name);
-        pull.addEventListener("click", (e) => {
+        pull.addEventListener("click", async (e) => {
           e.stopPropagation();
-          if (kind === "sleep") pullSleepForHabit(habit);
-          else if (kind === "workout") pullWorkoutForHabit(habit);
-          else if (kind === "temp") pullSkinTempForHabit(habit);
-          else pullStepsForHabit(habit);
+          if (ghInFlight) return;
+          const orig = pull.textContent;
+          pull.disabled = true;
+          pull.textContent = "⏳";
+          pull.classList.add("is-loading");
+          pull.setAttribute("aria-busy", "true");
+          try {
+            if (kind === "sleep") await pullSleepForHabit(habit);
+            else if (kind === "workout") await pullWorkoutForHabit(habit);
+            else if (kind === "temp") await pullSkinTempForHabit(habit);
+            else await pullStepsForHabit(habit);
+          } finally {
+            // renderToday() may have replaced this button; restoring is harmless.
+            pull.disabled = false;
+            pull.textContent = orig;
+            pull.classList.remove("is-loading");
+            pull.removeAttribute("aria-busy");
+          }
         });
         controls.appendChild(pull);
       }

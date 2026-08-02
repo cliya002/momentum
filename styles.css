@@ -2519,6 +2519,13 @@ body.hc .btn-secondary { border-color: var(--border); }
 }
 .daypart-done-strip.daypart-collapsed.is-now { border-color: var(--primary); }
 .pull-steps-mini { font-size: 1rem; line-height: 1; }
+/* In-progress state while pulling from Google Health */
+.pull-steps-mini.is-loading { animation: pull-spin 0.9s linear infinite; opacity: 0.85; cursor: default; }
+@keyframes pull-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .pull-steps-mini.is-loading { animation: pull-pulse 1s ease-in-out infinite; }
+  @keyframes pull-pulse { 50% { opacity: 0.45; } }
+}
 .today-sync-gh {
   gap: 0.4rem;
   font-weight: 600;
