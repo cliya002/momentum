@@ -2936,8 +2936,17 @@
       };
       const sum = mapExerciseDataPoints(await ghGet("v4/users/me/dataTypes/exercise/dataPoints", googleTodayFilter()));
       // Real daily steps (separate from workout steps). Non-fatal if it errors.
-      let dailySteps = 0;
-      try { dailySteps = sumStepsDataPoints(await ghGet("v4/users/me/dataTypes/steps/dataPoints", 'steps.interval.civil_start_time >= "' + civilMidnightToday() + '"')); } catch (e) {}
+      let dailySteps = 0, stepsDbg = "";
+      try {
+        const stepsRaw = await ghGet("v4/users/me/dataTypes/steps/dataPoints", 'steps.interval.civil_start_time >= "' + civilMidnightToday() + '"');
+        dailySteps = sumStepsDataPoints(stepsRaw);
+        // If we got points but summed to 0, surface the field shape so the
+        // parser can be fixed to the real response (values are not shown).
+        if (dailySteps === 0 && stepsRaw && Array.isArray(stepsRaw.dataPoints) && stepsRaw.dataPoints.length) {
+          const p0 = stepsRaw.dataPoints[0] || {};
+          stepsDbg = " · steps keys: " + JSON.stringify(Object.keys(p0)) + (p0.steps && typeof p0.steps === "object" ? " / steps.*: " + JSON.stringify(Object.keys(p0.steps)) : "");
+        }
+      } catch (e) { stepsDbg = " · steps err: " + (e.message || e); }
       // Optional: import latest weight into this week's log. Non-fatal.
       let weightMsg = "";
       if (localStorage.getItem(KEYS.ghImportWeight) === "true") {
@@ -2956,8 +2965,9 @@
         const h = state.habits.find((x) => x.id === habitId);
         const today = new Date();
         if (h && h.type === "count") {
-          // Prefer the real daily step total; fall back to "full" if only workouts.
-          const val = dailySteps > 0 ? dailySteps : (wasActive ? (h.target || 1) : 0);
+          // Use the real daily step total, else the workout step count. Never
+          // guess the target — that would falsely complete a step goal.
+          const val = dailySteps > 0 ? dailySteps : (sum.steps > 0 ? sum.steps : 0);
           const cur = completionValue(h.id, today);
           if (val > 0 && val !== cur) {
             const wasDone = isCompleted(h, today);
@@ -2980,7 +2990,7 @@
       else if (sum.steps) bits.push(`${sum.steps.toLocaleString()} workout steps`);
       if (sum.caloriesKcal) bits.push(`${sum.caloriesKcal} kcal`);
       if (sum.count) bits.push(`${sum.count} workout${sum.count === 1 ? "" : "s"}`);
-      showGhStatus(`✓ ${bits.length ? bits.join(" · ") : "No activity logged today yet."}${markedMsg}${weightMsg}`, "success");
+      showGhStatus(`✓ ${bits.length ? bits.join(" · ") : "No activity logged today yet."}${markedMsg}${weightMsg}${stepsDbg}`, "success");
     } catch (e) {
       if (!silent) showGhStatus("Google Health pull failed: " + (e.message || e), "error");
     } finally {
