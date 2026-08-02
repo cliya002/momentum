@@ -3762,6 +3762,35 @@
     try { return Math.round(mapExerciseDataPoints(await ghAllPages("v4/users/me/dataTypes/exercise/dataPoints", googleTodayFilter())).caloriesKcal) || 0; }
     catch (e) { return null; }
   }
+  // Group exercise dataPoints into { dateKey: totalKcal } by session start day.
+  // Pure + tested.
+  function groupExerciseKcalByDay(dataPoints) {
+    const out = {};
+    const pad = (n) => String(n).padStart(2, "0");
+    for (const p of (dataPoints || [])) {
+      const ex = p && p.exercise;
+      if (!ex) continue;
+      const iv = ex.interval || {};
+      let dk = null;
+      if (iv.startTime) { const t = Date.parse(iv.startTime); if (t) dk = dateKey(new Date(t)); }
+      if (!dk && iv.civilStartTime && iv.civilStartTime.date) {
+        const d = iv.civilStartTime.date;
+        if (d.year) dk = `${d.year}-${pad(d.month || 1)}-${pad(d.day || 1)}`;
+      }
+      if (!dk) continue;
+      const kcal = Number(ex.metricsSummary && ex.metricsSummary.caloriesKcal) || 0;
+      out[dk] = Math.round((out[dk] || 0) + kcal);
+    }
+    return out;
+  }
+  // Fetch exercise calories per day for the last `days` days.
+  async function ghExerciseByDay(days) {
+    try {
+      const filter = `exercise.interval.civil_start_time >= "${civilDaysAgo(days || 30)}"`;
+      const raw = await ghAllPages("v4/users/me/dataTypes/exercise/dataPoints", filter);
+      return groupExerciseKcalByDay(raw.dataPoints || []);
+    } catch (e) { return null; }
+  }
   async function ghWorkoutSessions() {
     try { return mapWorkoutSessions(await ghAllPages("v4/users/me/dataTypes/exercise/dataPoints", googleTodayFilter())); }
     catch (e) { return []; }
@@ -10796,6 +10825,14 @@
       </div>`;
     }).join("");
   }
+  // Average daily exercise kcal over the last `n` days (including zero days),
+  // from the stored per-day history — a realistic daily burn for the forecast.
+  function avgExerciseKcal(byDay, n) {
+    const days = n || 14;
+    let sum = 0;
+    for (let i = 0; i < days; i++) sum += Number((byDay || {})[dateKey(addDays(new Date(), -i))]) || 0;
+    return Math.round(sum / days);
+  }
   async function pullExerciseCalories() {
     if (!ghConnected()) { showToast("Connect Google Health in Settings first.", "warn"); return; }
     if (!navigator.onLine) { showToast("You're offline.", "warn"); return; }
@@ -10804,17 +10841,26 @@
     const btn = document.getElementById("calPullBtn");
     if (btn) { btn.disabled = true; btn.textContent = "⏳ Pulling…"; }
     try {
-      const kcal = await ghExerciseKcalToday();
-      if (kcal == null) { showGhBanner("⚡ Couldn't read exercise calories from Google Health."); return; }
-      const c = loadCalorie(); c.exerciseBurn = kcal; c.updatedAt = Date.now(); saveCalorie(c);
-      const exEl = document.getElementById("calExercise"); if (exEl) exEl.value = kcal;
+      const byDay = await ghExerciseByDay(30);
+      if (byDay == null) { showGhBanner("⚡ Couldn't read exercise calories from Google Health."); return; }
+      const c = loadCalorie();
+      c.exerciseByDay = Object.assign({}, c.exerciseByDay, byDay); // save per-day history
+      const avg = avgExerciseKcal(c.exerciseByDay, 14);
+      c.exerciseBurn = avg; // forecast uses the recent daily average
+      c.updatedAt = Date.now();
+      saveCalorie(c);
+      const exEl = document.getElementById("calExercise"); if (exEl) exEl.value = avg;
       renderCalorieForecast();
-      showToast(kcal > 0 ? `⚡ Pulled ${kcal} kcal from today's exercise` : "⚡ No exercise calories logged today yet.", kcal > 0 ? "success" : "warn");
+      const nDays = Object.keys(byDay).length;
+      const today = byDay[dateKey(new Date())] || 0;
+      showToast(nDays > 0
+        ? `⚡ Pulled ${nDays} day${nDays === 1 ? "" : "s"} of exercise · today ${today} kcal · avg ${avg}/day`
+        : "⚡ No exercise calories found in the last 30 days.", nDays > 0 ? "success" : "warn");
     } catch (e) {
       showToast("Exercise pull failed: " + (e.message || e), "error");
     } finally {
       ghInFlight = false;
-      if (btn) { btn.disabled = false; btn.textContent = "⚡ Pull today's exercise"; }
+      if (btn) { btn.disabled = false; btn.textContent = "⚡ Pull exercise"; }
     }
   }
   function onCalorieInput() {
@@ -12517,7 +12563,7 @@
       isWorkoutHabit, isSleepHabit, isTempHabit, latestSkinTempDeltaC, fmtSkinTemp,
       metricNumber, dailyPointMs, recoveryScore, seriesBaseline, recoveryTrend,
       isRecoveryHabit, isRhrHabit, isHrvHabit, isSpo2Habit, buildAllCsv,
-      calorieForecast, estimateMaintenanceKcal, mifflinBmr,
+      calorieForecast, estimateMaintenanceKcal, mifflinBmr, groupExerciseKcalByDay,
       getState: () => state, setState: (s) => { state = s; },
     };
   }

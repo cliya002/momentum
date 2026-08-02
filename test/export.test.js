@@ -100,5 +100,27 @@ console.log("calorieForecast (dynamic simulation + Mifflin)");
   assert(Math.round(T.mifflinBmr(100, 180, 30, "male")) === 1980, "mifflinBmr(100kg,180cm,30,male)=1980");
 }
 
+console.log("groupExerciseKcalByDay (per-day exercise calories)");
+{
+  const dps = [
+    { exercise: { interval: { startTime: "2026-08-01T13:00:00Z" }, metricsSummary: { caloriesKcal: 320 } } },
+    { exercise: { interval: { startTime: "2026-08-01T18:30:00Z" }, metricsSummary: { caloriesKcal: 180 } } }, // same day → sums
+    { exercise: { interval: { startTime: "2026-08-02T07:00:00Z" }, metricsSummary: { caloriesKcal: 250 } } },
+    { exercise: { metricsSummary: { caloriesKcal: 99 } } }, // no interval → skipped
+    { notExercise: true },
+  ];
+  const by = T.groupExerciseKcalByDay(dps);
+  // Total is timezone-independent (day bucketing uses local time).
+  const total = Object.values(by).reduce((a, b) => a + b, 0);
+  assert(total === 750, "sums only valid sessions (320+180+250=750, skips no-interval/non-exercise) got " + total);
+  assert(Object.keys(by).length >= 1 && Object.keys(by).length <= 3, "buckets sessions by day");
+  // civilStartTime.date fallback when startTime is absent (tz-independent).
+  const by2 = T.groupExerciseKcalByDay([
+    { exercise: { interval: { civilStartTime: { date: { year: 2026, month: 8, day: 3 } } }, metricsSummary: { caloriesKcal: 410 } } },
+  ]);
+  assert(by2["2026-08-03"] === 410, "uses civilStartTime.date fallback");
+  assert(Object.keys(T.groupExerciseKcalByDay([])).length === 0, "empty → {}");
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
