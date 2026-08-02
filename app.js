@@ -3189,28 +3189,22 @@
     return state.habits.find((h) => !h.archived && h.id !== excludeId && h.type === "count" && /step/i.test(h.name || ""));
   }
   const SLEEP_MET_HRS = 6.5; // slept MORE than this → the sleep habit counts as done
-  // Apply sleep hours to a habit. The check is gated ONLY by the 6.5h threshold,
-  // never by the count target — so a sleep count habit with a small target can't
-  // auto-complete from a short night.
-  //   met (>6.5h)     → mark done (count: fill to target; yes/no: tick).
-  //   not met (≤6.5h) → never done. Count: show the hours only when they stay
-  //                     below target; if a low target would be crossed, clear the
-  //                     day so it isn't falsely checked. yes/no: leave unchecked.
+  // Apply sleep hours to a habit. The outcome is gated ONLY by the 6.5h
+  // threshold (never by a count target):
+  //   met (>6.5h)     → mark DONE (count: fill to target; yes/no: tick).
+  //   not met (≤6.5h) → mark explicitly NOT DONE for today (the ✕ state), so a
+  //                     short night shows as a miss rather than being left blank.
   // Returns whether the habit ended up DONE.
   function applySleepToHabit(habit, hrs, date) {
     if (hrs <= 0) return isCompleted(habit, date);
-    const met = hrs > SLEEP_MET_HRS;
-    if (habit.type === "count") {
+    if (hrs > SLEEP_MET_HRS) {
       const wasDone = isCompleted(habit, date);
-      const target = habit.target || 1;
-      const val = met ? Math.max(hrs, target) : (hrs < target ? hrs : 0);
-      setCompletionValue(habit.id, date, val);
-      const done = isCompleted(habit, date);
-      if (done && !wasDone) maybeCelebrate(habit, date);
-      return done;
+      setCompletionValue(habit.id, date, habit.type === "count" ? Math.max(hrs, habit.target || 1) : 1);
+      if (!wasDone) maybeCelebrate(habit, date);
+      return true;
     }
-    if (met && !isCompleted(habit, date)) { setCompletionValue(habit.id, date, 1); maybeCelebrate(habit, date); }
-    return met;
+    setCompletionValue(habit.id, date, SKIPPED); // ≤6.5h → explicitly not done
+    return false;
   }
   // Apply a matched workout session to a habit (count → active minutes; yes/no → done).
   function applyWorkoutToHabit(habit, match, date) {
@@ -3352,7 +3346,7 @@
       showToast(
         done
           ? `😴 Slept ${hrs}h — checked ✓`
-          : `😴 Slept ${hrs}h — under ${SLEEP_MET_HRS}h, not checked`,
+          : `😴 Slept ${hrs}h — under ${SLEEP_MET_HRS}h, marked not done ✕`,
         done ? "success" : "warn");
       localStorage.setItem(KEYS.ghLastSync, String(Date.now()));
       renderToday();
