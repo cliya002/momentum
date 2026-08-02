@@ -3199,7 +3199,7 @@
     } finally {
       ghInFlight = false;
       const b = document.getElementById("todaySyncGhBtn");
-      if (b) { b.disabled = false; b.textContent = "🔄 Sync health"; }
+      if (b) { b.disabled = false; b.textContent = "🔄 Sync"; }
     }
   }
   // Pull last night's sleep into a sleep habit. Fills a count habit with hours;
