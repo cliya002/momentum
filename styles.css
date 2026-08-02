@@ -364,7 +364,8 @@ a { color: var(--primary); }
 .page-actions .btn-primary,
 .page-actions .btn-secondary,
 .page-actions .filter-select,
-.page-actions .pill {
+.page-actions .pill,
+.page-actions .today-sync-gh {
   height: 40px;
   display: inline-flex;
   align-items: center;
@@ -373,7 +374,8 @@ a { color: var(--primary); }
 .page-actions .pill { padding: 0 0.9rem; }
 .page-actions .filter-select { padding: 0 2rem 0 0.9rem; }
 .page-actions .btn-primary,
-.page-actions .btn-secondary { padding: 0 1rem; }
+.page-actions .btn-secondary,
+.page-actions .today-sync-gh { padding: 0 1rem; }
 .page-actions .overflow-btn {
   width: 40px;
   padding: 0;
@@ -2518,17 +2520,11 @@ body.hc .btn-secondary { border-color: var(--border); }
 .daypart-done-strip.daypart-collapsed.is-now { border-color: var(--primary); }
 .pull-steps-mini { font-size: 1rem; line-height: 1; }
 .today-sync-gh {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.4rem 0.8rem;
-  font-size: 0.82rem;
+  gap: 0.4rem;
   font-weight: 600;
   color: var(--primary);
   background: var(--primary-soft);
   border: 1px solid var(--primary);
-  border-radius: 999px;
-  line-height: 1;
   cursor: pointer;
   white-space: nowrap;
   transition: transform 0.12s ease, box-shadow 0.12s ease;
