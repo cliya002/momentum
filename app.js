@@ -3189,17 +3189,22 @@
     return state.habits.find((h) => !h.archived && h.id !== excludeId && h.type === "count" && /step/i.test(h.name || ""));
   }
   const SLEEP_MET_HRS = 6.5; // slept MORE than this → the sleep habit counts as done
-  // Apply sleep hours to a habit. Only "enough" sleep (>6.5h) checks the habit.
-  //   count  → always record the real hours so the card shows them; mark done
-  //            only when you slept enough (fills to target so it counts).
-  //   yes/no → checked only when you slept enough; left unchecked otherwise.
+  // Apply sleep hours to a habit. The check is gated ONLY by the 6.5h threshold,
+  // never by the count target — so a sleep count habit with a small target can't
+  // auto-complete from a short night.
+  //   met (>6.5h)     → mark done (count: fill to target; yes/no: tick).
+  //   not met (≤6.5h) → never done. Count: show the hours only when they stay
+  //                     below target; if a low target would be crossed, clear the
+  //                     day so it isn't falsely checked. yes/no: leave unchecked.
   // Returns whether the habit ended up DONE.
   function applySleepToHabit(habit, hrs, date) {
     if (hrs <= 0) return isCompleted(habit, date);
     const met = hrs > SLEEP_MET_HRS;
     if (habit.type === "count") {
       const wasDone = isCompleted(habit, date);
-      setCompletionValue(habit.id, date, met ? Math.max(hrs, habit.target || 1) : hrs);
+      const target = habit.target || 1;
+      const val = met ? Math.max(hrs, target) : (hrs < target ? hrs : 0);
+      setCompletionValue(habit.id, date, val);
       const done = isCompleted(habit, date);
       if (done && !wasDone) maybeCelebrate(habit, date);
       return done;
