@@ -3432,8 +3432,10 @@
     }
     return 0;
   }
+  let recoveryDbg = {};
   // Latest value of a daily metric: try filter variants, fall back to unfiltered.
-  async function ghDailyMetric(dataType, member, lo, hi) {
+  // Captures the newest raw dataPoint under `dbgKey` for diagnosing field shapes.
+  async function ghDailyMetric(dataType, member, lo, hi, dbgKey) {
     const path = `v4/users/me/dataTypes/${dataType}/dataPoints`;
     const utc = isoHoursAgo(24 * 10);
     const cands = [`${member}.start_time >= "${utc}"`, `${member}.sample_time >= "${utc}"`, null];
@@ -3441,26 +3443,28 @@
       try {
         const raw = await ghAllPages(path, f, 5);
         const dps = raw.dataPoints || [];
-        let best = null, bestTs = -1;
+        let best = null, bestValTs = -1, newest = null, newestTs = -1;
         for (const p of dps) {
-          const v = metricNumber(p, lo, hi);
-          if (v == null) continue;
           const ts = dailyPointMs(p);
-          if (ts >= bestTs) { bestTs = ts; best = v; }
+          if (ts >= newestTs) { newestTs = ts; newest = p; }
+          const v = metricNumber(p, lo, hi);
+          if (v != null && ts >= bestValTs) { bestValTs = ts; best = v; }
         }
+        if (dbgKey) recoveryDbg[dbgKey] = { count: dps.length, value: best, newest: newest || dps[0] || null };
         return best;
       } catch (e) {
         const msg = String((e && e.message) || e);
+        if (dbgKey) recoveryDbg[dbgKey] = { error: msg };
         if (/INVALID_DATA_POINT_FILTER|filter/i.test(msg)) continue; // bad filter → try next
         return null; // other error (e.g. scope) → stop
       }
     }
     return null;
   }
-  function ghRestingHr() { return ghDailyMetric("daily-resting-heart-rate", "daily_resting_heart_rate", 30, 120); }
-  function ghHrvMs()     { return ghDailyMetric("daily-heart-rate-variability", "daily_heart_rate_variability", 3, 300); }
-  function ghSpo2()      { return ghDailyMetric("daily-oxygen-saturation", "daily_oxygen_saturation", 70, 100); }
-  function ghRespRate()  { return ghDailyMetric("daily-respiratory-rate", "daily_respiratory_rate", 4, 45); }
+  function ghRestingHr() { return ghDailyMetric("daily-resting-heart-rate", "daily_resting_heart_rate", 30, 120, "restingHr"); }
+  function ghHrvMs()     { return ghDailyMetric("daily-heart-rate-variability", "daily_heart_rate_variability", 3, 300, "hrvMs"); }
+  function ghSpo2()      { return ghDailyMetric("daily-oxygen-saturation", "daily_oxygen_saturation", 70, 100, "spo2"); }
+  function ghRespRate()  { return ghDailyMetric("daily-respiratory-rate", "daily_respiratory_rate", 4, 45, "respRate"); }
   // Turn a recovery snapshot into a 0-100 score + label. Averages whatever
   // sub-scores are available (each metric optional). Transparent heuristic, not
   // medical advice. Pure + tested.
@@ -3494,6 +3498,7 @@
     ghInFlight = true;
     const btn = document.getElementById("recoverySyncBtn");
     if (btn) { btn.disabled = true; btn.textContent = "⏳ Syncing…"; }
+    recoveryDbg = {};
     try {
       const [hrvMs, restingHr, spo2, respRate, sleepHrs, skinTempC] = await Promise.all([
         ghHrvMs(), ghRestingHr(), ghSpo2(), ghRespRate(), ghSleepHours(), ghSkinTempC(),
@@ -3543,6 +3548,18 @@
       if (labelEl) labelEl.textContent = connected ? "Tap Sync to read your latest recovery metrics." : "Connect Google Health in Settings to see recovery.";
     }
     if (updEl) updEl.textContent = s && s.updatedAt ? "Updated " + new Date(s.updatedAt).toLocaleDateString() : "";
+    // Debug: show the raw newest dataPoint per daily metric (populated on Sync).
+    const dwrap = document.getElementById("recoveryDebugWrap");
+    const dpre = document.getElementById("recoveryDebug");
+    const hasDbg = recoveryDbg && Object.keys(recoveryDbg).length > 0;
+    if (dwrap) dwrap.hidden = !hasDbg;
+    if (dpre && hasDbg) {
+      let out = "";
+      for (const k of Object.keys(recoveryDbg)) {
+        out += k + ": " + JSON.stringify(recoveryDbg[k]).slice(0, 500) + "\n\n";
+      }
+      dpre.textContent = out.trim();
+    }
   }
 
   let ghWeightErr = "", ghWeightDbg = "";
