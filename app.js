@@ -2938,6 +2938,13 @@
     const pad = (n) => String(n).padStart(2, "0");
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(hour)}:00:00`;
   }
+  // RFC3339 UTC timestamp N hours ago (no millis), e.g. "2026-02-01T12:00:00Z".
+  function isoHoursAgo(h) {
+    return new Date(Date.now() - Math.abs(h || 0) * 3600 * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
+  }
+  // Sleep uses UTC start_time (civil_start_time isn't a valid member for it).
+  // 40h back reliably captures last night's session at any time of day.
+  function sleepFilter() { return `sleep.interval.start_time >= "${isoHoursAgo(40)}"`; }
 
   async function connectGoogleHealth() {
     const base = ghWorkerBase();
@@ -3150,7 +3157,7 @@
   }
   async function ghSleepHours() {
     ghSleepErr = "";
-    try { return mapSleepHours(await ghAllPages("v4/users/me/dataTypes/sleep/dataPoints", `sleep.interval.civil_start_time >= "${civilDayHour(1, 12)}"`)); }
+    try { return mapSleepHours(await ghAllPages("v4/users/me/dataTypes/sleep/dataPoints", sleepFilter())); }
     catch (e) { ghSleepErr = String((e && e.message) || e); return 0; }
   }
   async function ghWorkoutSessions() {
@@ -3225,7 +3232,7 @@
     try {
       let hrs = 0, dbg = "";
       try {
-        const raw = await ghAllPages("v4/users/me/dataTypes/sleep/dataPoints", `sleep.interval.civil_start_time >= "${civilDayHour(1, 12)}"`);
+        const raw = await ghAllPages("v4/users/me/dataTypes/sleep/dataPoints", sleepFilter());
         hrs = mapSleepHours(raw);
         if (hrs === 0 && raw && Array.isArray(raw.dataPoints) && raw.dataPoints.length) {
           const p0 = raw.dataPoints[0] || {};
