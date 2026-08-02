@@ -329,5 +329,15 @@ console.log("recovery: recoveryTrend (per-day scores vs trailing baseline)");
   delete global.localStorage;
 }
 
+console.log("recovery: habit connection matchers");
+{
+  assert(T.isRecoveryHabit({ name: "Recovery" }) && T.isRecoveryHabit({ name: "Readiness" }), "matches Recovery / Readiness");
+  assert(!T.isRecoveryHabit({ name: "Morning walk" }), "does not match unrelated habits");
+  assert(T.isRhrHabit({ name: "Resting heart rate" }) && T.isRhrHabit({ name: "RHR" }), "matches resting HR habit names");
+  assert(T.isHrvHabit({ name: "HRV" }) && T.isHrvHabit({ name: "Heart rate variability" }), "matches HRV habit names");
+  assert(T.isSpo2Habit({ name: "SpO2" }) && T.isSpo2Habit({ name: "Blood oxygen" }), "matches SpO2 habit names");
+  assert(!T.isRhrHabit({ name: "Heart rate variability" }), "RHR matcher doesn't grab HRV");
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -3078,6 +3078,11 @@
   function isSleepHabit(habit) { return /\bsleep\b/i.test((habit && habit.name) || ""); }
   // A habit that tracks skin/body temperature (Fitbit's nightly skin-temp value).
   function isTempHabit(habit) { return /temperature|skin temp|body temp|\btemp\b/i.test((habit && habit.name) || ""); }
+  // Habits that map to recovery metrics (filled/checked on a Recovery sync).
+  function isRecoveryHabit(habit) { return /\brecovery\b|readiness/i.test((habit && habit.name) || ""); }
+  function isRhrHabit(habit) { return /resting\s*(heart\s*rate|hr)|\brhr\b/i.test((habit && habit.name) || ""); }
+  function isHrvHabit(habit) { return /\bhrv\b|heart\s*rate\s*variability/i.test((habit && habit.name) || ""); }
+  function isSpo2Habit(habit) { return /\bspo2\b|oxygen\s*saturation|blood\s*oxygen/i.test((habit && habit.name) || ""); }
   // A habit that maps to a logged workout (generic or a specific activity).
   function isWorkoutHabit(habit) {
     return /\b(workout|exercise|gym|training|cardio|treadmill|run(ning)?|jog|walk|hike|hiking|bike|biking|cycl\w*|spin|swim\w*|elliptical|row(ing)?|yoga|pilates|weights?|strength|hiit|aerobic|stair\w*|stepmill|stepper)\b/i.test((habit && habit.name) || "");
@@ -3566,6 +3571,38 @@
   }
   function loadRecovery() { try { return JSON.parse(localStorage.getItem(KEYS.recovery)) || { days: {} }; } catch (e) { return { days: {} }; } }
   function saveRecovery(r) { localStorage.setItem(KEYS.recovery, JSON.stringify(r)); }
+  // Push recovery values into matching habits. A "Recovery"/"Readiness" habit
+  // gets the 0-100 score (count) or is checked on a green day (yes/no); RHR/HRV/
+  // SpO2 count habits get today's value. Returns short status messages.
+  const RECOVERY_GREEN = 67;
+  function applyRecoveryToHabits(cur, rs) {
+    const today = new Date();
+    const msgs = [];
+    if (!cur) return msgs;
+    const active = state.habits.filter((h) => !h.archived && isHabitActiveOn(h, today));
+    const fill = (h, val) => {
+      if (h.type === "count") {
+        const was = isCompleted(h, today);
+        setCompletionValue(h.id, today, val);
+        if (!was && isCompleted(h, today)) maybeCelebrate(h, today);
+      } else if (!isCompleted(h, today)) { setCompletionValue(h.id, today, 1); maybeCelebrate(h, today); }
+    };
+    for (const h of active) {
+      if (isRecoveryHabit(h) && rs) {
+        if (h.type === "count") {
+          const was = isCompleted(h, today);
+          setCompletionValue(h.id, today, rs.score);
+          if (!was && isCompleted(h, today)) maybeCelebrate(h, today);
+        } else if (rs.score >= RECOVERY_GREEN && !isCompleted(h, today)) {
+          setCompletionValue(h.id, today, 1); maybeCelebrate(h, today);
+        }
+        msgs.push(`🫀 ${h.name} ${rs.score}`);
+      } else if (isRhrHabit(h) && cur.restingHr != null) { fill(h, cur.restingHr); msgs.push(`💓 ${h.name} ${cur.restingHr}`); }
+      else if (isHrvHabit(h) && cur.hrvMs != null) { fill(h, cur.hrvMs); msgs.push(`❤️ ${h.name} ${cur.hrvMs}`); }
+      else if (isSpo2Habit(h) && cur.spo2 != null) { fill(h, cur.spo2); msgs.push(`🫁 ${h.name} ${cur.spo2}`); }
+    }
+    return msgs;
+  }
   async function syncRecovery() {
     if (!ghConnected()) { showToast("Connect Google Health in Settings first.", "warn"); return; }
     if (!navigator.onLine) { showToast("You're offline.", "warn"); return; }
@@ -3596,8 +3633,12 @@
       r.current = current; r.updatedAt = Date.now();
       saveRecovery(r);
       renderRecovery();
-      if (!any) showGhBanner("🫀 No recovery data found yet. Recovery metrics are measured overnight — sync your watch or Fitbit app, then try again.");
-      else showToast("🫀 Recovery synced", "success");
+      if (!any) { showGhBanner("🫀 No recovery data found yet. Recovery metrics are measured overnight — sync your watch or Fitbit app, then try again."); return; }
+      // Push values into any connected habits (Recovery / RHR / HRV / SpO2).
+      const rs = recoveryScore(current, { hrvMs: current.baseHrv, restingHr: current.baseRhr, respRate: current.baseResp });
+      const habitMsgs = applyRecoveryToHabits(current, rs);
+      if (habitMsgs.length) renderToday();
+      showToast(habitMsgs.length ? `🫀 Recovery synced · updated ${habitMsgs.length} habit${habitMsgs.length === 1 ? "" : "s"}` : "🫀 Recovery synced", "success");
     } catch (e) {
       showToast("Recovery sync failed: " + (e.message || e), "error");
     } finally {
@@ -12243,6 +12284,7 @@
       recentSleepHours, sleepSessionSeconds, sleepSessionEndMs, sleepSessionStartMs, ghScopeHint,
       isWorkoutHabit, isSleepHabit, isTempHabit, latestSkinTempDeltaC, fmtSkinTemp,
       metricNumber, dailyPointMs, recoveryScore, seriesBaseline, recoveryTrend,
+      isRecoveryHabit, isRhrHabit, isHrvHabit, isSpo2Habit,
       getState: () => state, setState: (s) => { state = s; },
     };
   }
