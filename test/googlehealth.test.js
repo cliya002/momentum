@@ -79,6 +79,13 @@ console.log("latestWeightKg (tolerant + safe)");
   assert(T.latestWeightKg({ dataPoints: [{ value: { kilograms: 72 }, sampleTime: "2026-01-01T00:00:00Z" }] }) === 72, "handles value.kilograms shape");
   assert(T.latestWeightKg({}) === null, "no data → null (safe no-op)");
   assert(T.latestWeightKg({ dataPoints: [{ weight: { kilograms: 9999 } }] }) === null, "implausible value ignored");
+  // Real-world shapes seen from the API (keys: name/dataSource/weight).
+  assert(T.latestWeightKg({ dataPoints: [{ name: "x", dataSource: {}, weight: { value: 79.4 } }] }) === 79.4, "reads weight.value (no unit) as kg");
+  assert(T.latestWeightKg({ dataPoints: [{ weight: { value: 175, unit: "POUNDS" } }] }) === 79.4, "converts POUNDS to kg (175lb≈79.4kg)");
+  assert(T.latestWeightKg({ dataPoints: [{ weight: { value: 80200, unit: "GRAMS" } }] }) === 80.2, "converts GRAMS to kg");
+  assert(T.latestWeightKg({ dataPoints: [{ weight: { magnitudeKilograms: 77.7 } }] }) === 77.7, "reads magnitudeKilograms");
+  assert(T.latestWeightKg({ dataPoints: [{ weight: { value: { kilograms: 73.5 } } }] }) === 73.5, "reads nested value.kilograms");
+  assert(T.latestWeightKg({ dataPoints: [{ weight: 84.1 }] }) === 84.1, "reads a plain numeric weight");
 }
 
 console.log("parseDurationSeconds");

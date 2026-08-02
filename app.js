@@ -2879,16 +2879,47 @@
     let bestKg = null, bestTs = -1;
     for (const p of pts) {
       if (!p) continue;
-      const w = p.weight || p.value || {};
-      const kgCand = [w.kilograms, w.kg, w.value && w.value.kilograms, w.value, (typeof w === "number" ? w : undefined), p.kilograms];
-      let kg = null;
-      for (const c of kgCand) { const n = Number(c); if (Number.isFinite(n) && n > 0 && n < 700) { kg = n; break; } }
+      const w = p.weight != null ? p.weight : (p.value != null ? p.value : p);
+      const kg = extractKg(w);
       if (kg == null) continue;
-      const t = (p.sampleTime || (w.interval && w.interval.startTime) || p.startTime || "");
+      const t = (p.sampleTime || (p.weight && p.weight.interval && p.weight.interval.startTime)
+        || p.startTime || (p.interval && p.interval.startTime) || "");
       const ts = t ? Date.parse(t) : 0;
       if (ts >= bestTs) { bestTs = ts; bestKg = kg; }
     }
     return bestKg;
+  }
+  // A plausible human weight in kg (rounded 1dp), else null.
+  function plausibleKg(n) { return (Number.isFinite(n) && n > 2 && n < 500) ? Math.round(n * 10) / 10 : null; }
+  // Pull a weight in kg out of an unknown value shape. Handles a plain number,
+  // {kilograms|kg|value|magnitude…}, a {value, unit} mass (KILOGRAMS/GRAMS/
+  // POUNDS), and one level of nesting. Returns kg or null.
+  function extractKg(w) {
+    if (w == null) return null;
+    if (typeof w === "number") return plausibleKg(w);
+    if (typeof w !== "object") return plausibleKg(Number(w));
+    const unit = String(w.unit || w.units || w.unitOfMeasure || "").toUpperCase();
+    const conv = (n) => {
+      if (!Number.isFinite(n)) return null;
+      if (/POUND|\bLB/.test(unit)) return plausibleKg(n * 0.453592);
+      if (/GRAM|\bG\b/.test(unit) && !/KILO/.test(unit)) return plausibleKg(n / 1000);
+      return plausibleKg(n);
+    };
+    const fields = ["kilograms", "kilogram", "kg", "magnitudeKilograms", "weightKilograms",
+      "value", "magnitude", "quantity", "amount", "weight"];
+    for (const f of fields) {
+      if (w[f] == null) continue;
+      if (typeof w[f] === "object") { const nested = extractKg(w[f]); if (nested != null) return nested; continue; }
+      const kg = /kilo|kg/i.test(f) ? plausibleKg(Number(w[f])) : conv(Number(w[f]));
+      if (kg != null) return kg;
+    }
+    // Last resort: any finite number in a plausible kg range.
+    for (const k of Object.keys(w)) {
+      if (typeof w[k] === "object") continue;
+      const kg = conv(Number(w[k]));
+      if (kg != null) return kg;
+    }
+    return null;
   }
   // Most recent skin-temperature reading (°C variation from the user's baseline)
   // from the "daily-sleep-temperature-derivations" data type. The exact field
@@ -3374,7 +3405,10 @@
         ghWeightErr = ""; // this request succeeded — don't leak a prior filter error
         const dps = (raw && raw.dataPoints) || [];
         const kg = latestWeightKg(raw);
-        if (kg == null && dps.length) ghWeightDbg = " · weight keys: " + JSON.stringify(Object.keys(dps[0] || {}));
+        if (kg == null && dps.length) {
+          const w = dps[0] && dps[0].weight;
+          ghWeightDbg = " · weight: " + JSON.stringify(w != null ? w : dps[0]).slice(0, 200);
+        }
         return kg;
       } catch (e) {
         const msg = String((e && e.message) || e);
