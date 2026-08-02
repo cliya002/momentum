@@ -2952,9 +2952,34 @@
     if (kind === "evening") return `steps.interval.civil_start_time >= "${noon}" AND steps.interval.civil_start_time < "${end}"`;
     return `steps.interval.civil_start_time >= "${mid}"`;
   }
+  async function ghStepsFor(kind) {
+    let n = 0;
+    try { n = sumStepsDataPoints(await ghApiGet("v4/users/me/dataTypes/steps/dataPoints", stepsFilterFor(kind))); } catch (e) {}
+    if (n === 0 && kind === "allday") { // fall back to the day's workout steps
+      try { n = mapExerciseDataPoints(await ghApiGet("v4/users/me/dataTypes/exercise/dataPoints", googleTodayFilter())).steps; } catch (e) {}
+    }
+    return n;
+  }
+  // Apply a step count to a habit: fill a count habit (never the target), or
+  // mark a yes/no habit done. Pushes a short summary into `msgs`.
+  function applyStepsToHabit(habit, steps, date, msgs) {
+    if (steps <= 0) return;
+    if (habit.type === "count") {
+      const wasDone = isCompleted(habit, date);
+      setCompletionValue(habit.id, date, steps);
+      if (!wasDone && steps >= (habit.target || 1)) maybeCelebrate(habit, date);
+      msgs.push(`${habit.icon || "👟"} ${habit.name}: ${steps.toLocaleString()}/${fmtValue(habit, habit.target)}`);
+    } else {
+      if (!isCompleted(habit, date)) { setCompletionValue(habit.id, date, 1); maybeCelebrate(habit, date); }
+      msgs.push(`✓ ${habit.icon || "🚶"} ${habit.name}`);
+    }
+  }
+  // The all-day steps goal habit (a count habit with "step" in the name).
+  function findStepsGoalHabit(excludeId) {
+    return state.habits.find((h) => !h.archived && h.id !== excludeId && h.type === "count" && /step/i.test(h.name || ""));
+  }
   // Pull steps for one habit card (Morning walk / Evening walk / steps goal).
-  // Fills a count habit with the real step count; marks a yes/no walk done.
-  // Never fills to the target as a guess.
+  // Pulling a walk also refreshes the all-day steps goal with the day's total.
   async function pullStepsForHabit(habit) {
     const kind = stepHabitKind(habit);
     if (!kind) return;
@@ -2963,24 +2988,22 @@
     if (ghInFlight) return;
     ghInFlight = true;
     try {
-      let steps = 0;
-      try { steps = sumStepsDataPoints(await ghApiGet("v4/users/me/dataTypes/steps/dataPoints", stepsFilterFor(kind))); } catch (e) {}
-      if (steps === 0 && kind === "allday") { // fall back to workout steps for the day
-        try { steps = mapExerciseDataPoints(await ghApiGet("v4/users/me/dataTypes/exercise/dataPoints", googleTodayFilter())).steps; } catch (e) {}
-      }
       const today = new Date();
-      if (steps <= 0) { showToast(`No ${kind === "allday" ? "" : kind + " "}steps logged yet.`, "warn"); return; }
-      if (habit.type === "count") {
-        const wasDone = isCompleted(habit, today);
-        setCompletionValue(habit.id, today, steps);
-        if (!wasDone && steps >= (habit.target || 1)) maybeCelebrate(habit, today);
-        showToast(`${habit.icon || "👟"} ${habit.name}: ${steps.toLocaleString()}/${fmtValue(habit, habit.target)}`, "success");
-      } else {
-        if (!isCompleted(habit, today)) { setCompletionValue(habit.id, today, 1); maybeCelebrate(habit, today); }
-        showToast(`✓ ${habit.icon || "🚶"} ${habit.name} (${steps.toLocaleString()} steps)`, "success");
+      const msgs = [];
+      const steps = await ghStepsFor(kind);
+      if (steps > 0) applyStepsToHabit(habit, steps, today, msgs);
+      else msgs.push(`No ${kind === "allday" ? "" : kind + " "}steps yet`);
+      // A walk pull also updates the all-day steps goal with the day's total.
+      if (kind === "morning" || kind === "evening") {
+        const goal = findStepsGoalHabit(habit.id);
+        if (goal) {
+          const daily = await ghStepsFor("allday");
+          if (daily > 0) applyStepsToHabit(goal, daily, today, msgs);
+        }
       }
       localStorage.setItem(KEYS.ghLastSync, String(Date.now()));
       renderToday();
+      showToast(msgs.join(" · ") || "No steps logged yet today.", "success");
     } catch (e) {
       showToast("Steps pull failed: " + (e.message || e), "error");
     } finally {
