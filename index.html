@@ -981,24 +981,23 @@
           </label>
         </div>
 
-        <label>
-          Time of day <span class="hint">(auto-fills from your reminder times — or type a label like "with meal")</span>
-          <input id="habitTime" type="text" maxlength="60" placeholder="e.g. 8:00 AM · with meal 1" list="timeSuggestions" />
-          <datalist id="timeSuggestions">
-            <option value="6:30 AM"></option>
-            <option value="7:30 AM"></option>
-            <option value="8:00 AM · with meal 1"></option>
-            <option value="10:30 AM · alone"></option>
-            <option value="Morning"></option>
-            <option value="All day"></option>
-            <option value="Afternoon"></option>
-            <option value="5:30 PM"></option>
-            <option value="6:00 PM · post-workout"></option>
-            <option value="Evening"></option>
-            <option value="7:30 PM · wind-down"></option>
-            <option value="10:30 PM"></option>
-          </datalist>
-        </label>
+        <label for="habitTime" class="modal-caption">Time of day</label>
+        <p class="field-help">Auto-fills from your reminder times — or type a label like "with meal".</p>
+        <input id="habitTime" type="text" maxlength="60" placeholder="e.g. 8:00 AM · with meal 1" list="timeSuggestions" />
+        <datalist id="timeSuggestions">
+          <option value="6:30 AM"></option>
+          <option value="7:30 AM"></option>
+          <option value="8:00 AM · with meal 1"></option>
+          <option value="10:30 AM · alone"></option>
+          <option value="Morning"></option>
+          <option value="All day"></option>
+          <option value="Afternoon"></option>
+          <option value="5:30 PM"></option>
+          <option value="6:00 PM · post-workout"></option>
+          <option value="Evening"></option>
+          <option value="7:30 PM · wind-down"></option>
+          <option value="10:30 PM"></option>
+        </datalist>
 
         <div class="modal-caption">
           Reminders <span class="hint">(optional — needs notifications on)</span>

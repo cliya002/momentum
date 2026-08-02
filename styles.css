@@ -1894,6 +1894,19 @@ body.hc .btn-secondary { border-color: var(--border); }
 }
 .modal input, .modal select { margin-top: 0.35rem; }
 .hint { display: block; margin-top: 0.35rem; font-size: 0.75rem; color: var(--text-dim); }
+/* A label sitting directly above its own help box needs less gap. */
+.modal label.modal-caption { margin-bottom: 0.4rem; }
+/* Field guidance shown in its own subtle box, separate from the label. */
+.field-help {
+  margin: 0 0 0.55rem;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--text-dim);
+  background: var(--card-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
 
 .type-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.35rem; }
 .type-btn {
