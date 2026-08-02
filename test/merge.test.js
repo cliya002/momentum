@@ -168,5 +168,33 @@ console.log("Scenario 11: same habit, same day, conflicting values → newer sid
   assert(m.completions[today].h1 === 5, "newer value wins the per-habit conflict");
 }
 
+// ---------------------------------------------------------------
+console.log("Scenario 12: delete-to-trash isn't resurrected by a stale remote copy");
+{
+  // Device A moved habit h1 to Trash: removed from habits, tombstone written
+  // (same ts as trashedAt), trash entry kept. Device B (stale) still has it active.
+  const A = defaultState(); const B = defaultState();
+  const ts = 5000;
+  A.habits = []; // removed from active on A
+  A.deletions.habits = { h1: ts }; // tombstone at delete time
+  A.trash = [{ habit: { id: "h1", name: "Old", updatedAt: 3000 }, completions: {}, trashedAt: ts }];
+  const stale = habit("h1", "Old"); stale.updatedAt = 3000; // B never edited it
+  B.habits = [stale];
+  const m = mergeStates(A, B);
+  assert(!m.habits.find((x) => x.id === "h1"), "trashed habit is NOT resurrected into the active list");
+  assert(!!m.trash.find((e) => e.habit.id === "h1"), "the trash entry survives the merge");
+}
+{
+  // But a genuine newer edit on the other device still wins over the delete.
+  const A = defaultState(); const B = defaultState();
+  const ts = 5000;
+  A.habits = []; A.deletions.habits = { h1: ts };
+  A.trash = [{ habit: { id: "h1", name: "Old", updatedAt: 3000 }, completions: {}, trashedAt: ts }];
+  const edited = habit("h1", "Edited later"); edited.updatedAt = 9000; // newer than the delete
+  B.habits = [edited];
+  const m = mergeStates(A, B);
+  assert(!!m.habits.find((x) => x.id === "h1"), "a newer edit still resurrects (edit-wins-over-delete)");
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

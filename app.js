@@ -1806,12 +1806,20 @@
     const habit = state.habits.find((h) => h.id === id);
     if (!habit) return false;
     if (opts.confirm && !confirm(`Move "${habit.name}" to Trash? You can restore it for 7 days.`)) return false;
+    const ts = Date.now();
     const snap = {};
     for (const day of Object.keys(state.completions)) {
       if (state.completions[day][id] != null) snap[day] = state.completions[day][id];
     }
     if (!state.trash) state.trash = [];
-    state.trash.push({ habit, completions: snap, trashedAt: Date.now() });
+    state.trash.push({ habit, completions: snap, trashedAt: ts });
+    // Write a tombstone too, so a cloud/other-device copy doesn't resurrect the
+    // habit on the next sync. Uses the same timestamp as trashedAt so the merge
+    // keeps the trash entry (it only drops entries with a *newer* tombstone).
+    // Restore/undo clears this tombstone.
+    if (!state.deletions) state.deletions = { habits: {} };
+    if (!state.deletions.habits) state.deletions.habits = {};
+    state.deletions.habits[id] = ts;
     if (typeof logActivity === "function") logActivity("delete", `Deleted ${habit.icon || "•"} ${habit.name}`);
     state.habits = state.habits.filter((h) => h.id !== id);
     for (const day of Object.keys(state.completions)) {
