@@ -2916,6 +2916,70 @@
     } catch (e) { return null; }
   }
 
+  // Module-level Health API GET (via the Worker proxy). Throws on error.
+  async function ghApiGet(path, filter) {
+    const at = await ghAccessToken();
+    if (!at) throw new Error("Sign in to Google again");
+    const r = await fetch(ghWorkerBase() + "/google/health", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ access_token: at, path, filter }),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error((j && (j.error && j.error.message || j.error)) || ("HTTP " + r.status));
+    return j;
+  }
+
+  // Quick "Pull steps" from the Today card. Fills a steps count habit with the
+  // real daily total, and marks Morning walk (before noon) or Evening walk
+  // (noon or later) done. Matches habits by name (contains "step"/"morning
+  // walk"/"evening walk"); the steps habit falls back to the Settings mapping.
+  async function pullStepsToday() {
+    if (!ghConnected()) { showToast("Connect Google Health in Settings first.", "warn"); return; }
+    if (!navigator.onLine) { showToast("You're offline.", "warn"); return; }
+    if (ghInFlight) return;
+    ghInFlight = true;
+    const btn = document.getElementById("todayPullStepsBtn");
+    if (btn) { btn.disabled = true; btn.textContent = "⏳ Pulling steps…"; }
+    try {
+      let daily = 0;
+      try { daily = sumStepsDataPoints(await ghApiGet("v4/users/me/dataTypes/steps/dataPoints", 'steps.interval.civil_start_time >= "' + civilMidnightToday() + '"')); } catch (e) {}
+      if (daily === 0) { // fall back to workout steps if the daily total is unavailable
+        try { daily = mapExerciseDataPoints(await ghApiGet("v4/users/me/dataTypes/exercise/dataPoints", googleTodayFilter())).steps; } catch (e) {}
+      }
+      const today = new Date();
+      const beforeNoon = today.getHours() < 12;
+      const active = state.habits.filter((h) => !h.archived);
+      const byName = (frag) => active.find((h) => (h.name || "").toLowerCase().includes(frag));
+      const mappedId = localStorage.getItem(KEYS.ghHabitId) || "";
+      const stepsHabit = active.find((h) => h.type === "count" && /step/i.test(h.name || ""))
+        || active.find((h) => h.id === mappedId && h.type === "count");
+      const parts = [];
+      if (stepsHabit && daily > 0) {
+        const wasDone = isCompleted(stepsHabit, today);
+        setCompletionValue(stepsHabit.id, today, daily);
+        parts.push(`${stepsHabit.icon || "👟"} ${daily.toLocaleString()}/${fmtValue(stepsHabit, stepsHabit.target)}`);
+        if (!wasDone && daily >= (stepsHabit.target || 1)) maybeCelebrate(stepsHabit, today);
+      }
+      const walk = beforeNoon ? byName("morning walk") : byName("evening walk");
+      if (walk && !isCompleted(walk, today)) {
+        setCompletionValue(walk.id, today, walk.type === "count" ? (walk.target || 1) : 1);
+        parts.push(`✓ ${walk.icon || "🚶"} ${walk.name}`);
+        maybeCelebrate(walk, today);
+      }
+      localStorage.setItem(KEYS.ghLastSync, String(Date.now()));
+      renderToday();
+      renderGoogleState();
+      showToast(parts.length ? `Steps synced · ${parts.join(" · ")}`
+        : (daily > 0 ? `${daily.toLocaleString()} steps — no matching habit found.` : "No steps logged yet today."), "success");
+    } catch (e) {
+      showToast("Steps pull failed: " + (e.message || e), "error");
+    } finally {
+      ghInFlight = false;
+      const b = document.getElementById("todayPullStepsBtn");
+      if (b) { b.disabled = false; b.textContent = "👟 Pull steps"; }
+    }
+  }
+
   async function pullGoogleActivity(opts = {}) {
     const silent = !!opts.silent;
     if (!ghConnected()) return silent ? null : showGhStatus("Connect Google Health first.", "warn");
@@ -4953,6 +5017,8 @@
 
   function renderTodayAdherence(active, today) {
     const els = getEls();
+    const stepsBtn = document.getElementById("todayPullStepsBtn");
+    if (stepsBtn) stepsBtn.hidden = !ghConnected();
     if (!active || active.length === 0) {
       els.adherencePct.textContent = "—";
       setRing(0, 0, 0);
@@ -10816,6 +10882,8 @@
     if (ghDisconnectBtn) ghDisconnectBtn.addEventListener("click", disconnectGoogleHealth);
     const ghPullBtn = document.getElementById("ghPullBtn");
     if (ghPullBtn) ghPullBtn.addEventListener("click", () => pullGoogleActivity({ silent: false }));
+    const todayPullStepsBtn = document.getElementById("todayPullStepsBtn");
+    if (todayPullStepsBtn) todayPullStepsBtn.addEventListener("click", pullStepsToday);
     const ghHabitSelect = document.getElementById("ghHabitSelect");
     if (ghHabitSelect) ghHabitSelect.addEventListener("change", () => localStorage.setItem(KEYS.ghHabitId, ghHabitSelect.value || ""));
     const ghImportWeight = document.getElementById("ghImportWeight");
