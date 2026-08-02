@@ -2517,6 +2517,7 @@ body.hc .btn-secondary { border-color: var(--border); }
 }
 .daypart-done-strip.daypart-collapsed.is-now { border-color: var(--primary); }
 .pull-steps-mini { font-size: 1rem; line-height: 1; }
+.today-sync-gh { width: 100%; margin-bottom: 0.6rem; font-size: 0.9rem; }
 .daypart-done-strip.daypart-collapsed .now-chip { margin-left: 0.4rem; }
 
 /* Confetti */

@@ -3069,6 +3069,92 @@
   function findStepsGoalHabit(excludeId) {
     return state.habits.find((h) => !h.archived && h.id !== excludeId && h.type === "count" && /step/i.test(h.name || ""));
   }
+  const SLEEP_MET_HRS = 6.5; // slept more than this → count the sleep habit done
+  // Apply sleep hours to a habit (count → real hours, done at >6.5h regardless
+  // of target; yes/no → done at >6.5h). Returns whether it was met.
+  function applySleepToHabit(habit, hrs, date) {
+    const met = hrs > SLEEP_MET_HRS;
+    if (habit.type === "count") {
+      const wasDone = isCompleted(habit, date);
+      setCompletionValue(habit.id, date, met ? Math.max(hrs, habit.target || 1) : hrs);
+      if (met && !wasDone) maybeCelebrate(habit, date);
+    } else if (met && !isCompleted(habit, date)) {
+      setCompletionValue(habit.id, date, 1); maybeCelebrate(habit, date);
+    }
+    return met;
+  }
+  // Apply a matched workout session to a habit (count → active minutes; yes/no → done).
+  function applyWorkoutToHabit(habit, match, date) {
+    if (habit.type === "count") {
+      const val = match.minutes > 0 ? match.minutes : (habit.target || 1);
+      const wasDone = isCompleted(habit, date);
+      setCompletionValue(habit.id, date, val);
+      if (!wasDone && val >= (habit.target || 1)) maybeCelebrate(habit, date);
+    } else if (!isCompleted(habit, date)) {
+      setCompletionValue(habit.id, date, 1); maybeCelebrate(habit, date);
+    }
+  }
+  async function ghSleepHours() {
+    try { return mapSleepHours(await ghApiGet("v4/users/me/dataTypes/sleep/dataPoints", `sleep.interval.civil_start_time >= "${civilDayHour(1, 12)}"`)); }
+    catch (e) { return 0; }
+  }
+  async function ghWorkoutSessions() {
+    try { return mapWorkoutSessions(await ghApiGet("v4/users/me/dataTypes/exercise/dataPoints", googleTodayFilter())); }
+    catch (e) { return []; }
+  }
+  // One-tap: pull steps, sleep, and workouts and sync every matching Today card.
+  async function syncAllGoogleHealth() {
+    if (!ghConnected()) { showToast("Connect Google Health in Settings first.", "warn"); return; }
+    if (!navigator.onLine) { showToast("You're offline.", "warn"); return; }
+    if (ghInFlight) return;
+    ghInFlight = true;
+    const btn = document.getElementById("todaySyncGhBtn");
+    if (btn) { btn.disabled = true; btn.textContent = "⏳ Syncing…"; }
+    try {
+      const today = new Date();
+      const active = state.habits.filter((h) => !h.archived && isHabitActiveOn(h, today));
+      const stepHabits = active.filter((h) => stepHabitKind(h));
+      const sleepHabits = active.filter((h) => !stepHabitKind(h) && isSleepHabit(h));
+      const workoutHabits = active.filter((h) => !stepHabitKind(h) && !isSleepHabit(h) && isWorkoutHabit(h));
+      const msgs = [];
+
+      if (stepHabits.length) {
+        const kinds = new Set(stepHabits.map(stepHabitKind));
+        const allSteps = await ghStepsFor("allday");
+        const morningSteps = kinds.has("morning") ? await ghStepsFor("morning") : 0;
+        const eveningSteps = kinds.has("evening") ? await ghStepsFor("evening") : 0;
+        for (const h of stepHabits) {
+          const k = stepHabitKind(h);
+          const s = k === "morning" ? morningSteps : k === "evening" ? eveningSteps : allSteps;
+          if (s > 0) applyStepsToHabit(h, s, today, msgs);
+        }
+      }
+      if (sleepHabits.length) {
+        const hrs = await ghSleepHours();
+        for (const h of sleepHabits) {
+          if (hrs > 0) { const met = applySleepToHabit(h, hrs, today); msgs.push(`😴 ${h.name} ${hrs}h${met ? " ✓" : ""}`); }
+        }
+      }
+      if (workoutHabits.length) {
+        const sessions = await ghWorkoutSessions();
+        for (const h of workoutHabits) {
+          const m = workoutHabitMatch(h.name, sessions);
+          if (m) { applyWorkoutToHabit(h, m, today); msgs.push(`🏋️ ${h.name} (${m.name || m.type})`); }
+        }
+      }
+      localStorage.setItem(KEYS.ghLastSync, String(Date.now()));
+      renderToday();
+      renderGoogleState();
+      if (msgs.length) showToast("✓ Synced · " + msgs.join(" · "), "success");
+      else showGhBanner("🔄 Nothing to sync yet — no steps, sleep, or workouts found for today. Sync your watch or Fitbit app and try again.");
+    } catch (e) {
+      showToast("Sync failed: " + (e.message || e), "error");
+    } finally {
+      ghInFlight = false;
+      const b = document.getElementById("todaySyncGhBtn");
+      if (b) { b.disabled = false; b.textContent = "🔄 Sync Google Health"; }
+    }
+  }
   // Pull last night's sleep into a sleep habit. Fills a count habit with hours;
   // marks a yes/no habit done when any sleep is logged. Window: since yesterday
   // noon (captures a sleep session that started last evening).
@@ -3093,24 +3179,8 @@
         showGhBanner(`😴 No sleep logged for last night yet. Sync your watch or Fitbit app, then tap 😴 again.${dbg}`);
         return;
       }
-      const SLEEP_MET_HRS = 6.5; // slept more than this → count it as done
-      const met = hrs > SLEEP_MET_HRS;
-      if (habit.type === "count") {
-        const wasDone = isCompleted(habit, today);
-        // Record the real hours; if over 6.5h, ensure it reads as done even if
-        // the habit's target is higher.
-        const val = met ? Math.max(hrs, habit.target || 1) : hrs;
-        setCompletionValue(habit.id, today, val);
-        if (met && !wasDone) maybeCelebrate(habit, today);
-        showToast(met ? `😴 Slept ${hrs}h — checked ✓` : `😴 Slept ${hrs}h — under ${SLEEP_MET_HRS}h`, met ? "success" : "warn");
-      } else {
-        if (met) {
-          if (!isCompleted(habit, today)) { setCompletionValue(habit.id, today, 1); maybeCelebrate(habit, today); }
-          showToast(`✓ ${habit.icon || "😴"} ${habit.name} — ${hrs}h`, "success");
-        } else {
-          showToast(`😴 Slept ${hrs}h — under ${SLEEP_MET_HRS}h, not checked`, "warn");
-        }
-      }
+      const met = applySleepToHabit(habit, hrs, today);
+      showToast(met ? `😴 Slept ${hrs}h — checked ✓` : `😴 Slept ${hrs}h — under ${SLEEP_MET_HRS}h, not checked`, met ? "success" : "warn");
       localStorage.setItem(KEYS.ghLastSync, String(Date.now()));
       renderToday();
     } catch (e) {
@@ -3145,19 +3215,11 @@
         return;
       }
       const label = match.name || match.type || "workout";
-      if (habit.type === "count") {
-        const val = match.minutes > 0 ? match.minutes : (habit.target || 1);
-        const wasDone = isCompleted(habit, today);
-        setCompletionValue(habit.id, today, val);
-        if (!wasDone && val >= (habit.target || 1)) maybeCelebrate(habit, today);
-        showToast(`✓ ${habit.icon || "🏋️"} ${habit.name}${match.minutes ? ` — ${match.minutes} min` : ""} (${label})`, "success");
-      } else {
-        if (!isCompleted(habit, today)) { setCompletionValue(habit.id, today, 1); maybeCelebrate(habit, today); }
-        const bits = [label];
-        if (match.minutes) bits.push(match.minutes + " min");
-        if (match.kcal) bits.push(match.kcal + " kcal");
-        showToast(`✓ ${habit.icon || "🏋️"} ${habit.name} — ${bits.join(" · ")}`, "success");
-      }
+      applyWorkoutToHabit(habit, match, today);
+      const bits = [label];
+      if (match.minutes) bits.push(match.minutes + " min");
+      if (match.kcal) bits.push(match.kcal + " kcal");
+      showToast(`✓ ${habit.icon || "🏋️"} ${habit.name} — ${bits.join(" · ")}`, "success");
       localStorage.setItem(KEYS.ghLastSync, String(Date.now()));
       renderToday();
     } catch (e) {
@@ -5237,6 +5299,8 @@
 
   function renderTodayAdherence(active, today) {
     const els = getEls();
+    const syncBtn = document.getElementById("todaySyncGhBtn");
+    if (syncBtn) syncBtn.hidden = !ghConnected();
     if (!active || active.length === 0) {
       els.adherencePct.textContent = "—";
       setRing(0, 0, 0);
@@ -11124,6 +11188,8 @@
     if (ghDisconnectBtn) ghDisconnectBtn.addEventListener("click", disconnectGoogleHealth);
     const ghPullBtn = document.getElementById("ghPullBtn");
     if (ghPullBtn) ghPullBtn.addEventListener("click", () => pullGoogleActivity({ silent: false }));
+    const todaySyncGhBtn = document.getElementById("todaySyncGhBtn");
+    if (todaySyncGhBtn) todaySyncGhBtn.addEventListener("click", syncAllGoogleHealth);
     const ghHabitSelect = document.getElementById("ghHabitSelect");
     if (ghHabitSelect) ghHabitSelect.addEventListener("change", () => localStorage.setItem(KEYS.ghHabitId, ghHabitSelect.value || ""));
     const ghImportWeight = document.getElementById("ghImportWeight");
