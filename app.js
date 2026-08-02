@@ -2947,16 +2947,29 @@
         } catch (e) {}
       }
       localStorage.setItem(KEYS.ghLastSync, String(Date.now()));
-      // Optionally mark a chosen habit done when there was activity today.
+      // Sync activity into a chosen habit. Count habits (e.g. a Steps goal) get
+      // today's real step count; yes/no habits are marked done when active.
       const wasActive = sum.count > 0 || dailySteps > 0;
       const habitId = localStorage.getItem(KEYS.ghHabitId) || "";
       let markedMsg = "";
-      if (habitId && wasActive) {
+      if (habitId) {
         const h = state.habits.find((x) => x.id === habitId);
-        if (h && !isCompleted(h, new Date())) {
-          setCompletionValue(h.id, new Date(), h.type === "count" ? (h.target || 1) : 1);
-          markedMsg = ` · ✓ ${h.icon || ""} ${h.name}`.trimEnd();
-          maybeCelebrate(h, new Date());
+        const today = new Date();
+        if (h && h.type === "count") {
+          // Prefer the real daily step total; fall back to "full" if only workouts.
+          const val = dailySteps > 0 ? dailySteps : (wasActive ? (h.target || 1) : 0);
+          const cur = completionValue(h.id, today);
+          if (val > 0 && val !== cur) {
+            const wasDone = isCompleted(h, today);
+            setCompletionValue(h.id, today, val);
+            markedMsg = ` · ${h.icon || "•"} ${h.name} ${val.toLocaleString()}/${fmtValue(h, h.target)}`;
+            if (!wasDone && val >= (h.target || 1)) maybeCelebrate(h, today);
+            renderToday();
+          }
+        } else if (h && wasActive && !isCompleted(h, today)) {
+          setCompletionValue(h.id, today, 1);
+          markedMsg = ` · ✓ ${h.icon || "•"} ${h.name}`;
+          maybeCelebrate(h, today);
           renderToday();
         }
       }
