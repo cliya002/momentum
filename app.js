@@ -2887,6 +2887,42 @@
     }
     return Math.round((totalSec / 3600) * 10) / 10;
   }
+  // Duration (seconds) of one sleep session dataPoint.
+  function sleepSessionSeconds(p) {
+    if (!p) return 0;
+    const s = p.sleep || p.value || p;
+    let sec = parseDurationSeconds(s.activeDuration) || parseDurationSeconds(s.duration) || parseDurationSeconds(p.activeDuration);
+    if (!sec) {
+      const iv = s.interval || p.interval || {};
+      const st = iv.startTime ? Date.parse(iv.startTime) : 0;
+      const en = iv.endTime ? Date.parse(iv.endTime) : 0;
+      if (st && en && en > st) sec = (en - st) / 1000;
+    }
+    return sec || 0;
+  }
+  // End time (ms) of a sleep session, for client-side windowing.
+  function sleepSessionEndMs(p) {
+    if (!p) return 0;
+    const s = p.sleep || p.value || p;
+    const iv = s.interval || p.interval || {};
+    if (iv.endTime) return Date.parse(iv.endTime) || 0;
+    if (iv.startTime) return (Date.parse(iv.startTime) || 0) + sleepSessionSeconds(p) * 1000;
+    if (p.endTime) return Date.parse(p.endTime) || 0;
+    return 0;
+  }
+  // Sum sleep hours from sessions that ended within the last `hoursBack` hours
+  // (client-side window, so it works even when the server can't filter sleep).
+  function recentSleepHours(dataPoints, hoursBack) {
+    const cutoff = Date.now() - (hoursBack || 40) * 3600 * 1000;
+    let sec = 0;
+    for (const p of (dataPoints || [])) {
+      if (!p) continue;
+      const end = sleepSessionEndMs(p);
+      if (end && end < cutoff) continue; // older than the window
+      sec += sleepSessionSeconds(p);
+    }
+    return Math.round((sec / 3600) * 10) / 10;
+  }
   function isSleepHabit(habit) { return /\bsleep\b/i.test((habit && habit.name) || ""); }
   // A habit that maps to a logged workout (generic or a specific activity).
   function isWorkoutHabit(habit) {
@@ -2942,10 +2978,6 @@
   function isoHoursAgo(h) {
     return new Date(Date.now() - Math.abs(h || 0) * 3600 * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
   }
-  // Sleep uses UTC start_time (civil_start_time isn't a valid member for it).
-  // 40h back reliably captures last night's session at any time of day.
-  function sleepFilter() { return `sleep.interval.start_time >= "${isoHoursAgo(40)}"`; }
-
   async function connectGoogleHealth() {
     const base = ghWorkerBase();
     if (!base) { showGhStatus("Set your push/Worker URL first (in Background reminders).", "warn"); return; }
@@ -3139,7 +3171,8 @@
   }
   // Fetch every page of a data type and return the combined dataPoints. Session
   // types (sleep, exercise) rarely paginate, but this keeps them safe too.
-  async function ghAllPages(path, filter) {
+  async function ghAllPages(path, filter, maxPages) {
+    const cap = maxPages || 25;
     const all = [];
     let pageToken = "", pages = 0;
     do {
@@ -3147,20 +3180,38 @@
       if (json && Array.isArray(json.dataPoints)) for (const p of json.dataPoints) all.push(p);
       pageToken = (json && json.nextPageToken) ? json.nextPageToken : "";
       pages++;
-    } while (pageToken && pages < 25);
+    } while (pageToken && pages < cap);
     return { dataPoints: all };
   }
-  let ghSleepErr = "";
+  let ghSleepErr = "", ghSleepDbg = "";
   // Recognise "missing scope" errors so we can tell the user to reconnect.
   function ghScopeHint(err) {
     return /scope|permission|insufficient|forbidden|\b403\b/i.test(String(err || ""))
       ? "Sleep access not granted — Settings → Google Health → Disconnect, then Connect again."
       : "";
   }
+  // Sleep's valid filter member isn't documented and differs from steps, so try
+  // a couple of variants; if all are rejected, list without a filter and window
+  // client-side (keep only sessions from the last ~40h).
   async function ghSleepHours() {
-    ghSleepErr = "";
-    try { return mapSleepHours(await ghAllPages("v4/users/me/dataTypes/sleep/dataPoints", sleepFilter())); }
-    catch (e) { ghSleepErr = String((e && e.message) || e); return 0; }
+    ghSleepErr = ""; ghSleepDbg = "";
+    const utc = isoHoursAgo(40);
+    const candidates = [`sleep.start_time >= "${utc}"`, `sleep.interval.start_time >= "${utc}"`, null];
+    for (const f of candidates) {
+      try {
+        const raw = await ghAllPages("v4/users/me/dataTypes/sleep/dataPoints", f, 5);
+        const dps = raw.dataPoints || [];
+        const hrs = recentSleepHours(dps, 40);
+        if (hrs === 0 && dps.length) ghSleepDbg = " · sleep keys: " + JSON.stringify(Object.keys(dps[0] || {}));
+        return hrs;
+      } catch (e) {
+        const msg = String((e && e.message) || e);
+        ghSleepErr = msg;
+        if (/INVALID_DATA_POINT_FILTER|filter/i.test(msg)) continue; // bad filter → try next variant
+        return 0; // other error (e.g. scope) → stop
+      }
+    }
+    return 0;
   }
   async function ghWorkoutSessions() {
     try { return mapWorkoutSessions(await ghAllPages("v4/users/me/dataTypes/exercise/dataPoints", googleTodayFilter())); }
@@ -3232,21 +3283,15 @@
     if (ghInFlight) return;
     ghInFlight = true;
     try {
-      let hrs = 0, dbg = "";
-      try {
-        const raw = await ghAllPages("v4/users/me/dataTypes/sleep/dataPoints", sleepFilter());
-        hrs = mapSleepHours(raw);
-        if (hrs === 0 && raw && Array.isArray(raw.dataPoints) && raw.dataPoints.length) {
-          const p0 = raw.dataPoints[0] || {};
-          dbg = " · sleep keys: " + JSON.stringify(Object.keys(p0)) + (p0.sleep && typeof p0.sleep === "object" ? " / sleep.*: " + JSON.stringify(Object.keys(p0.sleep)) : "");
-        }
-      } catch (e) { dbg = " · sleep err: " + (e.message || e); }
+      const hrs = await ghSleepHours();
       const today = new Date();
       if (hrs <= 0) {
-        const hint = ghScopeHint(dbg);
+        const hint = ghScopeHint(ghSleepErr);
         showGhBanner(hint
           ? `😴 ${hint}`
-          : `😴 No sleep logged for last night yet. Sync your watch or Fitbit app, then tap 😴 again.${dbg}`);
+          : ghSleepErr
+            ? `😴 Couldn't read sleep: ${ghSleepErr}${ghSleepDbg}`
+            : `😴 No sleep logged for last night yet. Sync your watch or Fitbit app, then tap 😴 again.${ghSleepDbg}`);
         return;
       }
       const met = applySleepToHabit(habit, hrs, today);
@@ -11589,6 +11634,7 @@
       translate, availableLangs, b64url,
       buildGoogleAuthUrl, googleTodayFilter, mapExerciseDataPoints, sumStepsDataPoints, latestWeightKg,
       mapSleepHours, parseDurationSeconds, mapWorkoutSessions, workoutHabitMatch,
+      recentSleepHours, sleepSessionSeconds, sleepSessionEndMs, ghScopeHint,
       getState: () => state, setState: (s) => { state = s; },
     };
   }

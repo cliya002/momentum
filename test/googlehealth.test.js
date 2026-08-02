@@ -104,6 +104,30 @@ console.log("mapSleepHours (tolerant)");
   assert(T.mapSleepHours({ dataPoints: [{}, { sleep: null }] }) === 0, "malformed -> 0 (no throw)");
 }
 
+console.log("recentSleepHours (client-side windowing)");
+{
+  const now = Date.now();
+  const iso = (msFromNow) => new Date(now + msFromNow).toISOString().replace(/\.\d{3}Z$/, "Z");
+  // A session that ended 8h ago: 7.5h duration, inside a 40h window -> counted.
+  const recent = { sleep: { interval: { startTime: iso(-15.5 * 3600 * 1000), endTime: iso(-8 * 3600 * 1000) } } };
+  // A session that ended 50h ago: outside a 40h window -> dropped.
+  const stale = { sleep: { interval: { startTime: iso(-57 * 3600 * 1000), endTime: iso(-50 * 3600 * 1000) } } };
+  assert(T.recentSleepHours([recent, stale], 40) === 7.5, "keeps recent session, drops stale one -> 7.5h");
+  assert(T.recentSleepHours([stale], 40) === 0, "all stale -> 0h");
+  assert(T.recentSleepHours([], 40) === 0, "empty -> 0h");
+  assert(T.recentSleepHours(null, 40) === 0, "null -> 0h (no throw)");
+  // Session with no end time (only duration) is kept (can't be windowed out).
+  assert(T.recentSleepHours([{ sleep: { activeDuration: "27000s" } }], 40) === 7.5, "duration-only session counted -> 7.5h");
+}
+
+console.log("ghScopeHint");
+{
+  assert(T.ghScopeHint("Insufficient permission") !== "", "detects scope/permission error");
+  assert(T.ghScopeHint("HTTP 403 forbidden") !== "", "detects 403");
+  assert(T.ghScopeHint("INVALID_DATA_POINT_FILTER") === "", "filter error is not a scope hint");
+  assert(T.ghScopeHint("") === "", "empty -> no hint");
+}
+
 console.log("mapWorkoutSessions + workoutHabitMatch");
 {
   const json = { dataPoints: [
