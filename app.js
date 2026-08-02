@@ -3187,19 +3187,25 @@
   function findStepsGoalHabit(excludeId) {
     return state.habits.find((h) => !h.archived && h.id !== excludeId && h.type === "count" && /step/i.test(h.name || ""));
   }
-  const SLEEP_MET_HRS = 6.5; // slept more than this → count the sleep habit done
-  // Apply sleep hours to a habit (count → real hours, done at >6.5h regardless
-  // of target; yes/no → done at >6.5h). Returns whether it was met.
+  const SLEEP_MET_HRS = 6.5; // "slept enough" — used for messaging + generous count-done
+  // Apply sleep hours to a habit. Returns whether the habit ended up DONE.
+  //   yes/no  → a "Sleep" habit means "I slept last night", so it's ticked as
+  //             soon as ANY sleep is logged (no minimum-hours gate).
+  //   count   → record the real hours; done when you reach the habit's own
+  //             target, or when you slept "enough" (>6.5h) even if the target is
+  //             higher. Recording keeps the actual hours visible on the card.
   function applySleepToHabit(habit, hrs, date) {
-    const met = hrs > SLEEP_MET_HRS;
+    if (hrs <= 0) return isCompleted(habit, date);
     if (habit.type === "count") {
       const wasDone = isCompleted(habit, date);
+      const met = hrs > SLEEP_MET_HRS;
       setCompletionValue(habit.id, date, met ? Math.max(hrs, habit.target || 1) : hrs);
-      if (met && !wasDone) maybeCelebrate(habit, date);
-    } else if (met && !isCompleted(habit, date)) {
-      setCompletionValue(habit.id, date, 1); maybeCelebrate(habit, date);
+      const done = isCompleted(habit, date);
+      if (done && !wasDone) maybeCelebrate(habit, date);
+      return done;
     }
-    return met;
+    if (!isCompleted(habit, date)) { setCompletionValue(habit.id, date, 1); maybeCelebrate(habit, date); }
+    return true;
   }
   // Apply a matched workout session to a habit (count → active minutes; yes/no → done).
   function applyWorkoutToHabit(habit, match, date) {
@@ -3337,8 +3343,12 @@
             : `😴 No sleep logged for last night yet. Sync your watch or Fitbit app, then tap 😴 again.${ghSleepDbg}`);
         return;
       }
-      const met = applySleepToHabit(habit, hrs, today);
-      showToast(met ? `😴 Slept ${hrs}h — checked ✓` : `😴 Slept ${hrs}h — under ${SLEEP_MET_HRS}h, not checked`, met ? "success" : "warn");
+      const done = applySleepToHabit(habit, hrs, today);
+      showToast(
+        done
+          ? `😴 Slept ${hrs}h — checked ✓`
+          : `😴 Logged ${hrs}h${habit.type === "count" && habit.target ? ` (target ${habit.target}h)` : ""} — not enough to check`,
+        done ? "success" : "warn");
       localStorage.setItem(KEYS.ghLastSync, String(Date.now()));
       renderToday();
     } catch (e) {
