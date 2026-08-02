@@ -2929,54 +2929,62 @@
     return j;
   }
 
-  // Quick "Pull steps" from the Today card. Fills a steps count habit with the
-  // real daily total, and marks Morning walk (before noon) or Evening walk
-  // (noon or later) done. Matches habits by name (contains "step"/"morning
-  // walk"/"evening walk"); the steps habit falls back to the Settings mapping.
-  async function pullStepsToday() {
+  function civilAtHour(h) {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(h)}:00:00`;
+  }
+  // A Today habit that steps should sync into: a step-count goal, or a
+  // Morning/Evening walk. Determines which time window to pull.
+  function stepHabitKind(habit) {
+    if (!habit) return null;
+    const n = (habit.name || "").toLowerCase();
+    if (n.includes("morning walk")) return "morning";
+    if (n.includes("evening walk")) return "evening";
+    if (habit.type === "count" && /step/i.test(n)) return "allday";
+    return null;
+  }
+  // Build the steps filter for a window: morning = midnight–noon, evening =
+  // noon–end of day, allday = whole day.
+  function stepsFilterFor(kind) {
+    const mid = civilAtHour(0), noon = civilAtHour(12), end = civilAtHour(24);
+    if (kind === "morning") return `steps.interval.civil_start_time >= "${mid}" AND steps.interval.civil_start_time < "${noon}"`;
+    if (kind === "evening") return `steps.interval.civil_start_time >= "${noon}" AND steps.interval.civil_start_time < "${end}"`;
+    return `steps.interval.civil_start_time >= "${mid}"`;
+  }
+  // Pull steps for one habit card (Morning walk / Evening walk / steps goal).
+  // Fills a count habit with the real step count; marks a yes/no walk done.
+  // Never fills to the target as a guess.
+  async function pullStepsForHabit(habit) {
+    const kind = stepHabitKind(habit);
+    if (!kind) return;
     if (!ghConnected()) { showToast("Connect Google Health in Settings first.", "warn"); return; }
     if (!navigator.onLine) { showToast("You're offline.", "warn"); return; }
     if (ghInFlight) return;
     ghInFlight = true;
-    const btn = document.getElementById("todayPullStepsBtn");
-    if (btn) { btn.disabled = true; btn.textContent = "⏳ Pulling steps…"; }
     try {
-      let daily = 0;
-      try { daily = sumStepsDataPoints(await ghApiGet("v4/users/me/dataTypes/steps/dataPoints", 'steps.interval.civil_start_time >= "' + civilMidnightToday() + '"')); } catch (e) {}
-      if (daily === 0) { // fall back to workout steps if the daily total is unavailable
-        try { daily = mapExerciseDataPoints(await ghApiGet("v4/users/me/dataTypes/exercise/dataPoints", googleTodayFilter())).steps; } catch (e) {}
+      let steps = 0;
+      try { steps = sumStepsDataPoints(await ghApiGet("v4/users/me/dataTypes/steps/dataPoints", stepsFilterFor(kind))); } catch (e) {}
+      if (steps === 0 && kind === "allday") { // fall back to workout steps for the day
+        try { steps = mapExerciseDataPoints(await ghApiGet("v4/users/me/dataTypes/exercise/dataPoints", googleTodayFilter())).steps; } catch (e) {}
       }
       const today = new Date();
-      const beforeNoon = today.getHours() < 12;
-      const active = state.habits.filter((h) => !h.archived);
-      const byName = (frag) => active.find((h) => (h.name || "").toLowerCase().includes(frag));
-      const mappedId = localStorage.getItem(KEYS.ghHabitId) || "";
-      const stepsHabit = active.find((h) => h.type === "count" && /step/i.test(h.name || ""))
-        || active.find((h) => h.id === mappedId && h.type === "count");
-      const parts = [];
-      if (stepsHabit && daily > 0) {
-        const wasDone = isCompleted(stepsHabit, today);
-        setCompletionValue(stepsHabit.id, today, daily);
-        parts.push(`${stepsHabit.icon || "👟"} ${daily.toLocaleString()}/${fmtValue(stepsHabit, stepsHabit.target)}`);
-        if (!wasDone && daily >= (stepsHabit.target || 1)) maybeCelebrate(stepsHabit, today);
-      }
-      const walk = beforeNoon ? byName("morning walk") : byName("evening walk");
-      if (walk && !isCompleted(walk, today)) {
-        setCompletionValue(walk.id, today, walk.type === "count" ? (walk.target || 1) : 1);
-        parts.push(`✓ ${walk.icon || "🚶"} ${walk.name}`);
-        maybeCelebrate(walk, today);
+      if (steps <= 0) { showToast(`No ${kind === "allday" ? "" : kind + " "}steps logged yet.`, "warn"); return; }
+      if (habit.type === "count") {
+        const wasDone = isCompleted(habit, today);
+        setCompletionValue(habit.id, today, steps);
+        if (!wasDone && steps >= (habit.target || 1)) maybeCelebrate(habit, today);
+        showToast(`${habit.icon || "👟"} ${habit.name}: ${steps.toLocaleString()}/${fmtValue(habit, habit.target)}`, "success");
+      } else {
+        if (!isCompleted(habit, today)) { setCompletionValue(habit.id, today, 1); maybeCelebrate(habit, today); }
+        showToast(`✓ ${habit.icon || "🚶"} ${habit.name} (${steps.toLocaleString()} steps)`, "success");
       }
       localStorage.setItem(KEYS.ghLastSync, String(Date.now()));
       renderToday();
-      renderGoogleState();
-      showToast(parts.length ? `Steps synced · ${parts.join(" · ")}`
-        : (daily > 0 ? `${daily.toLocaleString()} steps — no matching habit found.` : "No steps logged yet today."), "success");
     } catch (e) {
       showToast("Steps pull failed: " + (e.message || e), "error");
     } finally {
       ghInFlight = false;
-      const b = document.getElementById("todayPullStepsBtn");
-      if (b) { b.disabled = false; b.textContent = "👟 Pull steps"; }
     }
   }
 
@@ -5017,8 +5025,6 @@
 
   function renderTodayAdherence(active, today) {
     const els = getEls();
-    const stepsBtn = document.getElementById("todayPullStepsBtn");
-    if (stepsBtn) stepsBtn.hidden = !ghConnected();
     if (!active || active.length === 0) {
       els.adherencePct.textContent = "—";
       setRing(0, 0, 0);
@@ -5293,6 +5299,17 @@
 
     const controls = document.createElement("div");
     controls.className = "count-controls";
+
+    // Step-linked habits (steps goal, morning/evening walk) get a 👟 pull button.
+    if (ghConnected() && stepHabitKind(habit)) {
+      const pull = document.createElement("button");
+      pull.className = "stepper-btn pull-steps-mini";
+      pull.textContent = "👟";
+      pull.title = "Pull steps from Google Health";
+      pull.setAttribute("aria-label", "Pull steps for " + habit.name);
+      pull.addEventListener("click", (e) => { e.stopPropagation(); pullStepsForHabit(habit); });
+      controls.appendChild(pull);
+    }
 
     if (habit.type === "count") {
       // Measurable habit: tap to add/subtract the increment toward the target.
@@ -10882,8 +10899,6 @@
     if (ghDisconnectBtn) ghDisconnectBtn.addEventListener("click", disconnectGoogleHealth);
     const ghPullBtn = document.getElementById("ghPullBtn");
     if (ghPullBtn) ghPullBtn.addEventListener("click", () => pullGoogleActivity({ silent: false }));
-    const todayPullStepsBtn = document.getElementById("todayPullStepsBtn");
-    if (todayPullStepsBtn) todayPullStepsBtn.addEventListener("click", pullStepsToday);
     const ghHabitSelect = document.getElementById("ghHabitSelect");
     if (ghHabitSelect) ghHabitSelect.addEventListener("change", () => localStorage.setItem(KEYS.ghHabitId, ghHabitSelect.value || ""));
     const ghImportWeight = document.getElementById("ghImportWeight");
