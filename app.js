@@ -2968,9 +2968,30 @@
     showToast(n ? `${verb} notes on ${n} habit${n === 1 ? "" : "s"}.` : "No note changes needed.", "success");
     return n;
   }
-  function replaceNotesFromTemplates() {
-    if (!confirm("Replace notes on habits that match a template — overwriting any note you've written for them? Habits with no matching template are left untouched.")) return;
-    fillNotesFromTemplates(true);
+  // One button: fill blank notes from templates, and if some matching habits
+  // already have a *different* note, offer to update those too.
+  function syncNotesFromTemplates() {
+    const map = templateNoteMap();
+    let blanks = 0, diffs = 0;
+    for (const h of state.habits) {
+      const note = map[(h.name || "").trim().toLowerCase()];
+      if (!note) continue;
+      const cur = (h.notes || "").trim();
+      if (!cur) blanks++;
+      else if (cur !== note) diffs++;
+    }
+    if (blanks === 0 && diffs === 0) {
+      showToast("Notes already match your templates — nothing to change.", "success");
+      const el = getEls().smartFillStatus;
+      if (el) { el.hidden = false; el.className = "sync-status success"; el.textContent = "Notes already match your templates."; }
+      return;
+    }
+    // Fill the blanks first.
+    if (blanks > 0) fillNotesFromTemplates(false);
+    // Then, if there are habits with their own (different) notes, ask.
+    if (diffs > 0 && confirm(`${diffs} habit${diffs === 1 ? " already has a note that's" : "s already have notes that are"} different from the template. Update ${diffs === 1 ? "it" : "them"} too? (Your custom wording will be replaced.)`)) {
+      fillNotesFromTemplates(true);
+    }
   }
 
   function addSelectedTemplates() {
@@ -9667,9 +9688,7 @@
     // Template picker
     els.browseTemplatesBtn.addEventListener("click", openTemplateModal);
     els.smartFillBtn.addEventListener("click", smartFillReminders);
-    if (els.fillNotesBtn) els.fillNotesBtn.addEventListener("click", () => fillNotesFromTemplates(false));
-    const replaceNotesBtn = document.getElementById("replaceNotesBtn");
-    if (replaceNotesBtn) replaceNotesBtn.addEventListener("click", replaceNotesFromTemplates);
+    if (els.fillNotesBtn) els.fillNotesBtn.addEventListener("click", syncNotesFromTemplates);
     els.templateCancelBtn.addEventListener("click", closeTemplateModal);
     els.templateCloseBtn.addEventListener("click", closeTemplateModal);
     els.templateSelectAll.addEventListener("click", templateSelectAll);
