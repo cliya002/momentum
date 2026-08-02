@@ -3079,9 +3079,11 @@
   // Build the steps filter for a window: morning = midnight–noon, evening =
   // noon–end of day, allday = whole day.
   function stepsFilterFor(kind) {
-    const mid = civilAtHour(0), noon = civilAtHour(12), end = civilAtHour(24);
+    const mid = civilAtHour(0), noon = civilAtHour(12);
+    // Morning is bounded midnight–noon; evening is simply "from noon on" (an
+    // upper bound of 24:00 is an invalid clock value and broke the filter).
     if (kind === "morning") return `steps.interval.civil_start_time >= "${mid}" AND steps.interval.civil_start_time < "${noon}"`;
-    if (kind === "evening") return `steps.interval.civil_start_time >= "${noon}" AND steps.interval.civil_start_time < "${end}"`;
+    if (kind === "evening") return `steps.interval.civil_start_time >= "${noon}"`;
     return `steps.interval.civil_start_time >= "${mid}"`;
   }
   async function ghStepsFor(kind) {
