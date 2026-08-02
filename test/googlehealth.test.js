@@ -190,6 +190,17 @@ console.log("mapWorkoutSessions + workoutHabitMatch");
   // No match for an unrelated activity.
   assert(T.workoutHabitMatch("Swimming", s) === null, "'Swimming' has no match today");
   assert(T.workoutHabitMatch("Treadmill", []) === null, "no sessions -> null");
+
+  // Stair climber: Google's exercise type is STAIR_CLIMBING(_MACHINE).
+  const stairJson = { dataPoints: [
+    { exercise: { exerciseType: "STAIR_CLIMBING_MACHINE", displayName: "Stair climber", activeDuration: "1200s", interval: { startTime: "2026-02-23T18:00:00Z" }, metricsSummary: { caloriesKcal: 180 } } },
+  ] };
+  const ss = T.mapWorkoutSessions(stairJson);
+  assert(!!T.workoutHabitMatch("Stair climber", ss), "'Stair climber' matches the stair-climbing session");
+  assert(!!T.workoutHabitMatch("Stairs", ss), "'Stairs' matches the stair-climbing session");
+  assert(!!T.workoutHabitMatch("Stepper", ss), "'Stepper' matches the stair-climbing session");
+  // isWorkoutHabit recognises stair-climber habit names (shows the pull button).
+  assert(T.isWorkoutHabit && T.isWorkoutHabit({ name: "Stair climber" }), "isWorkoutHabit true for 'Stair climber'");
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

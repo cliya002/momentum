@@ -2969,7 +2969,7 @@
   function isSleepHabit(habit) { return /\bsleep\b/i.test((habit && habit.name) || ""); }
   // A habit that maps to a logged workout (generic or a specific activity).
   function isWorkoutHabit(habit) {
-    return /\b(workout|exercise|gym|training|cardio|treadmill|run(ning)?|jog|walk|hike|hiking|bike|biking|cycl\w*|spin|swim\w*|elliptical|row(ing)?|yoga|pilates|weights?|strength|hiit|aerobic)\b/i.test((habit && habit.name) || "");
+    return /\b(workout|exercise|gym|training|cardio|treadmill|run(ning)?|jog|walk|hike|hiking|bike|biking|cycl\w*|spin|swim\w*|elliptical|row(ing)?|yoga|pilates|weights?|strength|hiit|aerobic|stair\w*|stepmill|stepper)\b/i.test((habit && habit.name) || "");
   }
   // Flatten today's exercise sessions into a simple list. Pure + tested.
   function mapWorkoutSessions(json) {
@@ -3008,6 +3008,7 @@
         if ((t === "bike" || t === "biking" || t === "cycle" || t === "cycling" || t === "spin") && /bik|cycl|spin/.test(hay)) return s;
         if ((t === "walk" || t === "hike" || t === "hiking") && /walk|hik/.test(hay)) return s;
         if ((t === "swim" || t === "swimming") && /swim/.test(hay)) return s;
+        if ((t === "stair" || t === "stairs" || t === "stairclimber" || t === "climber" || t === "stepmill" || t === "stepper") && /stair|step.?mill|climb/.test(hay)) return s;
       }
     }
     return null;
@@ -11688,6 +11689,7 @@
       buildGoogleAuthUrl, googleTodayFilter, mapExerciseDataPoints, sumStepsDataPoints, latestWeightKg,
       mapSleepHours, parseDurationSeconds, mapWorkoutSessions, workoutHabitMatch,
       recentSleepHours, sleepSessionSeconds, sleepSessionEndMs, sleepSessionStartMs, ghScopeHint,
+      isWorkoutHabit, isSleepHabit,
       getState: () => state, setState: (s) => { state = s; },
     };
   }
