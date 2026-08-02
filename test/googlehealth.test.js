@@ -203,5 +203,33 @@ console.log("mapWorkoutSessions + workoutHabitMatch");
   assert(T.isWorkoutHabit && T.isWorkoutHabit({ name: "Stair climber" }), "isWorkoutHabit true for 'Stair climber'");
 }
 
+console.log("skin temperature (daily-sleep-temperature-derivations)");
+{
+  // Tolerant parse across likely field shapes; picks the most recent reading.
+  const j = { dataPoints: [
+    { sampleTime: "2026-02-20T06:00:00Z", dailySleepTemperatureDerivations: { nightlyRelativeCelsius: 0.31 } },
+    { sampleTime: "2026-02-22T06:00:00Z", dailySleepTemperatureDerivations: { nightlyRelativeCelsius: -0.24 } }, // newer
+  ] };
+  assert(T.latestSkinTempDeltaC(j) === -0.2, "returns the most recent variation, rounded (-0.2)");
+  // Alternate shapes.
+  assert(T.latestSkinTempDeltaC({ dataPoints: [{ value: { deltaCelsius: 0.5 } }] }) === 0.5, "reads value.deltaCelsius");
+  assert(T.latestSkinTempDeltaC({ dataPoints: [{ value: { temperatureDeviation: { celsius: 0.7 } } }] }) === 0.7, "reads nested celsius object");
+  assert(T.latestSkinTempDeltaC({}) === null, "no data -> null (safe no-op)");
+  assert(T.latestSkinTempDeltaC({ dataPoints: [{ foo: 1 }] }) === null, "unrelated fields -> null");
+  // Debug sink collects seen keys when nothing parses.
+  const seen = {}; T.latestSkinTempDeltaC({ dataPoints: [{ value: { foo: 1, bar: 2 } }] }, seen);
+  assert(seen.foo && seen.bar, "debug sink records seen keys");
+
+  // Formatting.
+  assert(T.fmtSkinTemp(0.3) === "+0.3°C", "positive variation gets a + sign");
+  assert(T.fmtSkinTemp(-0.2) === "-0.2°C", "negative variation keeps the - sign");
+  assert(T.fmtSkinTemp(0) === "0.0°C", "zero shows 0.0°C (no sign)");
+
+  // Habit name detection.
+  assert(T.isTempHabit({ name: "Skin temperature" }), "'Skin temperature' is a temp habit");
+  assert(T.isTempHabit({ name: "Body temp" }), "'Body temp' is a temp habit");
+  assert(!T.isTempHabit({ name: "Morning walk" }), "'Morning walk' is not a temp habit");
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

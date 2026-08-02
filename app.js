@@ -2857,6 +2857,34 @@
     }
     return bestKg;
   }
+  // Most recent skin-temperature reading (°C variation from the user's baseline)
+  // from the "daily-sleep-temperature-derivations" data type. The exact field
+  // shape isn't documented, so probe the value object for the first plausible
+  // numeric field whose name looks temperature-related. Returns a number or
+  // null. `sink` (optional) collects the seen keys for a debug hint.
+  function latestSkinTempDeltaC(json, sink) {
+    const pts = (json && Array.isArray(json.dataPoints)) ? json.dataPoints : [];
+    let bestC = null, bestTs = -1;
+    for (const p of pts) {
+      if (!p) continue;
+      const v = p.dailySleepTemperatureDerivations || p.value || p;
+      if (sink && v && typeof v === "object") for (const k of Object.keys(v)) sink[k] = true;
+      let c = null;
+      if (typeof v === "number") { c = v; }
+      else if (v && typeof v === "object") {
+        for (const k of Object.keys(v)) {
+          if (!/celsius|temp|delta|relative|variation|deviation|degrees?/i.test(k)) continue;
+          const n = Number(v[k] && typeof v[k] === "object" ? (v[k].celsius != null ? v[k].celsius : v[k].value) : v[k]);
+          if (Number.isFinite(n) && n > -20 && n < 50) { c = n; break; }
+        }
+      }
+      if (c == null) continue;
+      const t = (p.sampleTime || p.startTime || (p.interval && p.interval.startTime) || p.date || "");
+      const ts = t ? Date.parse(t) : 0;
+      if (ts >= bestTs) { bestTs = ts; bestC = Math.round(c * 10) / 10; }
+    }
+    return bestC;
+  }
   // Parse a Google "duration" (e.g. "27000s") or a plain number of seconds.
   function parseDurationSeconds(v) {
     if (v == null) return 0;
@@ -2967,6 +2995,8 @@
     return Math.round(((best[1] - best[0]) / 3600000) * 10) / 10;
   }
   function isSleepHabit(habit) { return /\bsleep\b/i.test((habit && habit.name) || ""); }
+  // A habit that tracks skin/body temperature (Fitbit's nightly skin-temp value).
+  function isTempHabit(habit) { return /temperature|skin temp|body temp|\btemp\b/i.test((habit && habit.name) || ""); }
   // A habit that maps to a logged workout (generic or a specific activity).
   function isWorkoutHabit(habit) {
     return /\b(workout|exercise|gym|training|cardio|treadmill|run(ning)?|jog|walk|hike|hiking|bike|biking|cycl\w*|spin|swim\w*|elliptical|row(ing)?|yoga|pilates|weights?|strength|hiit|aerobic|stair\w*|stepmill|stepper)\b/i.test((habit && habit.name) || "");
@@ -3261,6 +3291,36 @@
     }
     return 0;
   }
+  let ghTempErr = "", ghTempDbg = "";
+  // Latest skin-temperature variation (°C vs baseline) from the last few nights.
+  // Mirrors ghSleepHours: the filter member is undocumented, so try a couple of
+  // variants and fall back to an unfiltered list. Returns a number or null.
+  async function ghSkinTempC() {
+    ghTempErr = ""; ghTempDbg = "";
+    const path = "v4/users/me/dataTypes/daily-sleep-temperature-derivations/dataPoints";
+    const utc = isoHoursAgo(24 * 5);
+    const candidates = [
+      `daily_sleep_temperature_derivations.start_time >= "${utc}"`,
+      `daily_sleep_temperature_derivations.sample_time >= "${utc}"`,
+      null,
+    ];
+    for (const f of candidates) {
+      try {
+        const raw = await ghAllPages(path, f, 5);
+        const dps = raw.dataPoints || [];
+        const seen = {};
+        const c = latestSkinTempDeltaC(raw, seen);
+        if (c == null && dps.length) ghTempDbg = " · temp keys: " + JSON.stringify(Object.keys(seen));
+        return c;
+      } catch (e) {
+        const msg = String((e && e.message) || e);
+        ghTempErr = msg;
+        if (/INVALID_DATA_POINT_FILTER|filter/i.test(msg)) continue; // bad filter → try next
+        return null; // other error (e.g. scope) → stop
+      }
+    }
+    return null;
+  }
   async function ghWorkoutSessions() {
     try { return mapWorkoutSessions(await ghAllPages("v4/users/me/dataTypes/exercise/dataPoints", googleTodayFilter())); }
     catch (e) { return []; }
@@ -3279,6 +3339,7 @@
       const stepHabits = active.filter((h) => stepHabitKind(h));
       const sleepHabits = active.filter((h) => !stepHabitKind(h) && isSleepHabit(h));
       const workoutHabits = active.filter((h) => !stepHabitKind(h) && !isSleepHabit(h) && isWorkoutHabit(h));
+      const tempHabits = active.filter((h) => !stepHabitKind(h) && !isSleepHabit(h) && !isWorkoutHabit(h) && isTempHabit(h));
       const msgs = [];
 
       if (stepHabits.length) {
@@ -3308,18 +3369,67 @@
           if (m) { applyWorkoutToHabit(h, m, today); msgs.push(`🏋️ ${h.name} (${m.name || m.type})`); }
         }
       }
+      if (tempHabits.length) {
+        const c = await ghSkinTempC();
+        if (c != null) {
+          for (const h of tempHabits) { applyTempToHabit(h, today); msgs.push(`🌡️ ${h.name} ${fmtSkinTemp(c)}`); }
+        }
+      }
       localStorage.setItem(KEYS.ghLastSync, String(Date.now()));
       renderToday();
       renderGoogleState();
       if (msgs.length) showToast("✓ Synced · " + msgs.join(" · ") + (sleepNote ? " · " + sleepNote : ""), "success");
       else if (sleepNote) showGhBanner("😴 " + sleepNote);
-      else showGhBanner("🔄 Nothing to sync yet — no steps, sleep, or workouts found for today. Sync your watch or Fitbit app and try again.");
+      else showGhBanner("🔄 Nothing to sync yet — no steps, sleep, workouts, or temperature found for today. Sync your watch or Fitbit app and try again.");
     } catch (e) {
       showToast("Sync failed: " + (e.message || e), "error");
     } finally {
       ghInFlight = false;
       const b = document.getElementById("todaySyncGhBtn");
       if (b) { b.disabled = false; b.textContent = "🔄 Sync"; }
+    }
+  }
+  // Format a skin-temperature variation for display, e.g. "+0.3°C" / "-0.2°C".
+  function fmtSkinTemp(c) {
+    const n = Math.round(Number(c) * 10) / 10;
+    return (n > 0 ? "+" : "") + n.toFixed(1) + "°C";
+  }
+  // Skin temperature is a nightly variation from baseline (can be negative), so
+  // it isn't a count-to-target metric — a reading just means "tracked tonight".
+  // Mark the temp habit done when a reading exists. Returns whether it's done.
+  function applyTempToHabit(habit, date) {
+    if (!isCompleted(habit, date)) {
+      setCompletionValue(habit.id, date, habit.type === "count" ? (habit.target || 1) : 1);
+      maybeCelebrate(habit, date);
+    }
+    return true;
+  }
+  // Pull the latest skin-temperature reading into a temperature habit.
+  async function pullSkinTempForHabit(habit) {
+    if (!ghConnected()) { showToast("Connect Google Health in Settings first.", "warn"); return; }
+    if (!navigator.onLine) { showToast("You're offline.", "warn"); return; }
+    if (ghInFlight) return;
+    ghInFlight = true;
+    try {
+      const c = await ghSkinTempC();
+      const today = new Date();
+      if (c == null) {
+        const hint = ghScopeHint(ghTempErr);
+        showGhBanner(hint
+          ? `🌡️ ${hint}`
+          : ghTempErr
+            ? `🌡️ Couldn't read skin temperature: ${ghTempErr}${ghTempDbg}`
+            : `🌡️ No skin-temperature reading yet. It's measured overnight — sync your watch or Fitbit app, then tap 🌡️ again.${ghTempDbg}`);
+        return;
+      }
+      applyTempToHabit(habit, today);
+      showToast(`🌡️ Skin temp ${fmtSkinTemp(c)} vs baseline — logged ✓`, "success");
+      localStorage.setItem(KEYS.ghLastSync, String(Date.now()));
+      renderToday();
+    } catch (e) {
+      showToast("Skin temp pull failed: " + (e.message || e), "error");
+    } finally {
+      ghInFlight = false;
     }
   }
   // Pull last night's sleep into a sleep habit. Fills a count habit with hours;
@@ -5749,9 +5859,10 @@
       if (stepHabitKind(habit)) kind = "steps";
       else if (isSleepHabit(habit)) kind = "sleep";
       else if (isWorkoutHabit(habit)) kind = "workout";
+      else if (isTempHabit(habit)) kind = "temp";
       if (kind) {
-        const ico = kind === "sleep" ? "😴" : kind === "workout" ? "🏋️" : "👟";
-        const what = kind === "sleep" ? "last night's sleep" : kind === "workout" ? "today's workout" : "steps";
+        const ico = kind === "sleep" ? "😴" : kind === "workout" ? "🏋️" : kind === "temp" ? "🌡️" : "👟";
+        const what = kind === "sleep" ? "last night's sleep" : kind === "workout" ? "today's workout" : kind === "temp" ? "skin temperature" : "steps";
         const pull = document.createElement("button");
         pull.className = "stepper-btn pull-steps-mini";
         pull.textContent = ico;
@@ -5761,6 +5872,7 @@
           e.stopPropagation();
           if (kind === "sleep") pullSleepForHabit(habit);
           else if (kind === "workout") pullWorkoutForHabit(habit);
+          else if (kind === "temp") pullSkinTempForHabit(habit);
           else pullStepsForHabit(habit);
         });
         controls.appendChild(pull);
@@ -11687,7 +11799,7 @@
       buildGoogleAuthUrl, googleTodayFilter, mapExerciseDataPoints, sumStepsDataPoints, latestWeightKg,
       mapSleepHours, parseDurationSeconds, mapWorkoutSessions, workoutHabitMatch,
       recentSleepHours, sleepSessionSeconds, sleepSessionEndMs, sleepSessionStartMs, ghScopeHint,
-      isWorkoutHabit, isSleepHabit,
+      isWorkoutHabit, isSleepHabit, isTempHabit, latestSkinTempDeltaC, fmtSkinTemp,
       getState: () => state, setState: (s) => { state = s; },
     };
   }
