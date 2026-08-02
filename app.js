@@ -3107,12 +3107,25 @@
       setCompletionValue(habit.id, date, 1); maybeCelebrate(habit, date);
     }
   }
+  // Fetch every page of a data type and return the combined dataPoints. Session
+  // types (sleep, exercise) rarely paginate, but this keeps them safe too.
+  async function ghAllPages(path, filter) {
+    const all = [];
+    let pageToken = "", pages = 0;
+    do {
+      const json = await ghApiGet(path, filter, pageToken, 1000);
+      if (json && Array.isArray(json.dataPoints)) for (const p of json.dataPoints) all.push(p);
+      pageToken = (json && json.nextPageToken) ? json.nextPageToken : "";
+      pages++;
+    } while (pageToken && pages < 25);
+    return { dataPoints: all };
+  }
   async function ghSleepHours() {
-    try { return mapSleepHours(await ghApiGet("v4/users/me/dataTypes/sleep/dataPoints", `sleep.interval.civil_start_time >= "${civilDayHour(1, 12)}"`)); }
+    try { return mapSleepHours(await ghAllPages("v4/users/me/dataTypes/sleep/dataPoints", `sleep.interval.civil_start_time >= "${civilDayHour(1, 12)}"`)); }
     catch (e) { return 0; }
   }
   async function ghWorkoutSessions() {
-    try { return mapWorkoutSessions(await ghApiGet("v4/users/me/dataTypes/exercise/dataPoints", googleTodayFilter())); }
+    try { return mapWorkoutSessions(await ghAllPages("v4/users/me/dataTypes/exercise/dataPoints", googleTodayFilter())); }
     catch (e) { return []; }
   }
   // One-tap: pull steps, sleep, and workouts and sync every matching Today card.
@@ -3179,7 +3192,7 @@
     try {
       let hrs = 0, dbg = "";
       try {
-        const raw = await ghApiGet("v4/users/me/dataTypes/sleep/dataPoints", `sleep.interval.civil_start_time >= "${civilDayHour(1, 12)}"`);
+        const raw = await ghAllPages("v4/users/me/dataTypes/sleep/dataPoints", `sleep.interval.civil_start_time >= "${civilDayHour(1, 12)}"`);
         hrs = mapSleepHours(raw);
         if (hrs === 0 && raw && Array.isArray(raw.dataPoints) && raw.dataPoints.length) {
           const p0 = raw.dataPoints[0] || {};
@@ -3213,7 +3226,7 @@
     try {
       let sessions = [], dbg = "";
       try {
-        const raw = await ghApiGet("v4/users/me/dataTypes/exercise/dataPoints", googleTodayFilter());
+        const raw = await ghAllPages("v4/users/me/dataTypes/exercise/dataPoints", googleTodayFilter());
         sessions = mapWorkoutSessions(raw);
         if (!sessions.length && raw && Array.isArray(raw.dataPoints) && raw.dataPoints.length) {
           dbg = " · workout keys: " + JSON.stringify(Object.keys(raw.dataPoints[0] || {}));
