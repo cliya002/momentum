@@ -18,4 +18,15 @@ else { patch++; }
 const next = `${major}.${minor}.${patch}`;
 s = s.replace(/APP_VERSION\s*=\s*"\d+\.\d+\.\d+"/, `APP_VERSION = "${next}"`);
 fs.writeFileSync(file, s);
+
+// Cache-bust the stylesheet too: rewrite index.html's styles.css?v=… so a
+// version bump forces a fresh CSS URL (app.js is versioned via a loader).
+try {
+  const idxFile = "index.html";
+  let html = fs.readFileSync(idxFile, "utf8");
+  const before = html;
+  html = html.replace(/href="styles\.css(?:\?v=[^"]*)?"/, `href="styles.css?v=${next}"`);
+  if (html !== before) { fs.writeFileSync(idxFile, html); console.log(`Cache-busted styles.css → v=${next}`); }
+} catch (e) { /* non-fatal */ }
+
 console.log(`Version bumped (${level}) to ${next}`);

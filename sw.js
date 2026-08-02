@@ -5,6 +5,7 @@ const ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
+  "./styles.css?v=" + (self.APP_VERSION || "0"),
   "./app.js",
   // index.html requests app.js with a ?v=VERSION query so a version bump forces
   // a fresh URL; pre-cache that exact URL too so offline launches still work.
