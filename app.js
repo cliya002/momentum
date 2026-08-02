@@ -2817,17 +2817,26 @@
   }
   // Sum a "steps" data-type list response into a daily total. The exact field
   // location isn't fully documented, so probe the likely spots defensively.
+  // Extract the step count from one dataPoint (probes likely field shapes).
+  function stepValue(p) {
+    if (!p) return 0;
+    const cand = [
+      p.steps && p.steps.count, p.steps && p.steps.value, (typeof p.steps === "number" || typeof p.steps === "string") ? p.steps : undefined,
+      p.value && p.value.count, p.value, p.count,
+    ];
+    for (const c of cand) { const n = Number(c); if (Number.isFinite(n) && n > 0) return n; }
+    return 0;
+  }
+  // Identify the recording source of a dataPoint, so overlapping sources (phone
+  // + watch + Fitbit) can be de-duplicated instead of double-counted.
+  function stepsSourceKey(p) {
+    const s = p && (p.dataSource || p.originDataSource || p.source);
+    return s ? JSON.stringify(s) : "default";
+  }
   function sumStepsDataPoints(json) {
     const pts = (json && Array.isArray(json.dataPoints)) ? json.dataPoints : [];
     let total = 0;
-    for (const p of pts) {
-      if (!p) continue;
-      const cand = [
-        p.steps && p.steps.count, p.steps && p.steps.value, (typeof p.steps === "number" || typeof p.steps === "string") ? p.steps : undefined,
-        p.value && p.value.count, p.value, p.count,
-      ];
-      for (const c of cand) { const n = Number(c); if (Number.isFinite(n) && n > 0) { total += n; break; } }
-    }
+    for (const p of pts) total += stepValue(p);
     return Math.round(total);
   }
   // Find the most recent weight sample and return it in kg. Probes likely field
@@ -3019,18 +3028,30 @@
     if (!r.ok) throw new Error((j && (j.error && j.error.message || j.error)) || ("HTTP " + r.status));
     return j;
   }
-  // Sum ALL pages of a steps window (intraday buckets can span many pages, so
-  // reading only the first page undercounts the day). Follows nextPageToken.
+  // Total steps for a window, reconciled across data sources. Intraday buckets
+  // span many pages (follow nextPageToken), and multiple sources (phone + watch
+  // + Fitbit) overlap in time — so we sum per source and return the LARGEST
+  // source's total (the primary tracker) rather than summing every source
+  // together, which would double-count. Single source → that source's total.
   async function ghStepsSumAllPages(kind) {
     const filter = stepsFilterFor(kind);
-    let total = 0, pageToken = "", pages = 0;
+    const bySource = {};
+    let pageToken = "", pages = 0;
     do {
       const json = await ghApiGet("v4/users/me/dataTypes/steps/dataPoints", filter, pageToken, 1000);
-      total += sumStepsDataPoints(json);
+      const pts = (json && Array.isArray(json.dataPoints)) ? json.dataPoints : [];
+      for (const p of pts) {
+        const v = stepValue(p);
+        if (v <= 0) continue;
+        const k = stepsSourceKey(p);
+        bySource[k] = (bySource[k] || 0) + v;
+      }
       pageToken = (json && json.nextPageToken) ? json.nextPageToken : "";
       pages++;
     } while (pageToken && pages < 25);
-    return total;
+    const totals = Object.values(bySource);
+    if (!totals.length) return 0;
+    return Math.round(Math.max.apply(null, totals));
   }
 
   function civilAtHour(h) {
