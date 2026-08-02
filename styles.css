@@ -2179,6 +2179,17 @@ body.hc .btn-secondary { border-color: var(--border); }
   justify-content: space-between;
 }
 .template-modal-header h2 { margin: 0; }
+.template-search {
+  width: 100%;
+  margin: 0.6rem 0 0.2rem;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-soft);
+  color: var(--text);
+}
+.template-search:focus { outline: 2px solid var(--primary); outline-offset: 1px; }
 .template-toolbar {
   display: flex;
   align-items: center;

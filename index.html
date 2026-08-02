@@ -1161,12 +1161,14 @@
         <button type="button" id="templateCloseBtn" class="icon-btn" aria-label="Close">✕</button>
       </div>
       <p class="card-sub">Tick the habits you want, then add them all at once. Tap a section title to toggle the whole group.</p>
+      <input type="search" id="templateSearch" class="template-search" placeholder="🔍 Search templates (e.g. sleep, meds, walk)" aria-label="Search templates" autocomplete="off" />
       <div class="template-toolbar">
         <button type="button" id="templateSelectAll" class="btn-secondary">Select all</button>
         <button type="button" id="templateClearAll" class="btn-secondary">Clear</button>
         <span id="templateCount" class="template-count">0 selected</span>
       </div>
       <div id="templateList" class="template-list"></div>
+      <p id="templateNoMatch" class="empty-inline" hidden>No templates match your search.</p>
       <div class="template-modal-footer">
         <button type="button" id="templateCancelBtn" class="btn-secondary">Cancel</button>
         <button type="button" id="templateAddBtn" class="btn-primary">Add selected</button>

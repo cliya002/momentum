@@ -735,6 +735,56 @@
         { name: "Weekly deep clean", icon: "🧼", color: "#22c55e", category: "Custom", time: "Morning", days: [0], notes: "Wash mask, tubing, and reservoir once a week." },
       ],
     },
+    {
+      title: "🎗️ Sobriety & recovery program",
+      items: [
+        { name: "Days sober",     icon: "🎗️", color: "#22c55e", category: "Custom", time: "All day", notes: "One day at a time — your clean streak keeps count.", quit: true },
+        { name: "Attend a meeting", icon: "👥", color: "#3b82f6", category: "Custom", time: "Evening", notes: "Connection is protective — showing up matters more than saying much." },
+        { name: "Call sponsor / support", icon: "📞", color: "#ec4899", category: "Custom", time: "Evening", notes: "A quick check-in, especially on hard days." },
+        { name: "HALT check",     icon: "✋", color: "#f59e0b", category: "Custom", time: "All day", notes: "Hungry, Angry, Lonely, Tired? Spotting the trigger takes the power out of the urge." },
+        { name: "Gratitude list",  icon: "🙏", color: "#a855f7", category: "Custom", time: "Evening", notes: "Three things that went right today." },
+        { name: "Urge surfing",    icon: "🌊", color: "#38bdf8", category: "Custom", time: "All day", notes: "Cravings peak and pass — ride it out for 10 minutes instead of acting." },
+      ],
+    },
+    {
+      title: "🦷 Braces & aligner care",
+      items: [
+        { name: "Wear aligners 22h", icon: "😬", color: "#38bdf8", category: "Custom", time: "All day", notes: "They only work in your mouth — 22 hours a day keeps treatment on track." },
+        { name: "Clean aligners",  icon: "🪥", color: "#14b8a6", category: "Custom", time: "Morning", notes: "Rinse and gently brush them so they stay clear and fresh." },
+        { name: "Brush after meals", icon: "🍽️", color: "#3b82f6", category: "Custom", time: "All day", notes: "Brush before putting aligners back in — traps food otherwise.", type: "count", target: 3, unit: "", increment: 1 },
+        { name: "Change to new trays", icon: "🔁", color: "#a855f7", category: "Custom", time: "Evening", days: [0], notes: "Switch on schedule (often weekly) — set your dentist's interval." },
+      ],
+    },
+    {
+      title: "🧑‍💻 Remote-work day",
+      items: [
+        { name: "Get dressed for work", icon: "👕", color: "#f59e0b", category: "Custom", time: "Morning", days: [1,2,3,4,5], notes: "Changing clothes flips your brain into work mode." },
+        { name: "Walk before work",  icon: "🚶", color: "#22c55e", category: "Fitness", time: "Morning", days: [1,2,3,4,5], notes: "A fake commute — a short walk to start the day clear." },
+        { name: "Stand / move hourly", icon: "🧍", color: "#14b8a6", category: "Fitness", time: "All day", days: [1,2,3,4,5], notes: "Stand and stretch each hour.", type: "count", target: 6, unit: "", increment: 1 },
+        { name: "Lunch away from desk", icon: "🥪", color: "#ec4899", category: "Custom", time: "Afternoon", days: [1,2,3,4,5], notes: "Eat somewhere else — a real break beats sad desk lunch." },
+        { name: "Hard stop", icon: "🛑", color: "#ef4444", category: "Custom", time: "Evening", days: [1,2,3,4,5], notes: "Set an end time and honour it — close the laptop and step away." },
+      ],
+    },
+    {
+      title: "🚗 Car & home maintenance",
+      items: [
+        { name: "Check tyre pressure", icon: "🚗", color: "#6366f1", category: "Custom", time: "Morning", days: [6], notes: "A quick monthly-ish check — set your own interval. Keeps you safe and saves fuel." },
+        { name: "Test smoke alarms", icon: "🚨", color: "#ef4444", category: "Custom", time: "Morning", days: [6], notes: "Press to test; a few seconds could matter a lot." },
+        { name: "Check fluids / oil", icon: "🛢️", color: "#f59e0b", category: "Custom", time: "Morning", days: [6], notes: "Oil, coolant, washer fluid — a quick glance under the hood." },
+        { name: "Replace filters", icon: "🌬️", color: "#14b8a6", category: "Custom", time: "Morning", days: [0], notes: "Air/water/HVAC filters on a schedule — note the date changed." },
+        { name: "Declutter one drawer", icon: "🗄️", color: "#a855f7", category: "Custom", time: "Evening", notes: "One small area at a time keeps the whole place manageable." },
+      ],
+    },
+    {
+      title: "🌱 Gardening",
+      items: [
+        { name: "Water the garden", icon: "🚿", color: "#38bdf8", category: "Custom", time: "Morning", notes: "Early is best — less evaporation. Check the soil first; don't overwater." },
+        { name: "Weed a section",  icon: "🌿", color: "#22c55e", category: "Custom", time: "Morning", days: [6], notes: "A little each week beats a big overgrown push." },
+        { name: "Harvest / deadhead", icon: "🌸", color: "#ec4899", category: "Custom", time: "Morning", notes: "Picking and deadheading keeps plants producing." },
+        { name: "Compost scraps",  icon: "♻️", color: "#14b8a6", category: "Custom", time: "Evening", notes: "Add kitchen scraps and give it a turn." },
+        { name: "Feed / fertilize", icon: "🌾", color: "#f59e0b", category: "Custom", time: "Morning", days: [0], notes: "Follow the product's schedule — more isn't better." },
+      ],
+    },
   ];
 
   const TEMPLATE_ITEM_DEFAULTS = {
@@ -3050,6 +3100,8 @@
 
   // Set of "sectionIdx:itemIdx" keys currently ticked in the picker.
   let templateSelected = new Set();
+  // Current search query for the template browser (case-insensitive).
+  let templateFilter = "";
 
   function templateKey(si, ii) { return `${si}:${ii}`; }
 
@@ -3061,9 +3113,24 @@
 
   function openTemplateModal() {
     templateSelected = new Set();
+    templateFilter = "";
+    const search = getEls().templateSearch;
+    if (search) search.value = "";
     renderTemplateList();
     updateTemplateCount();
     getEls().templateModal.classList.remove("hidden");
+    if (search) setTimeout(() => search.focus(), 60);
+  }
+  // Does a template item match the current search query?
+  function templateItemMatches(section, item, q) {
+    if (!q) return true;
+    if (section.title.toLowerCase().includes(q)) return true;
+    return (
+      (item.name || "").toLowerCase().includes(q) ||
+      (item.notes || "").toLowerCase().includes(q) ||
+      (item.category || "").toLowerCase().includes(q) ||
+      (item.time || "").toLowerCase().includes(q)
+    );
   }
   function closeTemplateModal() {
     getEls().templateModal.classList.add("hidden");
@@ -3074,20 +3141,30 @@
     const listEl = els.templateList;
     listEl.innerHTML = "";
     const added = existingHabitNames();
+    const q = templateFilter.trim().toLowerCase();
+    let shown = 0;
 
     TEMPLATE_LIBRARY.forEach((section, si) => {
+      // When searching, a matching section title shows all its items; otherwise
+      // only the items that match are shown. Sections with no matches are hidden.
+      const titleMatch = q && section.title.toLowerCase().includes(q);
+      const visibleItems = section.items
+        .map((item, ii) => ({ item, ii }))
+        .filter(({ item }) => titleMatch || templateItemMatches(section, item, q));
+      if (visibleItems.length === 0) return;
+      shown += visibleItems.length;
+
       const secEl = document.createElement("div");
       secEl.className = "template-section";
 
       const title = document.createElement("div");
       title.className = "template-section-title";
-      const selectableIdx = section.items.map((_, ii) => ii);
-      const selCount = selectableIdx.filter((ii) => templateSelected.has(templateKey(si, ii))).length;
+      const selCount = section.items.filter((_, ii) => templateSelected.has(templateKey(si, ii))).length;
       title.innerHTML = `<span>${escapeHtml(section.title)}</span><span class="template-section-count">${selCount}/${section.items.length}</span>`;
       title.addEventListener("click", () => toggleSection(si));
       secEl.appendChild(title);
 
-      section.items.forEach((item, ii) => {
+      visibleItems.forEach(({ item, ii }) => {
         const key = templateKey(si, ii);
         const isAdded = added.has(item.name.trim().toLowerCase());
         const row = document.createElement("div");
@@ -3132,6 +3209,7 @@
 
       listEl.appendChild(secEl);
     });
+    if (els.templateNoMatch) els.templateNoMatch.hidden = shown > 0;
   }
 
   function toggleItem(si, ii) {
@@ -3152,8 +3230,13 @@
   }
 
   function templateSelectAll() {
+    // With a search active, only select the currently-matching templates.
+    const q = templateFilter.trim().toLowerCase();
     TEMPLATE_LIBRARY.forEach((section, si) => {
-      section.items.forEach((_, ii) => templateSelected.add(templateKey(si, ii)));
+      const titleMatch = q && section.title.toLowerCase().includes(q);
+      section.items.forEach((item, ii) => {
+        if (titleMatch || templateItemMatches(section, item, q)) templateSelected.add(templateKey(si, ii));
+      });
     });
     renderTemplateList();
     updateTemplateCount();
@@ -3687,6 +3770,8 @@
       // template picker modal
       templateModal: $("#templateModal"),
       templateList: $("#templateList"),
+      templateSearch: $("#templateSearch"),
+      templateNoMatch: $("#templateNoMatch"),
       templateCount: $("#templateCount"),
       templateSelectAll: $("#templateSelectAll"),
       templateClearAll: $("#templateClearAll"),
@@ -10434,6 +10519,7 @@
     if (els.syncTimeBtn) els.syncTimeBtn.addEventListener("click", syncTimeFromRemindersAll);
     els.templateCancelBtn.addEventListener("click", closeTemplateModal);
     els.templateCloseBtn.addEventListener("click", closeTemplateModal);
+    if (els.templateSearch) els.templateSearch.addEventListener("input", () => { templateFilter = els.templateSearch.value || ""; renderTemplateList(); });
     els.templateSelectAll.addEventListener("click", templateSelectAll);
     els.templateClearAll.addEventListener("click", templateClearAll);
     els.templateAddBtn.addEventListener("click", addSelectedTemplates);
