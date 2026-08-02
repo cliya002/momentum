@@ -274,17 +274,38 @@ console.log("recovery: metricNumber (deep plausible-range scan)");
   assert(T.dailyPointMs({}) === 0, "no timestamp -> 0");
 }
 
-console.log("recovery: recoveryScore (heuristic)");
+console.log("recovery: recoveryScore (WHOOP-style, baseline-relative)");
 {
+  // Absolute fallback (no baseline): great vs poor metrics.
   const strong = T.recoveryScore({ sleepHrs: 8, hrvMs: 80, restingHr: 45, spo2: 98, respRate: 14, skinTempC: 0 });
-  assert(strong.score >= 90 && strong.tier === "good", "great metrics -> high score, good tier (" + strong.score + ")");
+  assert(strong.score >= 85 && strong.tier === "good", "great metrics (no base) -> high score/good (" + strong.score + ")");
   const poor = T.recoveryScore({ sleepHrs: 4, hrvMs: 20, restingHr: 80, spo2: 90, respRate: 22, skinTempC: 1.5 });
-  assert(poor.score <= 25 && poor.tier === "low", "poor metrics -> low score, low tier (" + poor.score + ")");
+  assert(poor.score <= 33 && poor.tier === "low", "poor metrics -> low score/low tier (" + poor.score + ")");
   assert(T.recoveryScore(null) === null, "no snapshot -> null");
   assert(T.recoveryScore({}) === null, "no metrics -> null");
-  // Works with only some metrics present (averages what's available).
-  const partial = T.recoveryScore({ sleepHrs: 7 });
-  assert(partial && partial.score >= 70, "single strong metric still scores (" + (partial && partial.score) + ")");
+
+  // Baseline-relative: SAME absolute HRV scores very differently vs baseline.
+  const base = { hrvMs: 45, restingHr: 60, respRate: 14 };
+  const aboveBase = T.recoveryScore({ hrvMs: 55, restingHr: 55, sleepHrs: 8, respRate: 14 }, base);
+  const belowBase = T.recoveryScore({ hrvMs: 32, restingHr: 68, sleepHrs: 6, respRate: 17 }, base);
+  assert(aboveBase.score > belowBase.score, "HRV/RHR above-baseline scores higher than below (" + aboveBase.score + " > " + belowBase.score + ")");
+  assert(aboveBase.tier === "good", "above-baseline day is green (" + aboveBase.score + ")");
+  assert(belowBase.tier === "low" || belowBase.tier === "mid", "below-baseline day is not green (" + belowBase.score + ")");
+  // At exactly baseline, HRV sub-score is ~60 (moderate), not maxed.
+  const atBase = T.recoveryScore({ hrvMs: 45, restingHr: 60, sleepHrs: 8, respRate: 14 }, base);
+  assert(atBase.score >= 55 && atBase.score <= 80, "at-baseline day is moderate-to-good (" + atBase.score + ")");
+}
+
+console.log("recovery: seriesBaseline");
+{
+  const s = [40, 42, 41, 43, 60].map((v, i) => ({ dateKey: "d" + i, value: v, ts: i }));
+  // Excludes the most recent (60); mean of [40,42,41,43] = 41.5.
+  assert(T.seriesBaseline(s, 30) === 41.5, "baseline excludes today, averages prior (41.5)");
+  assert(T.seriesBaseline([{ value: 1 }, { value: 2 }], 30) === null, "too few points -> null");
+  assert(T.seriesBaseline([], 30) === null, "empty -> null");
+  // Respects the window: only the last N prior readings.
+  const long = Array.from({ length: 40 }, (_, i) => ({ value: i < 39 ? 50 : 99, ts: i }));
+  assert(T.seriesBaseline(long, 10) === 50, "windowed baseline uses only recent prior readings");
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
