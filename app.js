@@ -658,6 +658,8 @@
       keystone: {},
       // Smart reminder timing: habitId -> { samples: [minSinceMidnight,…], updatedAt }
       completionClock: {},
+      // Per-dose timing: habitId -> doseIndex -> { samples:[minSinceMidnight], updatedAt }
+      doseClock: {},
       // Recent activity log: [{ ts, type, text }] (newest first, capped)
       activity: [],
     };
@@ -1055,6 +1057,20 @@
         if (samples.length) st.completionClock[id] = { samples, updatedAt: Number(rec.updatedAt) || 0 };
       }
     }
+    // Per-dose timing clock samples.
+    st.doseClock = {};
+    if (s.doseClock && typeof s.doseClock === "object") {
+      for (const [id, byDose] of Object.entries(s.doseClock)) {
+        if (!byDose || typeof byDose !== "object") continue;
+        const clean = {};
+        for (const [di, rec] of Object.entries(byDose)) {
+          if (!rec || typeof rec !== "object" || !Array.isArray(rec.samples)) continue;
+          const samples = rec.samples.map(Number).filter((n) => Number.isFinite(n) && n >= 0 && n < 1440).slice(-50);
+          if (samples.length) clean[di] = { samples, updatedAt: Number(rec.updatedAt) || 0 };
+        }
+        if (Object.keys(clean).length) st.doseClock[id] = clean;
+      }
+    }
     // Recent activity log.
     st.activity = [];
     if (Array.isArray(s.activity)) {
@@ -1375,6 +1391,20 @@
       }
     }
 
+    // Per-dose clock: per habit+dose, newest updatedAt wins.
+    merged.doseClock = {};
+    for (const src of [local.doseClock || {}, remote.doseClock || {}]) {
+      for (const [id, byDose] of Object.entries(src)) {
+        if (!byDose || typeof byDose !== "object") continue;
+        if (!merged.doseClock[id]) merged.doseClock[id] = {};
+        for (const [di, rec] of Object.entries(byDose)) {
+          if (!rec || !Array.isArray(rec.samples)) continue;
+          const ex = merged.doseClock[id][di];
+          if (!ex || (Number(rec.updatedAt) || 0) > (Number(ex.updatedAt) || 0)) merged.doseClock[id][di] = rec;
+        }
+      }
+    }
+
     // Activity log: union, dedup by ts+text, newest 50.
     const actSeen = new Set();
     const acts = [];
@@ -1586,6 +1616,67 @@
   // A habit is "at risk" if it has a running streak but is still pending today.
   function isStreakAtRisk(habit, date) {
     return habitStatus(habit, date) === "pending" && currentStreak(habit) >= 2;
+  }
+
+  // Historical completion rate (0..1) for a habit on one weekday, plus the
+  // sample size, over its tracked history. null if too little data.
+  function habitWeekdayRate(habit, dow) {
+    const createdKey = habit.createdAt ? dateKey(new Date(habit.createdAt)) : null;
+    let sched = 0, done = 0;
+    let d = new Date();
+    const today = new Date();
+    for (let i = 0; i < 730; i++) {
+      if (createdKey && dateKey(d) < createdKey) break; // don't count before the habit existed
+      if (d < today && d.getDay() === dow && countsForAdherence(habit, d)) {
+        sched++;
+        if (isCompleted(habit, d)) done++;
+      }
+      d = addDays(d, -1);
+    }
+    if (sched < 3) return null;
+    return { rate: done / sched, sched, done };
+  }
+
+  // Habits likely to be skipped today: this weekday has been historically weak
+  // AND the habit is still pending. Sorted worst-first. Pure-ish (reads state).
+  function skipRiskHabits(today) {
+    const day = today || new Date();
+    const out = [];
+    for (const h of state.habits) {
+      if (h.archived || h.nightPrevDay) continue;
+      if (!isHabitActiveOn(h, day)) continue;
+      if (habitStatus(h, day) !== "pending") continue;
+      const wd = habitWeekdayRate(h, day.getDay());
+      if (!wd || wd.sched < 3) continue;
+      if (wd.rate <= 0.5) out.push({ habit: h, rate: wd.rate, sched: wd.sched });
+    }
+    return out.sort((a, b) => a.rate - b.rate);
+  }
+
+  // For count/dose habits: if you consistently land short of the target, suggest
+  // a more realistic one. Looks at the average completed value over recent
+  // scheduled days. Returns {current, suggested, avg, days} or null.
+  function adaptiveTargetSuggestion(habit) {
+    if (habit.type !== "count") return null;
+    const tgt = Number(habit.target);
+    if (!Number.isInteger(tgt) || tgt < 2) return null;
+    const createdKey = habit.createdAt ? dateKey(new Date(habit.createdAt)) : null;
+    let sum = 0, days = 0;
+    let d = addDays(new Date(), -1); // exclude today (still in progress)
+    for (let i = 0; i < 60 && days < 21; i++) {
+      if (createdKey && dateKey(d) < createdKey) break; // ignore days before the habit existed
+      if (countsForAdherence(habit, d)) {
+        sum += completionValue(habit.id, d);
+        days++;
+      }
+      d = addDays(d, -1);
+    }
+    if (days < 7) return null; // need a couple of weeks of history
+    const avg = sum / days;
+    const suggested = Math.max(1, Math.round(avg));
+    // Only suggest a *lower* target, and only if the gap is meaningful.
+    if (suggested >= tgt || tgt - avg < 0.75) return null;
+    return { current: tgt, suggested, avg: Math.round(avg * 10) / 10, days };
   }
 
   // Last 7 days (oldest→newest) of status for a habit, for the sparkline.
@@ -1857,6 +1948,10 @@
     if (dTimes.length || habit.time) {
       const when = dTimes.length ? dTimes.join(" · ") : escapeHtml(habit.time);
       html += `<p class="detail-line hint">🕒 ${when}${habit.type === "count" ? ` · target ${fmtValue(habit, habit.target)}` : ""}</p>`;
+    }
+    const at = adaptiveTargetSuggestion(habit);
+    if (at) {
+      html += `<p class="detail-line hint">🎚️ You average ${at.avg}/day over the last ${at.days} — a target of ${at.suggested} might feel more doable.</p>`;
     }
     html += `<div class="detail-stats">` +
       `<div class="detail-stat"><div class="ds-num">${habit.quit ? "🟢" : "🔥"} ${cur}</div><div class="ds-lbl">${habit.quit ? "days clean" : "current streak"}</div></div>` +
@@ -3175,6 +3270,11 @@
       habitIncrement: $("#habitIncrement"),
       typePicker: $(".type-picker"),
       countFields: $("#countFields"),
+      habitName: $("#habitName"),
+      habitDoseSpacingHint: $("#habitDoseSpacingHint"),
+      habitCountSuggest: $("#habitCountSuggest"),
+      habitCountSuggestText: $("#habitCountSuggestText"),
+      habitCountSuggestBtn: $("#habitCountSuggestBtn"),
       iconPicker: $("#iconPicker"),
       colorPicker: $("#colorPicker"),
       daysPicker: $("#daysPicker"),
@@ -3457,6 +3557,8 @@
       mask = cnt > 0 ? (1 << Math.min(cnt, 12)) - 1 : 0;
     }
     mask ^= (1 << i);
+    // Learn when this specific dose gets done (only when turning it ON today).
+    if (((mask >> i) & 1) && sameDay(date, new Date())) recordDoseClock(habit.id, i, date);
     const cnt = popcount(mask);
     if (mask === 0) {
       delete state.doseTicks[day][habit.id];
@@ -3481,6 +3583,74 @@
       if (state.doseTicks[day]) delete state.doseTicks[day][habit.id];
       setCompletionValue(habit.id, date, 0);
     }
+  }
+
+  /* ---- Smart multi-dose helpers (pure + tested) ---- */
+  // Warn when two dose reminders sit too close together (supplements/meds
+  // usually want spacing). Returns a message, or "" when spacing is fine.
+  // times: array of "HH:MM"; minGapMin: minimum comfortable gap in minutes.
+  function doseSpacingWarning(times, minGapMin) {
+    const gap = minGapMin == null ? 180 : minGapMin;
+    const mins = (Array.isArray(times) ? times : [])
+      .filter((t) => /^\d{2}:\d{2}$/.test(t))
+      .map((t) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; })
+      .sort((a, b) => a - b);
+    if (mins.length < 2) return "";
+    let tightest = Infinity;
+    for (let i = 1; i < mins.length; i++) tightest = Math.min(tightest, mins[i] - mins[i - 1]);
+    if (tightest >= gap) return "";
+    const hrs = Math.round((tightest / 60) * 10) / 10;
+    const label = tightest < 60 ? `${tightest} min` : `${hrs} hr`;
+    return `Two doses are only ${label} apart. Spacing them out (3+ hours) usually works better.`;
+  }
+
+  // Detect a "twice/N times a day" intent from a habit name, or from having
+  // several reminder times on a yes/no habit. Returns {target} to switch it to
+  // a per-dose count habit, or null. Pure so it can be unit-tested.
+  function suggestCountSetup(name, reminderCount, currentType) {
+    if (currentType === "count") return null; // already a count habit
+    const s = " " + String(name || "").toLowerCase() + " ";
+    const words = { once: 1, twice: 2, thrice: 3, two: 2, three: 3, four: 4, five: 5 };
+    let target = null;
+    let m = s.match(/\b(\d{1,2})\s*(?:x|×|times?|doses?)\s*(?:a|per|\/)\s*day\b/);
+    if (m) target = +m[1];
+    if (target == null) { m = s.match(/\b(twice|thrice|two|three|four|five)\s*(?:a|per)?\s*(?:times?\s*)?(?:a|per)\s*day\b/); if (m) target = words[m[1]]; }
+    if (target == null && /\btwice\b/.test(s)) target = 2;
+    if (target == null && /\bthrice\b/.test(s)) target = 3;
+    if (target == null && /\b(\d{1,2})\s*(?:x|×)\/day\b/.test(s)) target = +s.match(/\b(\d{1,2})\s*(?:x|×)\/day\b/)[1];
+    // Fall back to reminder count when the name gives no hint.
+    if (target == null && Number(reminderCount) >= 2) target = Number(reminderCount);
+    if (target == null || target < 2 || target > 12) return null;
+    return { target };
+  }
+
+  // Progress for a per-dose habit today: how many of N doses are done and how
+  // many remain. Returns null for non-dose habits.
+  function doseProgress(habit, date) {
+    const slots = doseSlots(habit, date.getDay());
+    if (!slots) return null;
+    let done = 0;
+    for (const sl of slots) if (doseStatus(habit, date, sl.i) === "done") done++;
+    return { done, total: slots.length, pending: slots.length - done, slots };
+  }
+
+  // A gentle catch-up message when an earlier dose is done but a later one is
+  // still open and its time has passed. Returns "" when no nudge is due.
+  // nowMin = minutes since midnight (injectable for tests).
+  function doseNudgeMessage(habit, date, nowMin) {
+    const prog = doseProgress(habit, date);
+    if (!prog || prog.done === 0 || prog.pending === 0) return "";
+    // Find the earliest still-open dose whose scheduled time has already passed.
+    let overdue = null;
+    for (const sl of prog.slots) {
+      if (doseStatus(habit, date, sl.i) === "done") continue;
+      if (!sl.time || !/^\d{2}:\d{2}$/.test(sl.time)) continue;
+      const [h, m] = sl.time.split(":").map(Number);
+      const t = h * 60 + m;
+      if (t <= nowMin && (overdue == null || t < overdue.t)) overdue = { sl, t };
+    }
+    if (!overdue) return "";
+    return `${habit.icon || "💊"} You've done ${prog.done} of ${prog.total} ${habit.name} doses today — dose ${overdue.sl.i + 1} is still open.`;
   }
 
   // Which day part is "now" (for the highlight).
@@ -3946,6 +4116,28 @@
   }
   function dayNameOf(d) { return d.toLocaleDateString(undefined, { weekday: "long" }); }
 
+  // A short "will today's streaks survive?" read for the Today card. Looks at
+  // habits with a live streak (>=3) that are still pending and how much day is
+  // left. Returns {level:"safe"|"watch"|"risk", text} or null when nothing's
+  // riding on today. Pure-ish (reads state), injectable "now" for tests.
+  function momentumForecast(active, today) {
+    const now = today || new Date();
+    const hour = now.getHours();
+    const streaked = active.filter((h) => currentStreak(h) >= 3);
+    if (streaked.length === 0) return null;
+    const pending = streaked.filter((h) => habitStatus(h, now) === "pending");
+    if (pending.length === 0) {
+      return { level: "safe", text: `🛡️ All ${streaked.length} of your active streaks are safe for today.` };
+    }
+    const top = pending.slice().sort((a, b) => currentStreak(b) - currentStreak(a))[0];
+    const s = currentStreak(top);
+    const late = hour >= 20;
+    if (late || pending.length >= 3) {
+      return { level: "risk", text: `⏳ ${pending.length} streak${pending.length === 1 ? "" : "s"} still riding on today${late ? " and it's getting late" : ""} — biggest is ${top.icon || "•"} ${top.name} (${s} days).` };
+    }
+    return { level: "watch", text: `👀 ${pending.length} streak${pending.length === 1 ? "" : "s"} to protect today, incl. your ${s}-day ${top.name}. Plenty of day left.` };
+  }
+
   // A personalized, data-driven "coach" line for the Today card. Picks the
   // single most relevant signal (streak at risk, pace vs your usual weekday,
   // time of day, momentum) instead of a static count.
@@ -3973,6 +4165,15 @@
       const h = atRisk.slice().sort((a, b) => currentStreak(b) - currentStreak(a))[0];
       const s = currentStreak(h);
       if (s >= 2) return `⚠️ Your ${s}-day "${h.name}" streak is on the line today. Knock it out before the day gets away.`;
+    }
+
+    // Skip-risk: this weekday is historically weak for a still-pending habit.
+    if (hour >= 11 && pending > 0) {
+      const risky = skipRiskHabits(today);
+      if (risky.length) {
+        const r = risky[0];
+        return `🎯 ${dayNameOf(today)}s are tough for ${r.habit.icon || "•"} ${r.habit.name} (${Math.round(r.rate * 100)}% usually). Beat the pattern — do it now while you're thinking of it.`;
+      }
     }
 
     if (done === 0) {
@@ -5132,12 +5333,20 @@
     if (navigator.vibrate) { try { navigator.vibrate([40, 30, 40]); } catch (e) {} }
     if (overdue.length === 1) {
       const h = overdue[0];
-      const chip = timeChipLabel(effectiveTime(h, now.getDay()));
-      const bits = [];
-      if (chip) bits.push(`Was due ${chip}`);
-      if (h.notes) bits.push(h.notes);
+      // Dose-aware body: if an earlier dose is done but a later one is open.
+      const dp = doseProgress(h, now);
+      let body;
+      if (dp && dp.done > 0 && dp.pending > 0) {
+        body = `You've done ${dp.done} of ${dp.total} — ${dp.pending} dose${dp.pending === 1 ? "" : "s"} still open.`;
+      } else {
+        const chip = timeChipLabel(effectiveTime(h, now.getDay()));
+        const bits = [];
+        if (chip) bits.push(`Was due ${chip}`);
+        if (h.notes) bits.push(h.notes);
+        body = bits.length ? bits.join(" · ") : "Still pending from earlier today.";
+      }
       notify(`${h.icon || "⏰"} ${h.name}`, {
-        body: bits.length ? bits.join(" · ") : "Still pending from earlier today.",
+        body,
         ids: [h.id],
         tag: "ht-catchup",
       });
@@ -6078,6 +6287,49 @@
     if (isAutoTimeSummary(cur)) {
       els.habitTime.value = times.map(fmtClockLabel).join(" & ");
     }
+    updateFormSmartHints();
+  }
+
+  // Live smart hints in the habit form: dose spacing warning + a suggestion to
+  // switch a yes/no habit to a per-dose count habit.
+  function currentFormType() {
+    const els = getEls();
+    const sel = els.typePicker && els.typePicker.querySelector(".type-btn.selected");
+    return sel && sel.dataset.type === "count" ? "count" : "check";
+  }
+  function updateFormSmartHints() {
+    const els = getEls();
+    if (!els.habitReminderList) return;
+    const times = collectReminderTimes();
+    const type = currentFormType();
+    // Dose spacing warning.
+    if (els.habitDoseSpacingHint) {
+      const warn = doseSpacingWarning(times);
+      els.habitDoseSpacingHint.textContent = warn ? "⏱️ " + warn : "";
+      els.habitDoseSpacingHint.hidden = !warn;
+    }
+    // Count-setup suggestion (only for yes/no habits).
+    if (els.habitCountSuggest) {
+      const name = els.habitName ? els.habitName.value : "";
+      const sug = suggestCountSetup(name, times.length, type);
+      if (sug) {
+        els.habitCountSuggest.dataset.target = String(sug.target);
+        if (els.habitCountSuggestText) els.habitCountSuggestText.textContent = `This looks like a ${sug.target}× a day habit. Track each dose separately?`;
+        els.habitCountSuggest.hidden = false;
+      } else {
+        els.habitCountSuggest.hidden = true;
+      }
+    }
+  }
+  // Apply the count-setup suggestion: switch to count + set the target.
+  function applyCountSuggestion() {
+    const els = getEls();
+    const target = Number(els.habitCountSuggest && els.habitCountSuggest.dataset.target) || 2;
+    els.typePicker.querySelectorAll(".type-btn").forEach((b) => b.classList.toggle("selected", b.dataset.type === "count"));
+    els.countFields.classList.remove("hidden");
+    if (els.habitTarget) els.habitTarget.value = target;
+    if (els.habitIncrement && !els.habitIncrement.value) els.habitIncrement.value = 1;
+    els.habitCountSuggest.hidden = true;
   }
 
   /* ---- Natural-language quick-add ---- */
@@ -6240,6 +6492,7 @@
     renderReminderTimeInputs(initTimes);
     els.habitReminderMsg.value = habit ? (habit.reminderMsg || "") : "";
     els.habitNotes.value = habit ? (habit.notes || "") : "";
+    updateFormSmartHints();
     // Habit-stacking anchor: any other habit can be the trigger (exclude self).
     const anchorOpts = ['<option value="">— On its own —</option>'].concat(
       state.habits
@@ -6653,6 +6906,51 @@
     m = Math.round(m / 5) * 5;
     return String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
   }
+
+  // Per-dose completion-time learning: each dose slot of a multi-dose habit
+  // learns the clock time it actually gets done, so we can suggest a better
+  // time for that specific dose (not just the habit as a whole).
+  function recordDoseClock(habitId, doseIndex, date) {
+    if (!sameDay(date, new Date())) return;
+    const now = new Date();
+    const min = now.getHours() * 60 + now.getMinutes();
+    if (!state.doseClock) state.doseClock = {};
+    if (!state.doseClock[habitId]) state.doseClock[habitId] = {};
+    const rec = state.doseClock[habitId][doseIndex] || { samples: [], updatedAt: 0 };
+    rec.samples = rec.samples.concat(min).slice(-50);
+    rec.updatedAt = Date.now();
+    state.doseClock[habitId][doseIndex] = rec;
+    if (typeof document !== "undefined") save();
+  }
+  function suggestDoseTime(habitId, doseIndex) {
+    const rec = state.doseClock && state.doseClock[habitId] && state.doseClock[habitId][doseIndex];
+    if (!rec || rec.samples.length < 5) return null;
+    let m = median(rec.samples);
+    if (m == null) return null;
+    m = Math.round(m / 5) * 5;
+    return String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
+  }
+  // Per-dose suggestions where the learned time differs from the scheduled dose
+  // reminder by > 45 min. Returns [{habit, doseIndex, current, suggested, diff}].
+  function doseTimingSuggestions() {
+    const out = [];
+    for (const h of state.habits) {
+      if (h.archived) continue;
+      const slots = doseSlots(h, new Date().getDay());
+      if (!slots) continue;
+      for (const sl of slots) {
+        const sug = suggestDoseTime(h.id, sl.i);
+        if (!sug) continue;
+        const cur = sl.time && /^\d{2}:\d{2}$/.test(sl.time) ? sl.time : "";
+        if (!cur) { out.push({ habit: h, doseIndex: sl.i, total: sl.total, current: "", suggested: sug, diff: 999 }); continue; }
+        const [ch, cm] = cur.split(":").map(Number);
+        const [sh, sm] = sug.split(":").map(Number);
+        const diff = Math.abs((sh * 60 + sm) - (ch * 60 + cm));
+        if (diff >= 45) out.push({ habit: h, doseIndex: sl.i, total: sl.total, current: cur, suggested: sug, diff });
+      }
+    }
+    return out.sort((a, b) => b.diff - a.diff);
+  }
   // Habits whose usual completion time differs from their reminder by > 45 min.
   function smartTimingSuggestions() {
     const out = [];
@@ -6683,23 +6981,51 @@
     renderSmartTiming();
     showToast(`${h.icon || "⏰"} ${h.name} reminder moved to ${fmtClockLabel(hhmm)}.`, "success");
   }
+  // Move one dose's reminder time (keeps the other dose times as they are).
+  function applyDoseTime(habitId, doseIndex, hhmm) {
+    const h = state.habits.find((x) => x.id === habitId);
+    if (!h || !/^\d{2}:\d{2}$/.test(hhmm)) return;
+    const times = (h.reminderTimes && h.reminderTimes.length ? h.reminderTimes.slice() : [])
+      .filter((t) => /^\d{2}:\d{2}$/.test(t)).sort();
+    if (doseIndex < times.length) times[doseIndex] = hhmm; else times.push(hhmm);
+    const dedup = [];
+    for (const t of times.sort()) if (!dedup.includes(t)) dedup.push(t);
+    h.reminderTimes = dedup;
+    h.reminderTime = dedup[0] || "";
+    h.updatedAt = Date.now();
+    save();
+    scheduleReminders();
+    renderSmartTiming();
+    showToast(`${h.icon || "⏰"} ${h.name} dose ${doseIndex + 1} moved to ${fmtClockLabel(hhmm)}.`, "success");
+  }
   function renderSmartTiming() {
     const el = getEls().smartTiming;
     if (!el) return;
     const sugg = smartTimingSuggestions();
-    if (sugg.length === 0) {
+    const dose = doseTimingSuggestions();
+    if (sugg.length === 0 && dose.length === 0) {
       el.innerHTML = `<p class="empty-inline">No suggestions yet. Momentum learns when you actually complete habits and will suggest better reminder times here.</p>`;
       return;
     }
-    el.innerHTML = sugg.map((s) =>
+    const rows = sugg.map((s) =>
       `<div class="st-row">
         <span class="st-name">${escapeHtml((s.habit.icon || "•") + " " + s.habit.name)}</span>
         <span class="st-info">${s.current ? "now " + escapeHtml(fmtClockLabel(s.current)) + " → " : "set "}<b>${escapeHtml(fmtClockLabel(s.suggested))}</b></span>
         <button type="button" class="btn-secondary st-apply" data-id="${escapeHtml(s.habit.id)}" data-t="${escapeHtml(s.suggested)}">Use</button>
       </div>`
-    ).join("");
+    );
+    for (const s of dose) {
+      rows.push(`<div class="st-row">
+        <span class="st-name">${escapeHtml((s.habit.icon || "•") + " " + s.habit.name)} <span class="hint">dose ${s.doseIndex + 1} of ${s.total}</span></span>
+        <span class="st-info">${s.current ? "now " + escapeHtml(fmtClockLabel(s.current)) + " → " : "set "}<b>${escapeHtml(fmtClockLabel(s.suggested))}</b></span>
+        <button type="button" class="btn-secondary st-apply-dose" data-id="${escapeHtml(s.habit.id)}" data-i="${s.doseIndex}" data-t="${escapeHtml(s.suggested)}">Use</button>
+      </div>`);
+    }
+    el.innerHTML = rows.join("");
     el.querySelectorAll(".st-apply").forEach((b) =>
       b.addEventListener("click", () => applySmartTime(b.dataset.id, b.dataset.t)));
+    el.querySelectorAll(".st-apply-dose").forEach((b) =>
+      b.addEventListener("click", () => applyDoseTime(b.dataset.id, Number(b.dataset.i), b.dataset.t)));
   }
   function toggleSmartTiming() {
     const el = getEls().smartTiming;
@@ -7330,7 +7656,24 @@
     const mi = moodCompletionInsight();
     if (mi) out.push(mi);
 
-    // 9. Milestone-ish total
+    // 10. Skip-risk: a habit that historically slips on today's weekday.
+    const risky = skipRiskHabits(now);
+    if (risky.length) {
+      const r = risky[0];
+      out.push({ icon: "🎯", text: `${dayNameOf(now)}s are your toughest for ${r.habit.icon || "•"} ${r.habit.name} (${Math.round(r.rate * 100)}% done historically). It's still open today.` });
+    }
+
+    // 11. Adaptive target: consistently landing short of a count target.
+    for (const h of active) {
+      const at = adaptiveTargetSuggestion(h);
+      if (at) { out.push({ icon: "🎚️", text: `${h.icon || "•"} ${h.name}: you average ${at.avg}/day vs a target of ${at.current}. Setting it to ${at.suggested} keeps the win realistic.` }); break; }
+    }
+
+    // 12. Momentum forecast for today's live streaks.
+    const mf = momentumForecast(active, now);
+    if (mf && mf.level !== "safe") out.push({ icon: mf.text.slice(0, 2), text: mf.text.replace(/^\S+\s/, "") });
+
+    // 13. Milestone-ish total
     const total = totalCheckins();
     if (total >= 50) out.push({ icon: "🎉", text: `${total} check-ins logged all-time. That's a lot of small wins.` });
 
@@ -9542,7 +9885,10 @@
       els.typePicker.querySelectorAll(".type-btn").forEach((b) => b.classList.remove("selected"));
       btn.classList.add("selected");
       els.countFields.classList.toggle("hidden", btn.dataset.type !== "count");
+      updateFormSmartHints();
     });
+    if (els.habitName) els.habitName.addEventListener("input", updateFormSmartHints);
+    if (els.habitCountSuggestBtn) els.habitCountSuggestBtn.addEventListener("click", applyCountSuggestion);
     els.advancedToggle.addEventListener("click", () => {
       const open = els.dayTimesWrap.classList.toggle("hidden");
       els.advancedToggle.classList.toggle("open", !open);
@@ -9936,6 +10282,9 @@
       buildMonthCalendar, timeAgo,
       inVacation, vacationActiveNow, setVacation, clearVacation,
       recordCompletionClock, suggestReminderTime, smartTimingSuggestions,
+      doseSpacingWarning, suggestCountSetup, doseProgress, doseNudgeMessage,
+      habitWeekdayRate, skipRiskHabits, adaptiveTargetSuggestion, momentumForecast,
+      recordDoseClock, suggestDoseTime, doseTimingSuggestions,
       keystoneId, getKeystoneHabit, setKeystone,
       logActivity, moveHabitToCategory, prunePhotosOlderThan,
       shade, hexToRgb,

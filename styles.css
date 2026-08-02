@@ -2736,6 +2736,32 @@ body.hc .btn-secondary { border-color: var(--border); }
   overflow-wrap: anywhere;
 }
 
+/* Smart hints inside the habit form */
+.form-warn {
+  margin: -0.2rem 0 0.6rem;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: var(--radius-sm);
+  padding: 0.45rem 0.6rem;
+}
+.form-suggest {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin: -0.2rem 0 0.7rem;
+  font-size: 0.85rem;
+  background: var(--card-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 0.7rem;
+}
+.form-suggest span { flex: 1; min-width: 12ch; }
+.form-suggest .btn-secondary { flex: 0 0 auto; white-space: nowrap; }
+
 /* Per-habit month calendar */
 .detail-month { margin: 0.7rem 0 0.4rem; }
 .mc-head { display: flex; align-items: center; justify-content: center; gap: 0.75rem; margin-bottom: 0.5rem; }
