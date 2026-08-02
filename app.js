@@ -4404,28 +4404,10 @@
 
   // Sections whose fully-done state has been manually expanded this session.
   const reopenedDoneSections = new Set();
-  // Focus mode: Today sections start collapsed and a tapped section auto-closes
-  // after a short delay. `expandedParts` holds the currently-open sections.
-  const expandedParts = new Set();
-  const collapseTimers = {};
+  // Focus mode (Habits tab): each category group starts collapsed and a tapped
+  // group auto-closes after a short delay. `expandedCats` holds the open ones.
   const COLLAPSE_MS = 30000;
   function collapseTodayEnabled() { return localStorage.getItem(KEYS.collapseToday) === "true"; }
-  function expandPartTemporarily(id) {
-    expandedParts.add(id);
-    if (collapseTimers[id]) clearTimeout(collapseTimers[id]);
-    collapseTimers[id] = setTimeout(() => {
-      expandedParts.delete(id);
-      delete collapseTimers[id];
-      if (currentView === "today") renderToday();
-    }, COLLAPSE_MS);
-    renderToday();
-  }
-  function collapsePartNow(id) {
-    expandedParts.delete(id);
-    if (collapseTimers[id]) { clearTimeout(collapseTimers[id]); delete collapseTimers[id]; }
-    renderToday();
-  }
-  // Same focus mode for the Habits tab's category groups.
   const expandedCats = new Set();
   const catCollapseTimers = {};
   function expandCatTemporarily(cat) {
@@ -4444,8 +4426,7 @@
     renderHabits();
   }
   function clearFocusTimers() {
-    expandedParts.clear(); expandedCats.clear();
-    Object.keys(collapseTimers).forEach((k) => { clearTimeout(collapseTimers[k]); delete collapseTimers[k]; });
+    expandedCats.clear();
     Object.keys(catCollapseTimers).forEach((k) => { clearTimeout(catCollapseTimers[k]); delete catCollapseTimers[k]; });
   }
   // Set true when we want the NOW block scrolled into view after render.
@@ -4591,18 +4572,6 @@
       const settled = list.filter((e) => entryStatus(e) !== "pending").sort(byOrderTime);
       const doneCount = list.filter((e) => entryStatus(e) === "done").length;
 
-      // Focus mode: every section starts collapsed; tap to expand (auto-closes).
-      if (collapseTodayEnabled() && !expandedParts.has(part.id)) {
-        const strip = document.createElement("div");
-        strip.className = "daypart-done-strip daypart-collapsed" + (part.id === nowPart ? " is-now" : "");
-        const remaining = pending.length;
-        strip.innerHTML = `<span>${escapeHtml(part.title)}${part.id === nowPart ? ' <span class="now-chip">NOW</span>' : ""}</span>` +
-          `<span class="strip-reopen">${doneCount}/${list.length} done${remaining ? " · " + remaining + " to do" : ""} · tap</span>`;
-        strip.addEventListener("click", () => expandPartTemporarily(part.id));
-        els.todayGroups.appendChild(strip);
-        continue;
-      }
-
       // Fully-settled block → collapse into a single strip unless reopened.
       if (pending.length === 0 && settled.length > 0 && !reopenedDoneSections.has(part.id)) {
         const strip = document.createElement("div");
@@ -4652,11 +4621,6 @@
       right.appendChild(count);
       heading.appendChild(left);
       heading.appendChild(right);
-      if (collapseTodayEnabled()) {
-        heading.style.cursor = "pointer";
-        heading.title = "Tap to collapse";
-        heading.addEventListener("click", () => collapsePartNow(part.id));
-      }
       wrap.appendChild(heading);
 
       // Pending items (drag-reorderable — dose rows aren't reorderable)
