@@ -807,10 +807,9 @@ body.compact .habit-list { gap: 0.35rem; }
   color: var(--text-dim);
   font-size: 0.75rem;
   margin-top: 3px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .modal textarea {
   width: 100%;
@@ -826,6 +825,7 @@ body.compact .habit-list { gap: 0.35rem; }
   min-height: 48px;
 }
 .modal textarea:focus { outline: none; border-color: var(--primary); }
+.modal textarea.notes-big { min-height: 140px; line-height: 1.45; }
 .category-badge {
   font-size: 0.7rem;
   padding: 2px 8px;
