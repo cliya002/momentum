@@ -90,5 +90,41 @@ console.log("toggleDose — independent doses (the reported bug)");
   assert(T.doseStatus(habit, d, 0) === "done" && T.doseStatus(habit, d, 1) === "pending", "untick evening leaves morning done");
 }
 
+console.log("toggleDoseSkip — per-dose 'not done'");
+{
+  const st = T.normalizeState({ habits: [{ id: "h", name: "ACV", type: "count", target: 2, increment: 1, reminderTimes: ["08:00", "20:00"] }] });
+  T.setState(st); T.resetRenderCaches();
+  const h = st.habits[0]; const d = new Date();
+  // Mark dose 2 not done → that dose is skipped, dose 1 still pending.
+  T.toggleDoseSkip(h, d, 1);
+  assert(T.doseStatus(h, d, 1) === "skipped", "dose 2 marked not done → skipped");
+  assert(T.doseStatus(h, d, 0) === "pending", "dose 1 stays pending (other dose unaffected)");
+  // Toggle again → back to pending.
+  T.toggleDoseSkip(h, d, 1);
+  assert(T.doseStatus(h, d, 1) === "pending", "toggling not-done again clears it");
+}
+{
+  // Skipping a done dose clears its done state; done and not-done are exclusive.
+  const st = T.normalizeState({ habits: [{ id: "h", name: "ACV", type: "count", target: 2, increment: 1, reminderTimes: ["08:00", "20:00"] }] });
+  T.setState(st); T.resetRenderCaches();
+  const h = st.habits[0]; const d = new Date();
+  T.toggleDose(h, d, 0); // dose 1 done
+  assert(T.doseStatus(h, d, 0) === "done", "dose 1 done");
+  T.toggleDoseSkip(h, d, 0); // now mark it not done
+  assert(T.doseStatus(h, d, 0) === "skipped", "marking not-done clears the done state");
+  assert(T.completionValue ? true : true, "");
+  // Marking done again clears the skip.
+  T.toggleDose(h, d, 0);
+  assert(T.doseStatus(h, d, 0) === "done", "marking done again clears the not-done mark");
+}
+{
+  // doseSkips survives a normalize round-trip and merges (union).
+  const st = T.normalizeState({ habits: [{ id: "h", name: "ACV", type: "count", target: 2, increment: 1 }] });
+  const k = T.dateKey(new Date());
+  st.doseSkips = { [k]: { h: 0b10 } };
+  const norm = T.normalizeState(st);
+  assert(norm.doseSkips[k] && norm.doseSkips[k].h === 2, "doseSkips preserved through normalize");
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

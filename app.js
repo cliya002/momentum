@@ -623,6 +623,9 @@
       // Per-dose bitmask for "times per day" habits: dateKey -> habitId -> mask.
       // Keeps individual doses independent; the completion count stays = popcount.
       doseTicks: {},
+      // Per-dose "not done" marks (dateKey -> habitId -> bitmask), so a single
+      // dose can be marked skipped without affecting the habit's other doses.
+      doseSkips: {},
       measurements: {},
       journal: {},
       goal: null,
@@ -853,6 +856,19 @@
           if (Number.isFinite(mv) && mv > 0) clean[hid] = mv;
         }
         if (Object.keys(clean).length) st.doseTicks[day] = clean;
+      }
+    }
+    // Per-dose "not done" marks: dateKey -> habitId -> bitmask (same shape as doseTicks).
+    st.doseSkips = {};
+    if (s.doseSkips && typeof s.doseSkips === "object") {
+      for (const [day, byHabit] of Object.entries(s.doseSkips)) {
+        if (!byHabit || typeof byHabit !== "object") continue;
+        const clean = {};
+        for (const [hid, mask] of Object.entries(byHabit)) {
+          const mv = Math.floor(Number(mask));
+          if (Number.isFinite(mv) && mv > 0) clean[hid] = mv;
+        }
+        if (Object.keys(clean).length) st.doseSkips[day] = clean;
       }
     }
     for (const [wk, m] of Object.entries(s.measurements || {})) {
@@ -1223,6 +1239,15 @@
           const cd = {};
           for (const [hid, mask] of Object.entries(dtSrc)) if (survivingIds.has(hid)) cd[hid] = mask;
           if (Object.keys(cd).length) merged.doseTicks[d] = cd;
+        }
+        // Per-dose skip masks follow the same union rule.
+        const dsWin = (pickRemote ? (remote.doseSkips || {}) : (local.doseSkips || {}))[d] || {};
+        const dsLose = (pickRemote ? (local.doseSkips || {}) : (remote.doseSkips || {}))[d] || {};
+        const dsSrc = { ...dsLose, ...dsWin };
+        if (Object.keys(dsSrc).length) {
+          const cs = {};
+          for (const [hid, mask] of Object.entries(dsSrc)) if (survivingIds.has(hid)) cs[hid] = mask;
+          if (Object.keys(cs).length) merged.doseSkips[d] = cs;
         }
       }
     });
@@ -3618,8 +3643,12 @@
     if (isSkipped(habit, date)) return "skipped";
     const day = dateKey(date);
     const mask = state.doseTicks && state.doseTicks[day] ? state.doseTicks[day][habit.id] : undefined;
-    if (mask == null) return completionValue(habit.id, date) > i ? "done" : "pending";
-    return ((mask >> i) & 1) ? "done" : "pending";
+    const done = mask == null ? (completionValue(habit.id, date) > i) : (((mask >> i) & 1) === 1);
+    if (done) return "done";
+    // A dose can be explicitly marked "not done" (skipped) without done-ness.
+    const skipMask = state.doseSkips && state.doseSkips[day] ? state.doseSkips[day][habit.id] : undefined;
+    if (skipMask != null && ((skipMask >> i) & 1)) return "skipped";
+    return "pending";
   }
   // Toggle one dose independently. Keeps the completion count = number of doses
   // done (popcount of the mask) so streaks/adherence keep working unchanged.
@@ -3633,8 +3662,10 @@
       mask = cnt > 0 ? (1 << Math.min(cnt, 12)) - 1 : 0;
     }
     mask ^= (1 << i);
+    const turningOn = ((mask >> i) & 1) === 1;
     // Learn when this specific dose gets done (only when turning it ON today).
-    if (((mask >> i) & 1) && sameDay(date, new Date())) recordDoseClock(habit.id, i, date);
+    if (turningOn && sameDay(date, new Date())) recordDoseClock(habit.id, i, date);
+    if (turningOn) clearDoseSkip(habit.id, day, i); // done and not-done are mutually exclusive
     const cnt = popcount(mask);
     if (mask === 0) {
       delete state.doseTicks[day][habit.id];
@@ -3644,6 +3675,44 @@
     }
     setCompletionValue(habit.id, date, cnt); // syncs count + persists whole state
     return cnt;
+  }
+  function clearDoseSkip(habitId, day, i) {
+    if (!state.doseSkips || !state.doseSkips[day] || state.doseSkips[day][habitId] == null) return;
+    let sm = state.doseSkips[day][habitId] & ~(1 << i);
+    if (sm === 0) {
+      delete state.doseSkips[day][habitId];
+      if (!Object.keys(state.doseSkips[day]).length) delete state.doseSkips[day];
+    } else {
+      state.doseSkips[day][habitId] = sm;
+    }
+  }
+  // Mark a single dose "not done" (or clear that mark). Clears the done bit for
+  // the same dose so the two states can't both be set.
+  function toggleDoseSkip(habit, date, i) {
+    const day = dateKey(date);
+    if (!state.doseSkips) state.doseSkips = {};
+    if (!state.doseSkips[day]) state.doseSkips[day] = {};
+    const cur = state.doseSkips[day][habit.id] || 0;
+    const willSkip = ((cur >> i) & 1) === 0;
+    let sm = cur ^ (1 << i);
+    if (willSkip) {
+      // Clear this dose's done bit and resync the completion count.
+      const tmask = (state.doseTicks && state.doseTicks[day]) ? state.doseTicks[day][habit.id] : undefined;
+      if (tmask != null && ((tmask >> i) & 1)) {
+        const nt = tmask & ~(1 << i);
+        if (nt === 0) { delete state.doseTicks[day][habit.id]; if (!Object.keys(state.doseTicks[day]).length) delete state.doseTicks[day]; }
+        else state.doseTicks[day][habit.id] = nt;
+        setCompletionValue(habit.id, date, popcount(nt)); // persists whole state
+      }
+    }
+    if (sm === 0) {
+      delete state.doseSkips[day][habit.id];
+      if (!Object.keys(state.doseSkips[day]).length) delete state.doseSkips[day];
+    } else {
+      state.doseSkips[day][habit.id] = sm;
+    }
+    if (typeof document !== "undefined") save();
+    return willSkip;
   }
   // Mark every dose of a habit done (or clear) — used by "mark all".
   function setAllDoses(habit, date, done) {
@@ -4350,6 +4419,21 @@
 
     const controls = document.createElement("div");
     controls.className = "count-controls";
+
+    // "Not done" toggle for this dose — parity with regular habit rows, without
+    // affecting the habit's other doses.
+    const skipBtn = document.createElement("button");
+    const skipped = st === "skipped";
+    skipBtn.className = "stepper-btn minus" + (skipped ? " active" : "");
+    skipBtn.textContent = "✕";
+    skipBtn.setAttribute("aria-label", (skipped ? "Clear not-done for " : "Mark not done ") + habit.name + " dose " + (slot.i + 1));
+    skipBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleDoseSkip(habit, date, slot.i);
+      renderToday();
+    });
+    controls.appendChild(skipBtn);
+
     const btn = document.createElement("button");
     btn.className = "stepper-btn plus" + (done ? " done" : "");
     btn.setAttribute("aria-label", (done ? "Undo " : "Mark done ") + habit.name + " dose " + (slot.i + 1));
@@ -10398,7 +10482,7 @@
       clockFromTimeStr, habitFromTemplate, templateNoteMap, fillNotesFromTemplates,
       timeSummaryFromReminders, applyTimeFromReminders, isAutoTimeSummary,
       isWeekly, weeklyTarget, weeklyDoneCount, weeklyMet, todayStatus, weekAdherencePct,
-      dayPartsForHabit, dayPartForTime, isAutoTimeSummary, doseSlots, doseStatus, toggleDose,
+      dayPartsForHabit, dayPartForTime, isAutoTimeSummary, doseSlots, doseStatus, toggleDose, toggleDoseSkip,
       weekKeyOf, computeWeekReview, reviewTargetWeek,
       categoryMeta, getCategories,
       aiTodayInsight, weekdayAvgAdherence,
