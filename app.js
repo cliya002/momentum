@@ -3498,6 +3498,27 @@
     return prior.reduce((a, b) => a + b, 0) / prior.length;
   }
 
+  // Recovery score per day for the last `n` days, each scored against its own
+  // trailing baseline (the ~30 days before it) — so the trend is self-consistent.
+  function recoveryTrend(n) {
+    const r = loadRecovery();
+    const days = Object.keys(r.days || {}).sort(); // ascending dateKeys
+    const seriesOf = (key) => days.map((d) => ({ dateKey: d, value: r.days[d] && r.days[d][key] })).filter((x) => x.value != null);
+    const hrvS = seriesOf("hrvMs"), rhrS = seriesOf("restingHr"), respS = seriesOf("respRate");
+    const priorMean = (series, before) => {
+      const prior = series.filter((s) => s.dateKey < before).slice(-30).map((s) => s.value);
+      return prior.length >= 3 ? prior.reduce((a, b) => a + b, 0) / prior.length : null;
+    };
+    const out = [];
+    for (const d of days.slice(-(n || 7))) {
+      const m = r.days[d];
+      if (!m) continue;
+      const base = { hrvMs: priorMean(hrvS, d), restingHr: priorMean(rhrS, d), respRate: priorMean(respS, d) };
+      const rs = recoveryScore(m, base);
+      if (rs) out.push({ dateKey: d, score: rs.score, tier: rs.tier });
+    }
+    return out;
+  }
   // WHOOP/Bevel-style recovery score (0-100). Each metric is scored against your
   // personal baseline when available (deviation matters more than the absolute
   // number); otherwise a sensible absolute fallback is used. HRV dominates, then
@@ -3626,6 +3647,37 @@
       let out = "";
       for (const k of Object.keys(recoveryDbg)) out += k + ": " + JSON.stringify(recoveryDbg[k]).slice(0, 500) + "\n\n";
       dpre.textContent = out.trim();
+    }
+    renderRecoveryTrend();
+  }
+  function renderRecoveryTrend() {
+    const wrap = document.getElementById("recoveryTrend");
+    const card = document.getElementById("recoveryTrendCard");
+    if (!wrap) return;
+    const data = recoveryTrend(7);
+    if (data.length < 2) { if (card) card.hidden = true; return; } // need a couple of days
+    if (card) card.hidden = false;
+    wrap.innerHTML = "";
+    for (const d of data) {
+      const bar = document.createElement("div");
+      bar.className = "rtrend-bar";
+      const score = document.createElement("div");
+      score.className = "rtrend-score";
+      score.textContent = String(d.score);
+      const fillwrap = document.createElement("div");
+      fillwrap.className = "rtrend-fillwrap";
+      const fill = document.createElement("div");
+      fill.className = "rtrend-fill " + d.tier;
+      fill.style.height = Math.max(4, d.score) + "%";
+      fill.title = `${d.dateKey}: ${d.score}`;
+      fillwrap.appendChild(fill);
+      const day = document.createElement("div");
+      day.className = "rtrend-day";
+      day.textContent = parseDateKey(d.dateKey).toLocaleDateString(undefined, { weekday: "short" });
+      bar.appendChild(score);
+      bar.appendChild(fillwrap);
+      bar.appendChild(day);
+      wrap.appendChild(bar);
     }
   }
 
@@ -12190,7 +12242,7 @@
       mapSleepHours, parseDurationSeconds, mapWorkoutSessions, workoutHabitMatch,
       recentSleepHours, sleepSessionSeconds, sleepSessionEndMs, sleepSessionStartMs, ghScopeHint,
       isWorkoutHabit, isSleepHabit, isTempHabit, latestSkinTempDeltaC, fmtSkinTemp,
-      metricNumber, dailyPointMs, recoveryScore, seriesBaseline,
+      metricNumber, dailyPointMs, recoveryScore, seriesBaseline, recoveryTrend,
       getState: () => state, setState: (s) => { state = s; },
     };
   }

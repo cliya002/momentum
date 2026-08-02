@@ -308,5 +308,26 @@ console.log("recovery: seriesBaseline");
   assert(T.seriesBaseline(long, 10) === 50, "windowed baseline uses only recent prior readings");
 }
 
+console.log("recovery: recoveryTrend (per-day scores vs trailing baseline)");
+{
+  const store = { _: {}, getItem(k) { return this._[k] || null; }, setItem(k, v) { this._[k] = String(v); }, removeItem(k) { delete this._[k]; } };
+  global.localStorage = store;
+  const days = {};
+  ["2026-07-25", "2026-07-26", "2026-07-27", "2026-07-28", "2026-07-29", "2026-07-30"].forEach((d) => {
+    days[d] = { hrvMs: 40, restingHr: 60, respRate: 14, sleepHrs: 8 };
+  });
+  days["2026-07-31"] = { hrvMs: 55, restingHr: 54, respRate: 14, sleepHrs: 8 }; // above baseline
+  days["2026-08-01"] = { hrvMs: 28, restingHr: 70, respRate: 17, sleepHrs: 6 }; // below baseline
+  store.setItem("ht_recovery", JSON.stringify({ days }));
+  const tr = T.recoveryTrend(7);
+  assert(tr.length >= 2, "returns trend entries (" + tr.length + ")");
+  const hi = tr.find((x) => x.dateKey === "2026-07-31");
+  const lo = tr.find((x) => x.dateKey === "2026-08-01");
+  assert(hi && lo && hi.score > lo.score, "above-baseline day scores higher than below (" + (hi && hi.score) + " > " + (lo && lo.score) + ")");
+  assert(hi.tier === "good", "strong day is green");
+  assert(tr[tr.length - 1].dateKey === "2026-08-01", "trend is ordered oldest → newest");
+  delete global.localStorage;
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

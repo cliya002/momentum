@@ -2527,6 +2527,15 @@ body.hc .btn-secondary { border-color: var(--border); }
 .recovery-label { font-weight: 600; color: var(--text); }
 .recovery-grid { margin-top: 0.75rem; }
 .recovery-grid .stat-value { font-size: 1.35rem; }
+.recovery-trend { display: flex; align-items: stretch; gap: 6px; height: 140px; }
+.rtrend-bar { flex: 1; display: flex; flex-direction: column; align-items: center; min-width: 0; }
+.rtrend-score { font-size: 0.72rem; font-weight: 700; margin-bottom: 3px; }
+.rtrend-fillwrap { flex: 1; width: 100%; display: flex; align-items: flex-end; }
+.rtrend-fill { width: 100%; border-radius: 6px 6px 0 0; min-height: 4px; transition: height 0.3s ease; }
+.rtrend-fill.good { background: #22c55e; }
+.rtrend-fill.mid { background: #f59e0b; }
+.rtrend-fill.low { background: #ef4444; }
+.rtrend-day { font-size: 0.65rem; color: var(--text-dim); margin-top: 4px; }
 
 .pull-steps-mini { font-size: 1rem; line-height: 1; }
 /* In-progress state while pulling from Google Health */
