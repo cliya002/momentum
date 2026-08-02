@@ -111,5 +111,23 @@ console.log("empty / junk");
   assert(p.name === "Journal" && p.type === "check", "plain habit → check type");
 }
 
+console.log("invalid input is not turned into bad data");
+{
+  const p = T.parseQuickAdd("Meditate 0 min every day");
+  assert(p.type === "count" && p.target === 1, "count target 0 is clamped up to 1");
+}
+{
+  const p = T.parseQuickAdd("Read at 8:88am");
+  assert(!p.reminderTime, "impossible minutes (8:88) → no reminder time set");
+}
+{
+  const p = T.parseQuickAdd("Wake at 45am");
+  assert(!p.reminderTime, "impossible hour (45) → no reminder time set");
+}
+{
+  const p = T.parseQuickAdd("Standup at 25:99");
+  assert(!p.reminderTime, "out-of-range 24h clock → no reminder time set");
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

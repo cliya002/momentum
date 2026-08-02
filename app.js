@@ -6381,10 +6381,16 @@
     if (m) {
       let hr = +m[1]; const mn = m[2] ? +m[2] : 0; const pm = /p/.test(m[3]);
       if (pm && hr < 12) hr += 12; if (!pm && hr === 12) hr = 0;
-      res.reminderTime = pad(hr) + ":" + pad(mn); s = s.replace(m[0], " "); eat(m[0]);
+      // Only accept a valid time-of-day; ignore junk like "8:88am" or "45am".
+      if (hr >= 0 && hr <= 23 && mn >= 0 && mn <= 59) res.reminderTime = pad(hr) + ":" + pad(mn);
+      s = s.replace(m[0], " "); eat(m[0]);
     } else {
       m = s.match(/\bat\s+(\d{1,2}):(\d{2})\b/);
-      if (m) { res.reminderTime = pad(+m[1]) + ":" + pad(+m[2]); s = s.replace(m[0], " "); eat(m[0]); }
+      if (m) {
+        const hr = +m[1], mn = +m[2];
+        if (hr >= 0 && hr <= 23 && mn >= 0 && mn <= 59) res.reminderTime = pad(hr) + ":" + pad(mn);
+        s = s.replace(m[0], " "); eat(m[0]);
+      }
     }
 
     // Part of day
@@ -6431,7 +6437,7 @@
     const unitMap = { min: "min", mins: "min", minute: "min", minutes: "min", l: "L", litre: "L", litres: "L", liter: "L", liters: "L", g: "g", gram: "g", grams: "g", step: "steps", steps: "steps", page: "pages", pages: "pages", rep: "reps", reps: "reps", oz: "oz", ml: "ml", cup: "cups", cups: "cups", glass: "glasses", glasses: "glasses", km: "km", mile: "miles", miles: "miles" };
     m = s.match(/\b(\d+(?:\.\d+)?)\s*(mins?|minutes?|l|litres?|liters?|g|grams?|steps?|pages?|reps?|oz|ml|cups?|glass(?:es)?|km|miles?)\b/);
     if (m) {
-      res.type = "count"; res.target = +m[1]; res.unit = unitMap[m[2]] || m[2];
+      res.type = "count"; res.target = Math.max(1, +m[1]); res.unit = unitMap[m[2]] || m[2];
       res.increment = res.unit === "L" ? 0.5 : res.unit === "steps" ? 1000 : res.unit === "min" ? 5 : res.unit === "g" ? 10 : res.unit === "pages" ? 5 : 1;
       s = s.replace(m[0], " "); eat(m[0]);
     }
@@ -7761,12 +7767,14 @@
     const rows = TOD_SLOTS.filter((s) => tod[s.key].s > 0);
     if (rows.length === 0) { card.hidden = true; return; }
     card.hidden = false;
+    // Only consider reliable slots (>=5 samples) when picking the best window,
+    // otherwise a tiny high-rate slot can make the badge never appear.
     let bestRate = -1;
-    for (const s of rows) { const v = tod[s.key]; const r = v.d / v.s; if (r > bestRate) bestRate = r; }
+    for (const s of rows) { const v = tod[s.key]; if (v.s < 5) continue; const r = v.d / v.s; if (r > bestRate) bestRate = r; }
     wrap.innerHTML = rows.map((s) => {
       const v = tod[s.key];
       const pct = Math.round((v.d / v.s) * 100);
-      const isBest = v.s >= 5 && (v.d / v.s) === bestRate;
+      const isBest = v.s >= 5 && bestRate >= 0 && (v.d / v.s) === bestRate;
       return `<div class="tod-row">
         <span class="tod-label">${s.icon} ${s.label}</span>
         <span class="tod-bar"><span class="tod-fill${isBest ? " best" : ""}" style="width:${pct}%"></span></span>
@@ -7962,8 +7970,11 @@
 
   /* ---- Report downloads ---- */
   function csvEscape(v) {
-    const s = String(v ?? "");
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    let s = String(v ?? "");
+    // Neutralize spreadsheet formula injection: a cell starting with = + - @
+    // (or tab/CR) is treated as a formula by Excel/Sheets. Prefix with a quote.
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   }
 
   function downloadFile(filename, content, type) {
@@ -8280,7 +8291,7 @@
       while ((m = re.exec(line)) && times.length < 4) {
         let h = +m[1]; const min = m[2] ? +m[2] : 0;
         const ap = (m[3] || "").replace(/[.\s]/g, "").toLowerCase();
-        if (h > 24) continue;
+        if (h > 23 || min > 59) continue; // skip impossible clock values (OCR/typos)
         if (ap === "pm" && h < 12) h += 12;
         if (ap === "am" && h === 12) h = 0;
         times.push({ min: h * 60 + min, hadAp: !!ap });
@@ -9189,10 +9200,17 @@
       const v = numOrNull(inp.value);
       if (v !== null) custom[inp.dataset.metric] = v;
     });
+    // Preserve the canonical stored value on a no-op save so re-saving an
+    // unchanged record in metric mode doesn't drift via kg↔lb rounding.
+    const prev = state.measurements[wk] || {};
+    const weight = wVal === null ? null
+      : (prev.weight != null && round1(wDisp(prev.weight)) === round1(wVal) ? prev.weight : wStore(wVal));
+    const waist = waistVal === null ? null
+      : (prev.waist != null && round1(lDisp(prev.waist)) === round1(waistVal) ? prev.waist : lStore(waistVal));
     const data = {
       date: wk,
-      weight: wVal === null ? null : wStore(wVal),   // store canonical lb
-      waist: waistVal === null ? null : lStore(waistVal), // store canonical in
+      weight,   // canonical lb
+      waist,    // canonical in
       energy: numOrNull(els.mEnergy.value),
       strengthTrend: els.mStrength.value,
       notes: els.mNotes.value.trim(),

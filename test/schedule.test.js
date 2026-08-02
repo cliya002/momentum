@@ -26,6 +26,10 @@ console.log("Schedule text parser");
   assert(p[6] && p[6].start === "10:30" && p[6].end === "18:30", "Saturday 'to' separator + am/pm");
 }
 {
+  const p = T.parseScheduleText("Mon 9:99-17:00");
+  assert(!p[1], "impossible minutes (9:99) are skipped, not coerced to a wrong time");
+}
+{
   const p = T.parseScheduleText("random text with no schedule");
   assert(Object.keys(p).length === 0, "non-schedule text → nothing");
 }
