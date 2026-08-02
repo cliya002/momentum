@@ -57,6 +57,7 @@
     ghEnabled: "ht_gh_enabled",
     ghLastSync: "ht_gh_last_sync",
     ghHabitId: "ht_gh_habit_id",
+    ghImportWeight: "ht_gh_import_weight",
   };
   const DEFAULT_CATEGORIES = ["Fitness","Nutrition","Sleep","Supplements","Custom"];
   // Fallback color/icon per default category (used until the user customizes).
@@ -2733,7 +2734,14 @@
    * does the client-secret token exchange/refresh and proxies Health API GETs.
    * ================================================================ */
   const GH_AUTHORIZE = "https://accounts.google.com/o/oauth2/v2/auth";
-  const GH_SCOPE = "https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly";
+  // Activity (steps/exercise), health metrics (weight), and sleep live under
+  // separate scopes — request all three so one connection can read them.
+  const GH_SCOPES = [
+    "https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly",
+    "https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly",
+    "https://www.googleapis.com/auth/googlehealth.sleep.readonly",
+  ].join(" ");
+  const KG_TO_LB = 2.2046226218;
   let ghInFlight = false;
 
   function ghWorkerBase() { return (localStorage.getItem(KEYS.pushUrl) || "").trim().replace(/\/+$/, ""); }
@@ -2748,19 +2756,34 @@
       response_type: "code",
       access_type: "offline",
       prompt: "consent",
-      scope: GH_SCOPE,
+      scope: GH_SCOPES,
       code_challenge: challenge,
       code_challenge_method: "S256",
       state: state,
     });
     return GH_AUTHORIZE + "?" + p.toString();
   }
-  // Solr-style filter for "on or after local midnight today". Pure + tested.
-  function googleTodayFilter(date) {
+  function civilMidnightToday(date) {
     const d = date || new Date();
     const pad = (n) => String(n).padStart(2, "0");
-    const civ = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T00:00:00`;
-    return `exercise.interval.civil_start_time >= "${civ}"`;
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T00:00:00`;
+  }
+  function civilDaysAgo(n) { return civilMidnightToday(addDays(new Date(), -Math.abs(n || 0))); }
+  // Solr-style filter for "on or after local midnight today". Pure + tested.
+  function googleTodayFilter(date) {
+    return `exercise.interval.civil_start_time >= "${civilMidnightToday(date)}"`;
+  }
+  // Write an imported weight (kg) into this week's measurement, without
+  // overwriting a value you entered yourself. Returns a short status suffix.
+  function importWeightKg(kg) {
+    const lb = Math.round(kg * KG_TO_LB * 10) / 10;
+    const wk = weekKeyOf(new Date());
+    const prev = state.measurements[wk] || {};
+    if (prev.weight != null) return ""; // don't clobber a manual entry
+    state.measurements[wk] = Object.assign({}, prev, { date: wk, weight: lb, updatedAt: Date.now() });
+    save();
+    if (typeof renderProgress === "function" && currentView === "progress") renderProgress();
+    return ` · ⚖️ imported ${round1(wDisp(lb))} ${wUnit()}`;
   }
   // Roll up the exercise dataPoints response into a simple summary. Pure + tested.
   function mapExerciseDataPoints(json) {
@@ -2780,6 +2803,39 @@
       if (ts >= lastTs) { lastTs = ts; last = { type: ex.exerciseType || "", displayName: ex.displayName || "", startTime: startTime || "", steps: Number(m.steps) || 0 }; }
     }
     return { count: pts.length, steps, caloriesKcal, activeMinutes, distanceMeters: Math.round(distanceM), last };
+  }
+  // Sum a "steps" data-type list response into a daily total. The exact field
+  // location isn't fully documented, so probe the likely spots defensively.
+  function sumStepsDataPoints(json) {
+    const pts = (json && Array.isArray(json.dataPoints)) ? json.dataPoints : [];
+    let total = 0;
+    for (const p of pts) {
+      if (!p) continue;
+      const cand = [
+        p.steps && p.steps.count, p.steps && p.steps.value, (typeof p.steps === "number" || typeof p.steps === "string") ? p.steps : undefined,
+        p.value && p.value.count, p.value, p.count,
+      ];
+      for (const c of cand) { const n = Number(c); if (Number.isFinite(n) && n > 0) { total += n; break; } }
+    }
+    return Math.round(total);
+  }
+  // Find the most recent weight sample and return it in kg. Probes likely field
+  // shapes; returns null when none found (so a wrong shape is a safe no-op).
+  function latestWeightKg(json) {
+    const pts = (json && Array.isArray(json.dataPoints)) ? json.dataPoints : [];
+    let bestKg = null, bestTs = -1;
+    for (const p of pts) {
+      if (!p) continue;
+      const w = p.weight || p.value || {};
+      const kgCand = [w.kilograms, w.kg, w.value && w.value.kilograms, w.value, (typeof w === "number" ? w : undefined), p.kilograms];
+      let kg = null;
+      for (const c of kgCand) { const n = Number(c); if (Number.isFinite(n) && n > 0 && n < 700) { kg = n; break; } }
+      if (kg == null) continue;
+      const t = (p.sampleTime || (w.interval && w.interval.startTime) || p.startTime || "");
+      const ts = t ? Date.parse(t) : 0;
+      if (ts >= bestTs) { bestTs = ts; bestKg = kg; }
+    }
+    return bestKg;
   }
 
   async function connectGoogleHealth() {
@@ -2869,18 +2925,33 @@
     try {
       const at = await ghAccessToken();
       if (!at) { showGhStatus("Sign in to Google again.", "warn"); return; }
-      const res = await fetch(ghWorkerBase() + "/google/health", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ access_token: at, path: "v4/users/me/dataTypes/exercise/dataPoints", filter: googleTodayFilter() }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error((data && (data.error && data.error.message || data.error)) || ("HTTP " + res.status));
-      const sum = mapExerciseDataPoints(data);
+      const ghGet = async (path, filter) => {
+        const r = await fetch(ghWorkerBase() + "/google/health", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ access_token: at, path, filter }),
+        });
+        const j = await r.json();
+        if (!r.ok) throw new Error((j && (j.error && j.error.message || j.error)) || ("HTTP " + r.status));
+        return j;
+      };
+      const sum = mapExerciseDataPoints(await ghGet("v4/users/me/dataTypes/exercise/dataPoints", googleTodayFilter()));
+      // Real daily steps (separate from workout steps). Non-fatal if it errors.
+      let dailySteps = 0;
+      try { dailySteps = sumStepsDataPoints(await ghGet("v4/users/me/dataTypes/steps/dataPoints", 'steps.interval.civil_start_time >= "' + civilMidnightToday() + '"')); } catch (e) {}
+      // Optional: import latest weight into this week's log. Non-fatal.
+      let weightMsg = "";
+      if (localStorage.getItem(KEYS.ghImportWeight) === "true") {
+        try {
+          const kg = latestWeightKg(await ghGet("v4/users/me/dataTypes/weight/dataPoints", 'weight.sample_time >= "' + civilDaysAgo(30) + '"'));
+          if (kg != null) weightMsg = importWeightKg(kg);
+        } catch (e) {}
+      }
       localStorage.setItem(KEYS.ghLastSync, String(Date.now()));
       // Optionally mark a chosen habit done when there was activity today.
+      const wasActive = sum.count > 0 || dailySteps > 0;
       const habitId = localStorage.getItem(KEYS.ghHabitId) || "";
       let markedMsg = "";
-      if (habitId && sum.count > 0) {
+      if (habitId && wasActive) {
         const h = state.habits.find((x) => x.id === habitId);
         if (h && !isCompleted(h, new Date())) {
           setCompletionValue(h.id, new Date(), h.type === "count" ? (h.target || 1) : 1);
@@ -2892,10 +2963,11 @@
       recordSyncDetail && recordSyncDetail("Google Health pull", `${sum.count} workout${sum.count === 1 ? "" : "s"}`);
       renderGoogleState();
       const bits = [];
-      if (sum.steps) bits.push(`${sum.steps.toLocaleString()} steps`);
+      if (dailySteps) bits.push(`${dailySteps.toLocaleString()} steps`);
+      else if (sum.steps) bits.push(`${sum.steps.toLocaleString()} workout steps`);
       if (sum.caloriesKcal) bits.push(`${sum.caloriesKcal} kcal`);
       if (sum.count) bits.push(`${sum.count} workout${sum.count === 1 ? "" : "s"}`);
-      showGhStatus(`✓ ${bits.length ? bits.join(" · ") : "No activity logged today yet."}${markedMsg}`, "success");
+      showGhStatus(`✓ ${bits.length ? bits.join(" · ") : "No activity logged today yet."}${markedMsg}${weightMsg}`, "success");
     } catch (e) {
       if (!silent) showGhStatus("Google Health pull failed: " + (e.message || e), "error");
     } finally {
@@ -2933,6 +3005,8 @@
       );
       sel.innerHTML = opts.join("");
     }
+    const impW = document.getElementById("ghImportWeight");
+    if (impW) { impW.disabled = !connected; impW.checked = localStorage.getItem(KEYS.ghImportWeight) === "true"; }
     const line = document.getElementById("ghStateLine");
     if (line) {
       if (!connected) line.hidden = true;
@@ -10669,6 +10743,8 @@
     if (ghPullBtn) ghPullBtn.addEventListener("click", () => pullGoogleActivity({ silent: false }));
     const ghHabitSelect = document.getElementById("ghHabitSelect");
     if (ghHabitSelect) ghHabitSelect.addEventListener("change", () => localStorage.setItem(KEYS.ghHabitId, ghHabitSelect.value || ""));
+    const ghImportWeight = document.getElementById("ghImportWeight");
+    if (ghImportWeight) ghImportWeight.addEventListener("change", () => localStorage.setItem(KEYS.ghImportWeight, ghImportWeight.checked ? "true" : "false"));
     els.pairDeviceBtn.addEventListener("click", copyPairingLink);
     els.pairQrBtn.addEventListener("click", showPairingQr);
     els.scanQrBtn.addEventListener("click", openScanner);
@@ -10986,7 +11062,7 @@
       logActivity, moveHabitToCategory, prunePhotosOlderThan,
       shade, hexToRgb,
       translate, availableLangs, b64url,
-      buildGoogleAuthUrl, googleTodayFilter, mapExerciseDataPoints,
+      buildGoogleAuthUrl, googleTodayFilter, mapExerciseDataPoints, sumStepsDataPoints, latestWeightKg,
       getState: () => state, setState: (s) => { state = s; },
     };
   }

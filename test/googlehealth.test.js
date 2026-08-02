@@ -25,7 +25,10 @@ console.log("buildGoogleAuthUrl");
   assert(q.get("prompt") === "consent", "prompt=consent (re-issues refresh token)");
   assert(q.get("code_challenge") === "CHAL" && q.get("code_challenge_method") === "S256", "PKCE challenge + method");
   assert(q.get("state") === "gh_abc", "state carried");
-  assert(/googlehealth\.activity_and_fitness\.readonly$/.test(q.get("scope")), "read-only activity scope");
+  const scope = q.get("scope");
+  assert(scope.includes("googlehealth.activity_and_fitness.readonly"), "requests read-only activity scope");
+  assert(scope.includes("health_metrics_and_measurements.readonly"), "requests health-metrics scope (for weight)");
+  assert(scope.includes("googlehealth.sleep.readonly"), "requests sleep scope");
 }
 
 console.log("googleTodayFilter");
@@ -56,6 +59,26 @@ console.log("mapExerciseDataPoints");
 {
   const s = T.mapExerciseDataPoints({ dataPoints: [{}, { exercise: null }] });
   assert(s.count === 2 && s.steps === 0, "malformed points don't throw and add nothing");
+}
+
+console.log("sumStepsDataPoints (tolerant of field shapes)");
+{
+  assert(T.sumStepsDataPoints({ dataPoints: [{ steps: { count: "1200" } }, { steps: { count: 800 } }] }) === 2000, "sums steps.count (string + number)");
+  assert(T.sumStepsDataPoints({ dataPoints: [{ value: 500 }, { count: 300 }] }) === 800, "sums alternate value/count shapes");
+  assert(T.sumStepsDataPoints({}) === 0, "empty → 0");
+  assert(T.sumStepsDataPoints({ dataPoints: [{}, { steps: null }] }) === 0, "malformed points add nothing");
+}
+
+console.log("latestWeightKg (tolerant + safe)");
+{
+  const j = { dataPoints: [
+    { weight: { kilograms: 80 }, sampleTime: "2026-02-01T08:00:00Z" },
+    { weight: { kilograms: 79.2 }, sampleTime: "2026-02-20T08:00:00Z" },
+  ] };
+  assert(T.latestWeightKg(j) === 79.2, "returns the most recent sample's kg");
+  assert(T.latestWeightKg({ dataPoints: [{ value: { kilograms: 72 }, sampleTime: "2026-01-01T00:00:00Z" }] }) === 72, "handles value.kilograms shape");
+  assert(T.latestWeightKg({}) === null, "no data → null (safe no-op)");
+  assert(T.latestWeightKg({ dataPoints: [{ weight: { kilograms: 9999 } }] }) === null, "implausible value ignored");
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
