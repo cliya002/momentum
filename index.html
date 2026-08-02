@@ -1283,6 +1283,20 @@
   <script src="version.js"></script>
   <script src="qrcode.js"></script>
   <script src="jsQR.js"></script>
-  <script src="app.js"></script>
+  <!--
+    Load app.js with a version query string derived from APP_VERSION. This ties
+    the app.js URL to the deployed version, so a version bump forces a brand-new
+    URL (app.js?v=X) that can never be served from a stale cache entry. Prevents
+    the "new version.js + old app.js" partial-update trap.
+  -->
+  <script>
+    (function () {
+      var v = (self.APP_VERSION || "0");
+      var s = document.createElement("script");
+      s.src = "app.js?v=" + encodeURIComponent(v);
+      s.defer = false;
+      document.body.appendChild(s);
+    })();
+  </script>
 </body>
 </html>
