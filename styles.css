@@ -1511,6 +1511,7 @@ body.compact .habit-list { gap: 0.35rem; }
 }
 
 .app-footer { text-align: center; color: var(--text-dim); font-size: 0.75rem; margin-top: 2rem; }
+.app-credit { text-align: center; color: var(--text-dim); font-size: 0.72rem; margin-top: 0.3rem; opacity: 0.85; }
 
 /* Sync state line */
 .sync-state-line {
