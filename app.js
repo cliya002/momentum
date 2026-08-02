@@ -2796,6 +2796,33 @@
     if (typeof renderProgress === "function" && currentView === "progress") renderProgress();
     return ` · ⚖️ imported ${round1(wDisp(lb))} ${wUnit()}`;
   }
+  // Progress tab: pull the latest weight from Google Health into the weekly
+  // "Weight" field (in the user's display unit) so they can review and Save.
+  async function pullWeightForProgress() {
+    if (!ghConnected()) { showToast("Connect Google Health in Settings first.", "warn"); return; }
+    if (!navigator.onLine) { showToast("You're offline.", "warn"); return; }
+    if (ghInFlight) return;
+    ghInFlight = true;
+    const btn = document.getElementById("pullWeightBtn");
+    const orig = btn ? btn.textContent : "";
+    if (btn) { btn.disabled = true; btn.textContent = "⏳ Pulling…"; }
+    try {
+      const kg = latestWeightKg(await ghApiGet("v4/users/me/dataTypes/weight/dataPoints", 'weight.sample_time >= "' + civilDaysAgo(60) + '"'));
+      if (kg == null) {
+        showGhBanner("⚖️ No weight found in Google Health for the last 60 days. Weigh in on your scale or Fitbit app, then try again.");
+        return;
+      }
+      const disp = round1(wDisp(round1(kg * KG_TO_LB)));
+      const input = document.getElementById("mWeight");
+      if (input) { input.value = disp; input.focus(); }
+      showToast(`⚖️ Pulled ${disp} ${wUnit()} — tap Save to log it`, "success");
+    } catch (e) {
+      showToast("Weight pull failed: " + (e.message || e), "error");
+    } finally {
+      ghInFlight = false;
+      if (btn) { btn.disabled = false; btn.textContent = orig; }
+    }
+  }
   // Roll up the exercise dataPoints response into a simple summary. Pure + tested.
   function mapExerciseDataPoints(json) {
     const pts = (json && Array.isArray(json.dataPoints)) ? json.dataPoints : [];
@@ -9914,6 +9941,8 @@
   function renderProgress() {
     const els = getEls();
     const now = new Date();
+    const pw = document.getElementById("pullWeightBtn");
+    if (pw) pw.hidden = !ghConnected(); // only show when Google Health is connected
     const weekStart = addDays(startOfWeekMonday(now), progressOffset * 7);
     const weekEnd = addDays(weekStart, 6);
     els.weekLabelP.textContent = progressOffset === 0
@@ -11449,6 +11478,8 @@
     $("#goalForm").addEventListener("submit", saveGoal);
     $("#goalCancelBtn").addEventListener("click", closeGoalForm);
     $("#goalClearBtn").addEventListener("click", clearGoal);
+    const pullWeightBtn = $("#pullWeightBtn");
+    if (pullWeightBtn) pullWeightBtn.addEventListener("click", pullWeightForProgress);
     // Photos
     els.mPhoto.addEventListener("change", onPhotoPick);
     els.mPhotoRemove.addEventListener("click", removePhoto);
