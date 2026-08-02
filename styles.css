@@ -2528,6 +2528,9 @@ body.hc .btn-secondary { border-color: var(--border); }
 .recovery-grid { margin-top: 0.75rem; }
 .recovery-grid .stat-value { font-size: 1.35rem; }
 /* Calorie balance & forecast */
+.cal-today { display: flex; align-items: baseline; gap: 8px; margin: 0.25rem 0 0.5rem; padding: 10px 12px; border-radius: 10px; background: rgba(239, 68, 68, 0.1); }
+.cal-today .cal-today-val { font-size: 1.5rem; font-weight: 800; color: #ef4444; }
+.cal-today .cal-today-label { font-size: 0.8rem; color: var(--text-dim); }
 .cal-balance { margin: 0.5rem 0 0.75rem; font-weight: 700; font-size: 1.05rem; }
 .cal-balance .cal-deficit { color: #22c55e; }
 .cal-balance .cal-surplus { color: #ef4444; }

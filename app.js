@@ -10841,8 +10841,21 @@
   }
   function renderExerciseList() {
     const el = document.getElementById("calExerciseList");
+    const c = loadCalorie();
+    // Today's burned calories (prominent).
+    const todayEl = document.getElementById("calTodayBurn");
+    if (todayEl) {
+      const todayBurn = Number((c.exerciseByDay || {})[dateKey(new Date())]) || 0;
+      const hasHistory = c.exerciseByDay && Object.keys(c.exerciseByDay).length > 0;
+      if (hasHistory) {
+        todayEl.hidden = false;
+        todayEl.innerHTML = `<span class="cal-today-val">🔥 ${todayBurn} kcal</span><span class="cal-today-label">burned in today's exercise</span>`;
+      } else {
+        todayEl.hidden = true;
+      }
+    }
     if (!el) return;
-    const list = (loadCalorie().exerciseSessions) || [];
+    const list = c.exerciseSessions || [];
     if (!list.length) { el.innerHTML = ""; return; }
     const MAX = 25;
     const shown = list.slice(0, MAX);
