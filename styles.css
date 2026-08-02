@@ -2400,6 +2400,17 @@ body.hc .btn-secondary { border-color: var(--border); }
 }
 .toast.error { background: var(--danger); color: #fff; }
 .toast.success { background: var(--success); color: #fff; }
+.toast.warn { background: var(--warning, #d97706); color: #fff; }
+/* Friendly, softer info banner (multi-line allowed) */
+.toast.info-banner {
+  background: linear-gradient(135deg, var(--primary), #6366f1);
+  color: #fff;
+  border-radius: 14px;
+  padding: 0.85rem 1.1rem;
+  line-height: 1.4;
+  text-align: center;
+  box-shadow: 0 10px 30px rgba(99, 102, 241, 0.35);
+}
 .toast {
   display: flex;
   align-items: center;

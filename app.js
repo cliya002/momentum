@@ -969,6 +969,16 @@
   }
 
   // Toast with an "Undo" action button.
+  // A friendly, longer-lived, multi-line banner (used for "no data" nudges).
+  function showGhBanner(msg) {
+    const t = $("#toast");
+    if (!t) return;
+    t.className = "toast info-banner";
+    t.textContent = msg;
+    t.hidden = false;
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(() => (t.hidden = true), 5200);
+  }
   function showUndoToast(msg, onUndo) {
     const t = $("#toast");
     if (!t) return;
@@ -3033,15 +3043,28 @@
         }
       } catch (e) { dbg = " · sleep err: " + (e.message || e); }
       const today = new Date();
-      if (hrs <= 0) { showToast("No sleep logged yet." + dbg, "warn"); return; }
+      if (hrs <= 0) {
+        // Friendly "no data" banner rather than an error.
+        showGhBanner(`😴 No sleep logged for last night yet. Sync your watch or Fitbit app, then tap 😴 again.${dbg}`);
+        return;
+      }
+      const SLEEP_MET_HRS = 6.5; // slept more than this → count it as done
+      const met = hrs > SLEEP_MET_HRS;
       if (habit.type === "count") {
         const wasDone = isCompleted(habit, today);
-        setCompletionValue(habit.id, today, hrs);
-        if (!wasDone && hrs >= (habit.target || 1)) maybeCelebrate(habit, today);
-        showToast(`😴 ${habit.name}: ${hrs}h/${fmtValue(habit, habit.target)}`, "success");
+        // Record the real hours; if over 6.5h, ensure it reads as done even if
+        // the habit's target is higher.
+        const val = met ? Math.max(hrs, habit.target || 1) : hrs;
+        setCompletionValue(habit.id, today, val);
+        if (met && !wasDone) maybeCelebrate(habit, today);
+        showToast(met ? `😴 Slept ${hrs}h — checked ✓` : `😴 Slept ${hrs}h — under ${SLEEP_MET_HRS}h`, met ? "success" : "warn");
       } else {
-        if (!isCompleted(habit, today)) { setCompletionValue(habit.id, today, 1); maybeCelebrate(habit, today); }
-        showToast(`✓ ${habit.icon || "😴"} ${habit.name} (${hrs}h)`, "success");
+        if (met) {
+          if (!isCompleted(habit, today)) { setCompletionValue(habit.id, today, 1); maybeCelebrate(habit, today); }
+          showToast(`✓ ${habit.icon || "😴"} ${habit.name} — ${hrs}h`, "success");
+        } else {
+          showToast(`😴 Slept ${hrs}h — under ${SLEEP_MET_HRS}h, not checked`, "warn");
+        }
       }
       localStorage.setItem(KEYS.ghLastSync, String(Date.now()));
       renderToday();
