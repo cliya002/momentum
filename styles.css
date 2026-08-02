@@ -1463,6 +1463,15 @@ body.compact .habit-list { gap: 0.35rem; }
 .sync-status.error { background: var(--danger-soft); color: var(--danger); }
 [data-theme="dark"] .sync-status.success { color: var(--success); }
 
+/* Bulk "tidy up" actions: each button with its own one-line helper */
+.bulk-actions { display: flex; flex-direction: column; gap: 0.85rem; }
+.bulk-action { display: flex; flex-direction: column; gap: 0.3rem; }
+.bulk-action .btn-secondary { align-self: flex-start; }
+.bulk-help { margin: 0; font-size: 0.75rem; line-height: 1.45; color: var(--text-dim); }
+@media (max-width: 520px) {
+  .bulk-action .btn-secondary { align-self: stretch; }
+}
+
 /* Sync indicator dots */
 .sync-indicator, .sync-indicator-desktop {
   display: inline-flex;
