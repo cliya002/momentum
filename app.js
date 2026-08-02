@@ -3331,6 +3331,7 @@
     if (!navigator.onLine) { showToast("You're offline.", "warn"); return; }
     if (ghInFlight) return;
     ghInFlight = true;
+    let ok = false;
     const btn = document.getElementById("todaySyncGhBtn");
     if (btn) { btn.disabled = true; btn.textContent = "⏳ Syncing…"; }
     try {
@@ -3381,12 +3382,22 @@
       if (msgs.length) showToast("✓ Synced · " + msgs.join(" · ") + (sleepNote ? " · " + sleepNote : ""), "success");
       else if (sleepNote) showGhBanner("😴 " + sleepNote);
       else showGhBanner("🔄 Nothing to sync yet — no steps, sleep, workouts, or temperature found for today. Sync your watch or Fitbit app and try again.");
+      ok = true;
     } catch (e) {
       showToast("Sync failed: " + (e.message || e), "error");
     } finally {
       ghInFlight = false;
       const b = document.getElementById("todaySyncGhBtn");
-      if (b) { b.disabled = false; b.textContent = "🔄 Sync"; }
+      if (b) {
+        b.disabled = false;
+        if (ok) {
+          // Briefly show "Synced" (same button styling — no green), then reset.
+          b.textContent = "✓ Synced";
+          setTimeout(() => { const cur = document.getElementById("todaySyncGhBtn"); if (cur) cur.textContent = "🔄 Sync"; }, 2000);
+        } else {
+          b.textContent = "🔄 Sync";
+        }
+      }
     }
   }
   // Format a skin-temperature variation for display, e.g. "+0.3°C" / "-0.2°C".
