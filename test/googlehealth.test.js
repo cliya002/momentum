@@ -104,5 +104,27 @@ console.log("mapSleepHours (tolerant)");
   assert(T.mapSleepHours({ dataPoints: [{}, { sleep: null }] }) === 0, "malformed -> 0 (no throw)");
 }
 
+console.log("mapWorkoutSessions + workoutHabitMatch");
+{
+  const json = { dataPoints: [
+    { exercise: { exerciseType: "RUNNING", displayName: "Treadmill run", activeDuration: "1800s", interval: { startTime: "2026-02-23T13:00:00Z" }, metricsSummary: { caloriesKcal: 320, steps: "4200" } } },
+    { exercise: { exerciseType: "BIKING", displayName: "Morning ride", activeDuration: "2700s", interval: { startTime: "2026-02-23T07:00:00Z" }, metricsSummary: { caloriesKcal: 400 } } },
+  ] };
+  const s = T.mapWorkoutSessions(json);
+  assert(s.length === 2 && s[0].minutes === 30 && s[0].kcal === 320, "sessions flattened (30 min, 320 kcal)");
+  // Specific match: a "Treadmill" habit ticks from the treadmill run.
+  const m1 = T.workoutHabitMatch("Treadmill", s);
+  assert(m1 && /treadmill/i.test(m1.name), "'Treadmill' matches the treadmill run");
+  // Synonym: "Run" matches the treadmill run too.
+  assert(!!T.workoutHabitMatch("Run", s), "'Run' matches (running/treadmill synonym)");
+  // Cycling.
+  assert(T.workoutHabitMatch("Cycling", s) && T.workoutHabitMatch("Cycling", s).type === "biking", "'Cycling' matches the bike ride");
+  // Generic workout habit matches any session.
+  assert(!!T.workoutHabitMatch("Workout", s), "generic 'Workout' matches any session");
+  // No match for an unrelated activity.
+  assert(T.workoutHabitMatch("Swimming", s) === null, "'Swimming' has no match today");
+  assert(T.workoutHabitMatch("Treadmill", []) === null, "no sessions -> null");
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

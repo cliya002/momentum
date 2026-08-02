@@ -2879,6 +2879,51 @@
     return Math.round((totalSec / 3600) * 10) / 10;
   }
   function isSleepHabit(habit) { return /\bsleep\b/i.test((habit && habit.name) || ""); }
+  // A habit that maps to a logged workout (generic or a specific activity).
+  function isWorkoutHabit(habit) {
+    return /\b(workout|exercise|gym|training|cardio|treadmill|run(ning)?|jog|walk|hike|hiking|bike|biking|cycl\w*|spin|swim\w*|elliptical|row(ing)?|yoga|pilates|weights?|strength|hiit|aerobic)\b/i.test((habit && habit.name) || "");
+  }
+  // Flatten today's exercise sessions into a simple list. Pure + tested.
+  function mapWorkoutSessions(json) {
+    const pts = (json && Array.isArray(json.dataPoints)) ? json.dataPoints : [];
+    const out = [];
+    for (const p of pts) {
+      const ex = p && p.exercise;
+      if (!ex) continue;
+      const m = ex.metricsSummary || {};
+      out.push({
+        type: String(ex.exerciseType || "").toLowerCase(),
+        name: String(ex.displayName || "").trim(),
+        steps: Number(m.steps) || 0,
+        kcal: Number(m.caloriesKcal) || 0,
+        minutes: Math.round(parseDurationSeconds(ex.activeDuration) / 60) || 0,
+        startTime: (ex.interval && ex.interval.startTime) || "",
+      });
+    }
+    return out;
+  }
+  // Find the session that matches a workout habit's name. Generic names
+  // (workout/gym/exercise…) match any session; otherwise match by keyword
+  // against the session's type or display name (with a few synonyms). Pure.
+  function workoutHabitMatch(habitName, sessions) {
+    if (!sessions || !sessions.length) return null;
+    const n = (habitName || "").toLowerCase();
+    if (/\b(workout|exercise|gym|training|cardio|activity|move)\b/.test(n)) return sessions[0];
+    const tokens = n.replace(/[^a-z\s]/g, " ").split(/\s+/).filter((w) => w.length >= 3);
+    for (const s of sessions) {
+      const hay = (s.type + " " + s.name).toLowerCase();
+      for (const t of tokens) {
+        if (hay.includes(t)) return s;
+        if (s.type && t.includes(s.type)) return s;
+        if ((t === "run" || t === "running" || t === "jog") && /run|tread/.test(hay)) return s;
+        if (t === "treadmill" && /run|walk|tread/.test(hay)) return s;
+        if ((t === "bike" || t === "biking" || t === "cycle" || t === "cycling" || t === "spin") && /bik|cycl|spin/.test(hay)) return s;
+        if ((t === "walk" || t === "hike" || t === "hiking") && /walk|hik/.test(hay)) return s;
+        if ((t === "swim" || t === "swimming") && /swim/.test(hay)) return s;
+      }
+    }
+    return null;
+  }
   function civilDayHour(daysAgo, hour) {
     const d = addDays(new Date(), -Math.abs(daysAgo || 0));
     const pad = (n) => String(n).padStart(2, "0");
@@ -3070,6 +3115,53 @@
       renderToday();
     } catch (e) {
       showToast("Sleep pull failed: " + (e.message || e), "error");
+    } finally {
+      ghInFlight = false;
+    }
+  }
+
+  // Pull today's workouts and check the habit if a matching session is found
+  // (e.g. a "Treadmill" habit ticks when you logged a treadmill run).
+  async function pullWorkoutForHabit(habit) {
+    if (!ghConnected()) { showToast("Connect Google Health in Settings first.", "warn"); return; }
+    if (!navigator.onLine) { showToast("You're offline.", "warn"); return; }
+    if (ghInFlight) return;
+    ghInFlight = true;
+    try {
+      let sessions = [], dbg = "";
+      try {
+        const raw = await ghApiGet("v4/users/me/dataTypes/exercise/dataPoints", googleTodayFilter());
+        sessions = mapWorkoutSessions(raw);
+        if (!sessions.length && raw && Array.isArray(raw.dataPoints) && raw.dataPoints.length) {
+          dbg = " · workout keys: " + JSON.stringify(Object.keys(raw.dataPoints[0] || {}));
+        }
+      } catch (e) { dbg = " · err: " + (e.message || e); }
+      const today = new Date();
+      if (!sessions.length) { showGhBanner(`🏋️ No workouts logged today yet. Finish a workout on your watch or Fitbit app, then tap 🏋️ again.${dbg}`); return; }
+      const match = workoutHabitMatch(habit.name, sessions);
+      if (!match) {
+        const logged = sessions.map((s) => s.name || s.type).filter(Boolean).slice(0, 3).join(", ");
+        showGhBanner(`No workout matching “${habit.name}” today.${logged ? " Logged: " + logged + "." : ""}`);
+        return;
+      }
+      const label = match.name || match.type || "workout";
+      if (habit.type === "count") {
+        const val = match.minutes > 0 ? match.minutes : (habit.target || 1);
+        const wasDone = isCompleted(habit, today);
+        setCompletionValue(habit.id, today, val);
+        if (!wasDone && val >= (habit.target || 1)) maybeCelebrate(habit, today);
+        showToast(`✓ ${habit.icon || "🏋️"} ${habit.name}${match.minutes ? ` — ${match.minutes} min` : ""} (${label})`, "success");
+      } else {
+        if (!isCompleted(habit, today)) { setCompletionValue(habit.id, today, 1); maybeCelebrate(habit, today); }
+        const bits = [label];
+        if (match.minutes) bits.push(match.minutes + " min");
+        if (match.kcal) bits.push(match.kcal + " kcal");
+        showToast(`✓ ${habit.icon || "🏋️"} ${habit.name} — ${bits.join(" · ")}`, "success");
+      }
+      localStorage.setItem(KEYS.ghLastSync, String(Date.now()));
+      renderToday();
+    } catch (e) {
+      showToast("Workout pull failed: " + (e.message || e), "error");
     } finally {
       ghInFlight = false;
     }
@@ -5420,16 +5512,28 @@
     const controls = document.createElement("div");
     controls.className = "count-controls";
 
-    // Google Health pull button: 👟 for step-linked habits, 😴 for sleep habits.
-    if (ghConnected() && (stepHabitKind(habit) || isSleepHabit(habit))) {
-      const sleepy = !stepHabitKind(habit) && isSleepHabit(habit);
-      const pull = document.createElement("button");
-      pull.className = "stepper-btn pull-steps-mini";
-      pull.textContent = sleepy ? "😴" : "👟";
-      pull.title = sleepy ? "Pull last night's sleep from Google Health" : "Pull steps from Google Health";
-      pull.setAttribute("aria-label", (sleepy ? "Pull sleep for " : "Pull steps for ") + habit.name);
-      pull.addEventListener("click", (e) => { e.stopPropagation(); if (sleepy) pullSleepForHabit(habit); else pullStepsForHabit(habit); });
-      controls.appendChild(pull);
+    // Google Health pull button. Priority: steps 👟 > sleep 😴 > workout 🏋️.
+    if (ghConnected()) {
+      let kind = null;
+      if (stepHabitKind(habit)) kind = "steps";
+      else if (isSleepHabit(habit)) kind = "sleep";
+      else if (isWorkoutHabit(habit)) kind = "workout";
+      if (kind) {
+        const ico = kind === "sleep" ? "😴" : kind === "workout" ? "🏋️" : "👟";
+        const what = kind === "sleep" ? "last night's sleep" : kind === "workout" ? "today's workout" : "steps";
+        const pull = document.createElement("button");
+        pull.className = "stepper-btn pull-steps-mini";
+        pull.textContent = ico;
+        pull.title = "Pull " + what + " from Google Health";
+        pull.setAttribute("aria-label", "Pull " + what + " for " + habit.name);
+        pull.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (kind === "sleep") pullSleepForHabit(habit);
+          else if (kind === "workout") pullWorkoutForHabit(habit);
+          else pullStepsForHabit(habit);
+        });
+        controls.appendChild(pull);
+      }
     }
 
     if (habit.type === "count") {
@@ -11348,7 +11452,7 @@
       shade, hexToRgb,
       translate, availableLangs, b64url,
       buildGoogleAuthUrl, googleTodayFilter, mapExerciseDataPoints, sumStepsDataPoints, latestWeightKg,
-      mapSleepHours, parseDurationSeconds,
+      mapSleepHours, parseDurationSeconds, mapWorkoutSessions, workoutHabitMatch,
       getState: () => state, setState: (s) => { state = s; },
     };
   }
