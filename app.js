@@ -1760,7 +1760,9 @@
       }
     }
     if (scheduled === 0) return null;
-    return Math.round((done / scheduled) * 100);
+    const raw = (done / scheduled) * 100;
+    // Don't let 99.5% round up to a misleading "100%" when a slot was missed.
+    return (done < scheduled && raw > 99) ? 99 : Math.round(raw);
   }
 
   // Set a value and offer a one-tap undo.
@@ -7677,11 +7679,14 @@
         const p = weekAdherencePct(new Date(parts[0], parts[1] - 1, parts[2]));
         if (p != null) { ad.push(p); en.push(e.energy); }
       }
-      const r = pearson(ad, en);
-      if (r != null && Math.abs(r) >= 0.4) {
-        out.push({ icon: "⚡", text: r > 0
-          ? `Your energy runs higher in weeks you hit your habits.`
-          : `Interesting — higher-adherence weeks track with lower logged energy. Watch for overtraining.` });
+      // Need 4+ real pairs — 2 points are always perfectly correlated (±1).
+      if (ad.length >= 4) {
+        const r = pearson(ad, en);
+        if (r != null && Math.abs(r) >= 0.4) {
+          out.push({ icon: "⚡", text: r > 0
+            ? `Your energy runs higher in weeks you hit your habits.`
+            : `Interesting — higher-adherence weeks track with lower logged energy. Watch for overtraining.` });
+        }
       }
     }
 
@@ -10242,7 +10247,7 @@
     }
     // Home-screen shortcuts open the app with ?tab= (and optional add=1).
     const shortcutTab = params.get("tab");
-    const validTabs = ["today", "habits", "progress", "report", "work", "settings"];
+    const validTabs = ["today", "habits", "progress", "report", "schedule", "settings"];
     if (shortcutTab && validTabs.includes(shortcutTab)) {
       currentView = shortcutTab;
       if (params.get("add") === "1") setTimeout(() => openHabitModal(null), 300);
