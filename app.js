@@ -10827,27 +10827,45 @@
       renderExerciseList();
       return;
     }
-    const profileComplete = prof.heightCm > 0 && prof.age > 0 && (prof.sex === "male" || prof.sex === "female");
-    const baseBurn = baseEl && baseEl.value !== "" && !profileComplete ? Number(baseEl.value)
+    let profileComplete = prof.heightCm > 0 && prof.age > 0 && (prof.sex === "male" || prof.sex === "female");
+    let baseBurn = baseEl && baseEl.value !== "" && !profileComplete ? Number(baseEl.value)
       : (c.baseBurn != null && !profileComplete ? c.baseBurn : estimateMaintenanceKcal(weightLb));
+    let exerciseBurn = exEl && exEl.value !== "" ? Number(exEl.value) : c.exerciseBurn;
+    // Guardrail: if the user opted to use Google's measured burn, that value is
+    // the whole daily "out" (it already includes steps + workouts + BMR), so
+    // ignore the profile/estimate and zero exercise to avoid double-counting.
+    const g = latestGoogleTotal(c);
+    let usingGoogle = false;
+    if (c.useGoogle && g) {
+      baseBurn = g.kcal; profileComplete = false; exerciseBurn = 0; usingGoogle = true;
+      if (baseEl && notFocused(baseEl)) baseEl.value = g.kcal;
+      if (exEl && notFocused(exEl)) exEl.value = 0;
+    }
     const f = calorieForecast({
       weightLb,
       caloriesIn: inEl ? Number(inEl.value) : c.caloriesIn,
       baseBurn,
-      exerciseBurn: exEl ? Number(exEl.value) : c.exerciseBurn,
+      exerciseBurn,
       profile: profileComplete ? prof : null,
       metric: isMetric(),
     });
     if (!f) { balEl.innerHTML = ""; fcEl.innerHTML = ""; return; }
     // When a profile drives it, show the computed maintenance in the field.
-    if (baseEl && notFocused(baseEl) && f.usedProfile) baseEl.value = f.startMaintenance;
-    else if (baseEl && notFocused(baseEl) && baseEl.value === "") baseEl.value = f.startMaintenance;
+    if (!usingGoogle && baseEl && notFocused(baseEl) && f.usedProfile) baseEl.value = f.startMaintenance;
+    else if (!usingGoogle && baseEl && notFocused(baseEl) && baseEl.value === "") baseEl.value = f.startMaintenance;
     const losing = f.deficit > 0;
     const word = losing ? "deficit" : "surplus";
     const cls = losing ? "cal-deficit" : "cal-surplus";
-    const method = f.usedProfile ? "Mifflin-St Jeor · recomputed as you lose" : "estimate · recomputed as you lose";
+    const method = usingGoogle ? "Google measured burn"
+      : f.usedProfile ? "Mifflin-St Jeor · recomputed as you lose" : "estimate · recomputed as you lose";
+    // Plausibility guardrails on the rate.
+    const lbPerWeek = Math.abs((f.deficit / KCAL_PER_LB) * 7);
+    const pctPerWeek = weightLb > 0 ? (lbPerWeek / weightLb) * 100 : 0;
+    let caution = "";
+    if (Math.abs(f.deficit) > 1500) caution = ` · ⚠️ ${Math.abs(Math.round(f.deficit))} kcal/day is unrealistic — check your inputs (likely maintenance/height)`;
+    else if (losing && (lbPerWeek > 2 || pctPerWeek > 1)) caution = " · ⚠️ aggressive — sustainable loss is ~0.5–1%/week";
     balEl.innerHTML = `<span class="${cls}">${Math.abs(Math.round(f.deficit))} kcal/day ${word}</span>` +
-      `<span class="cal-sub">${losing ? "Losing" : "Gaining"} about ${Math.abs(f.perWeekDisp)} ${f.unit}/week to start · ${method}</span>`;
+      `<span class="cal-sub">${losing ? "Losing" : "Gaining"} about ${Math.abs(f.perWeekDisp)} ${f.unit}/week to start · ${method}${caution}</span>`;
     fcEl.innerHTML = f.horizons.map((h) => {
       const lost = h.changeDisp > 0;
       const sign = h.changeDisp > 0 ? "−" : h.changeDisp < 0 ? "+" : "";
@@ -10971,34 +10989,65 @@
       if (btn) { btn.disabled = false; btn.textContent = "📊 Compare Google total burn"; }
     }
   }
-  // Compare Google's Total Calories (TDEE) with our maintenance+exercise estimate.
+  // The most recent COMPLETE day's Google total burn (prefers a finished day
+  // over today, which is still accumulating). Returns { dayKey, kcal } or null.
+  function latestGoogleTotal(c) {
+    const byDay = (c || loadCalorie()).totalByDay || {};
+    const todayKeyStr = dateKey(new Date());
+    const complete = Object.keys(byDay).filter((k) => k < todayKeyStr).sort();
+    if (complete.length) { const k = complete[complete.length - 1]; return { dayKey: k, kcal: byDay[k] }; }
+    if (byDay[todayKeyStr] != null) return { dayKey: todayKeyStr, kcal: byDay[todayKeyStr] };
+    return null;
+  }
+  // Compare Google's Total Calories (TDEE) with our maintenance+exercise estimate,
+  // and warn + offer a one-tap fix when they diverge a lot.
   function renderTotalCompare() {
     const el = document.getElementById("calTotalCompare");
     if (!el) return;
     const c = loadCalorie();
-    const byDay = c.totalByDay || {};
-    const keys = Object.keys(byDay).sort();
-    if (!keys.length) { el.hidden = true; return; }
-    // Prefer today; else the most recent day pulled.
-    const todayKeyStr = dateKey(new Date());
-    const dayKey = byDay[todayKeyStr] != null ? todayKeyStr : keys[keys.length - 1];
-    const googleTotal = byDay[dayKey];
-    // Our estimate = maintenance (base) + exercise burn.
+    const g = latestGoogleTotal(c);
+    if (!g) { el.hidden = true; return; }
+    const googleTotal = g.kcal;
     const baseEl = document.getElementById("calBase");
     const exEl = document.getElementById("calExercise");
     const base = baseEl && baseEl.value !== "" ? Number(baseEl.value) : (c.baseBurn || 0);
     const exer = exEl && exEl.value !== "" ? Number(exEl.value) : (c.exerciseBurn || 0);
     const estimate = Math.round(base + exer);
     const diff = googleTotal - estimate;
-    const when = dayKey === todayKeyStr ? "today" : formatDateShort(parseDateKey(dayKey));
+    const when = g.dayKey === dateKey(new Date()) ? "today (partial)" : formatDateShort(parseDateKey(g.dayKey));
+    const bigGap = estimate > 0 && Math.abs(diff) > 0.2 * googleTotal;
     el.hidden = false;
-    el.innerHTML =
-      `<div class="cal-cmp-row"><span>📊 Google total burn (${escapeHtml(when)})</span><span><b>${googleTotal} kcal</b></span></div>` +
+    let html =
+      `<div class="cal-cmp-row"><span>📊 Google measured burn (${escapeHtml(when)})</span><span><b>${googleTotal} kcal</b></span></div>` +
       `<div class="cal-cmp-row"><span>Your estimate (maintenance + exercise)</span><span>${estimate} kcal</span></div>` +
       `<div class="cal-cmp-diff">${diff === 0 ? "Matches your estimate" : (diff > 0 ? "Google is " + diff + " kcal higher" : "Google is " + Math.abs(diff) + " kcal lower")}</div>`;
+    if (bigGap) {
+      html += `<div class="cal-cmp-warn">⚠️ Big gap — your estimate looks off (check your height/age/sex, or an odd activity level). Google's number is measured, so it's usually more accurate.</div>` +
+        `<button type="button" id="calUseGoogleBtn" class="btn-secondary" style="margin-top:6px">Use Google's measured burn</button>`;
+    }
+    if (c.useGoogle) {
+      html += `<div class="cal-cmp-note">✓ Forecast is using Google's measured burn as your daily out. <button type="button" id="calUseEstimateBtn" class="linklike">Switch back to estimate</button></div>`;
+    }
+    el.innerHTML = html;
+    const useBtn = document.getElementById("calUseGoogleBtn");
+    if (useBtn) useBtn.addEventListener("click", () => {
+      const cc = loadCalorie();
+      cc.useGoogle = true; cc.updatedAt = Date.now(); saveCalorie(cc);
+      renderCalorieForecast();
+      showToast("Using Google's measured burn for the forecast.", "success");
+    });
+    const estBtn = document.getElementById("calUseEstimateBtn");
+    if (estBtn) estBtn.addEventListener("click", () => {
+      const cc = loadCalorie(); cc.useGoogle = false; cc.updatedAt = Date.now(); saveCalorie(cc);
+      renderCalorieForecast();
+    });
   }
   function onCalorieInput() {
     const c = loadCalorie();
+    // Editing maintenance or the profile means the user is overriding — turn off
+    // "use Google's measured burn" so their input takes effect.
+    const ae = (typeof document !== "undefined" && document.activeElement && document.activeElement.id) || "";
+    if (["calBase", "calHeight", "calAge", "calSex", "calActivity"].indexOf(ae) !== -1) c.useGoogle = false;
     const num = (id) => { const el = document.getElementById(id); return el && el.value !== "" ? Number(el.value) : null; };
     const str = (id) => { const el = document.getElementById(id); return el ? el.value : ""; };
     c.caloriesIn = num("calIn");
