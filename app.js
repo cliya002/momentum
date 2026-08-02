@@ -2838,6 +2838,42 @@
     }
     return bestKg;
   }
+  // Parse a Google "duration" (e.g. "27000s") or a plain number of seconds.
+  function parseDurationSeconds(v) {
+    if (v == null) return 0;
+    if (typeof v === "number") return v > 0 ? v : 0;
+    const s = String(v).trim();
+    const m = s.match(/^(\d+(?:\.\d+)?)\s*s$/i);
+    if (m) return Number(m[1]);
+    const n = Number(s);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }
+  // Total sleep from a sleep-sessions response, in hours (1 decimal). Sums each
+  // session's duration (explicit activeDuration/duration, else end-start).
+  // Tolerant of unknown field shapes; returns 0 when nothing usable is found.
+  function mapSleepHours(json) {
+    const pts = (json && Array.isArray(json.dataPoints)) ? json.dataPoints : [];
+    let totalSec = 0;
+    for (const p of pts) {
+      if (!p) continue;
+      const s = p.sleep || p.value || p;
+      let sec = parseDurationSeconds(s.activeDuration) || parseDurationSeconds(s.duration) || parseDurationSeconds(p.activeDuration);
+      if (!sec) {
+        const iv = s.interval || p.interval || {};
+        const st = iv.startTime ? Date.parse(iv.startTime) : 0;
+        const en = iv.endTime ? Date.parse(iv.endTime) : 0;
+        if (st && en && en > st) sec = (en - st) / 1000;
+      }
+      if (sec > 0) totalSec += sec;
+    }
+    return Math.round((totalSec / 3600) * 10) / 10;
+  }
+  function isSleepHabit(habit) { return /\bsleep\b/i.test((habit && habit.name) || ""); }
+  function civilDayHour(daysAgo, hour) {
+    const d = addDays(new Date(), -Math.abs(daysAgo || 0));
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(hour)}:00:00`;
+  }
 
   async function connectGoogleHealth() {
     const base = ghWorkerBase();
@@ -2978,6 +3014,44 @@
   function findStepsGoalHabit(excludeId) {
     return state.habits.find((h) => !h.archived && h.id !== excludeId && h.type === "count" && /step/i.test(h.name || ""));
   }
+  // Pull last night's sleep into a sleep habit. Fills a count habit with hours;
+  // marks a yes/no habit done when any sleep is logged. Window: since yesterday
+  // noon (captures a sleep session that started last evening).
+  async function pullSleepForHabit(habit) {
+    if (!ghConnected()) { showToast("Connect Google Health in Settings first.", "warn"); return; }
+    if (!navigator.onLine) { showToast("You're offline.", "warn"); return; }
+    if (ghInFlight) return;
+    ghInFlight = true;
+    try {
+      let hrs = 0, dbg = "";
+      try {
+        const raw = await ghApiGet("v4/users/me/dataTypes/sleep/dataPoints", `sleep.interval.civil_start_time >= "${civilDayHour(1, 12)}"`);
+        hrs = mapSleepHours(raw);
+        if (hrs === 0 && raw && Array.isArray(raw.dataPoints) && raw.dataPoints.length) {
+          const p0 = raw.dataPoints[0] || {};
+          dbg = " · sleep keys: " + JSON.stringify(Object.keys(p0)) + (p0.sleep && typeof p0.sleep === "object" ? " / sleep.*: " + JSON.stringify(Object.keys(p0.sleep)) : "");
+        }
+      } catch (e) { dbg = " · sleep err: " + (e.message || e); }
+      const today = new Date();
+      if (hrs <= 0) { showToast("No sleep logged yet." + dbg, "warn"); return; }
+      if (habit.type === "count") {
+        const wasDone = isCompleted(habit, today);
+        setCompletionValue(habit.id, today, hrs);
+        if (!wasDone && hrs >= (habit.target || 1)) maybeCelebrate(habit, today);
+        showToast(`😴 ${habit.name}: ${hrs}h/${fmtValue(habit, habit.target)}`, "success");
+      } else {
+        if (!isCompleted(habit, today)) { setCompletionValue(habit.id, today, 1); maybeCelebrate(habit, today); }
+        showToast(`✓ ${habit.icon || "😴"} ${habit.name} (${hrs}h)`, "success");
+      }
+      localStorage.setItem(KEYS.ghLastSync, String(Date.now()));
+      renderToday();
+    } catch (e) {
+      showToast("Sleep pull failed: " + (e.message || e), "error");
+    } finally {
+      ghInFlight = false;
+    }
+  }
+
   // Pull steps for one habit card (Morning walk / Evening walk / steps goal).
   // Pulling a walk also refreshes the all-day steps goal with the day's total.
   async function pullStepsForHabit(habit) {
@@ -5323,14 +5397,15 @@
     const controls = document.createElement("div");
     controls.className = "count-controls";
 
-    // Step-linked habits (steps goal, morning/evening walk) get a 👟 pull button.
-    if (ghConnected() && stepHabitKind(habit)) {
+    // Google Health pull button: 👟 for step-linked habits, 😴 for sleep habits.
+    if (ghConnected() && (stepHabitKind(habit) || isSleepHabit(habit))) {
+      const sleepy = !stepHabitKind(habit) && isSleepHabit(habit);
       const pull = document.createElement("button");
       pull.className = "stepper-btn pull-steps-mini";
-      pull.textContent = "👟";
-      pull.title = "Pull steps from Google Health";
-      pull.setAttribute("aria-label", "Pull steps for " + habit.name);
-      pull.addEventListener("click", (e) => { e.stopPropagation(); pullStepsForHabit(habit); });
+      pull.textContent = sleepy ? "😴" : "👟";
+      pull.title = sleepy ? "Pull last night's sleep from Google Health" : "Pull steps from Google Health";
+      pull.setAttribute("aria-label", (sleepy ? "Pull sleep for " : "Pull steps for ") + habit.name);
+      pull.addEventListener("click", (e) => { e.stopPropagation(); if (sleepy) pullSleepForHabit(habit); else pullStepsForHabit(habit); });
       controls.appendChild(pull);
     }
 
@@ -11250,6 +11325,7 @@
       shade, hexToRgb,
       translate, availableLangs, b64url,
       buildGoogleAuthUrl, googleTodayFilter, mapExerciseDataPoints, sumStepsDataPoints, latestWeightKg,
+      mapSleepHours, parseDurationSeconds,
       getState: () => state, setState: (s) => { state = s; },
     };
   }

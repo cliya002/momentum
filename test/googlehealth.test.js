@@ -81,5 +81,28 @@ console.log("latestWeightKg (tolerant + safe)");
   assert(T.latestWeightKg({ dataPoints: [{ weight: { kilograms: 9999 } }] }) === null, "implausible value ignored");
 }
 
+console.log("parseDurationSeconds");
+{
+  assert(T.parseDurationSeconds("27000s") === 27000, "'27000s' -> 27000");
+  assert(T.parseDurationSeconds(3600) === 3600, "number passthrough");
+  assert(T.parseDurationSeconds("bad") === 0, "junk -> 0");
+  assert(T.parseDurationSeconds(null) === 0, "null -> 0");
+}
+
+console.log("mapSleepHours (tolerant)");
+{
+  // Two sessions via explicit activeDuration (7h30m + naps)
+  const j = { dataPoints: [
+    { sleep: { activeDuration: "27000s" } },  // 7.5h
+    { sleep: { activeDuration: "1800s" } },   // 0.5h nap
+  ] };
+  assert(T.mapSleepHours(j) === 8, "sums activeDuration sessions -> 8h");
+  // Fallback: compute from interval start/end
+  const j2 = { dataPoints: [{ sleep: { interval: { startTime: "2026-02-01T23:00:00Z", endTime: "2026-02-02T06:30:00Z" } } }] };
+  assert(T.mapSleepHours(j2) === 7.5, "computes 7.5h from interval when no duration");
+  assert(T.mapSleepHours({}) === 0, "empty -> 0");
+  assert(T.mapSleepHours({ dataPoints: [{}, { sleep: null }] }) === 0, "malformed -> 0 (no throw)");
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
