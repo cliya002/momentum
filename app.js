@@ -1947,7 +1947,7 @@
     }
     if (dTimes.length || habit.time) {
       const when = dTimes.length ? dTimes.join(" · ") : escapeHtml(habit.time);
-      html += `<p class="detail-line hint">🕒 ${when}${habit.type === "count" ? ` · target ${fmtValue(habit, habit.target)}` : ""}</p>`;
+      html += `<p class="detail-line hint">🕒 ${when}${habit.type === "count" ? ` · target ${escapeHtml(fmtValue(habit, habit.target))}` : ""}</p>`;
     }
     const at = adaptiveTargetSuggestion(habit);
     if (at) {
@@ -3270,7 +3270,6 @@
       habitIncrement: $("#habitIncrement"),
       typePicker: $(".type-picker"),
       countFields: $("#countFields"),
-      habitName: $("#habitName"),
       habitDoseSpacingHint: $("#habitDoseSpacingHint"),
       habitCountSuggest: $("#habitCountSuggest"),
       habitCountSuggestText: $("#habitCountSuggestText"),
@@ -4480,7 +4479,7 @@
       const val = document.createElement("div");
       val.className = "count-value" + (dayDone ? " done" : "");
       if (dayDone) val.style.color = habit.color;
-      val.innerHTML = `<span class="cv-now">${fmtValue(habit, shown)}</span><span class="cv-target">/ ${fmtValue(habit, habit.target)}</span>`;
+      val.innerHTML = `<span class="cv-now">${escapeHtml(fmtValue(habit, shown))}</span><span class="cv-target">/ ${escapeHtml(fmtValue(habit, habit.target))}</span>`;
       controls.appendChild(val);
 
       const plus = document.createElement("button");
@@ -5166,7 +5165,10 @@
     const dayIdx = date.getDay();
     if (habit.dayTimes && habit.dayTimes[dayIdx]) {
       const mins = parseTimeToMinutes(effectiveTime(habit, dayIdx));
-      if (Number.isFinite(mins)) {
+      // Only a real time-of-day (< 24:00) is a valid clock; parseTimeToMinutes
+      // returns sentinels (1441/1442) for "all day"/descriptive text, which
+      // would otherwise produce bogus "24:01" reminders firing near midnight.
+      if (mins != null && mins < 24 * 60) {
         return `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
       }
     }
@@ -6533,6 +6535,7 @@
       b.type = "button";
       b.dataset.color = c;
       b.style.background = c;
+      b.setAttribute("aria-label", `Color ${c}`);
       if (c === selectedColor) b.classList.add("selected");
       b.addEventListener("click", () => {
         els.colorPicker.querySelectorAll("button").forEach((x) => x.classList.remove("selected"));
@@ -6566,7 +6569,10 @@
     const dt = (habit && habit.dayTimes) ? habit.dayTimes : {};
     for (const d of DAY_DISPLAY) {
       const stored = dt[d.idx];
-      const hhmm = stored ? minToHHMM(parseTimeToMinutes(timeChipLabel(stored) || stored)) : "";
+      const pm = stored ? parseTimeToMinutes(timeChipLabel(stored) || stored) : null;
+      // Only prefill the time input from an actual clock value; descriptive
+      // overrides ("All day") return a sentinel that must not become "00:01".
+      const hhmm = (pm != null && pm < 24 * 60) ? minToHHMM(pm) : "";
       const row = document.createElement("div");
       row.className = "day-time-row";
       row.innerHTML = `<span class="dt-day">${d.full}</span><input type="time" data-daytime="${d.idx}" value="${hhmm}" />`;
@@ -7923,7 +7929,7 @@
       const row = document.createElement("div");
       row.className = "cat-bar-row";
       row.innerHTML =
-        `<div class="cat-bar-head"><span class="cat-name">${c}</span><span class="cat-pct">${t.done}/${t.scheduled} · ${p}%</span></div>` +
+        `<div class="cat-bar-head"><span class="cat-name">${escapeHtml(c)}</span><span class="cat-pct">${t.done}/${t.scheduled} · ${p}%</span></div>` +
         `<div class="cat-bar"><div class="cat-bar-fill" style="width:${p}%;background:${colorFor[c] || "#6366f1"}"></div></div>`;
       wrap.appendChild(row);
     }
@@ -8392,7 +8398,7 @@
       const info = document.createElement("div");
       info.className = "cf-info";
       info.innerHTML = `<div class="cf-name">${escapeHtml(c.habit.name)}</div>` +
-        `<div class="cf-move">${escapeHtml(timeChipLabel(c.curTime) || c.curTime)} → <b>${escapeHtml(c.newTime)}</b> <span style="opacity:.7">(${DAY_DISPLAY.find(d=>d.idx===c.dayIdx).full} only)</span></div>`;
+        `<div class="cf-move">${escapeHtml(timeChipLabel(c.curTime) || c.curTime)} → <b>${escapeHtml(c.newTime)}</b> <span style="opacity:.7">(${(DAY_DISPLAY.find(d=>d.idx===c.dayIdx)||{}).full || ""} only)</span></div>`;
       const btn = document.createElement("button");
       btn.className = "cf-apply";
       btn.textContent = "Apply";
@@ -8608,8 +8614,8 @@
       const remaining = latest - target;
       const reached = (totalDelta < 0 && latest <= target) || (totalDelta > 0 && latest >= target) || Math.abs(remaining) < 0.05;
 
-      // Projection from average weekly change
-      const weeks = wl.length - 1;
+      // Projection from average weekly change (elapsed weeks, not entry count)
+      const weeks = weeksBetween(wl[0].weekKey, wl[wl.length - 1].weekKey) || (wl.length - 1);
       const avgWk = weeks > 0 ? (latest - start) / weeks : 0;
       let projection = "";
       if (!reached && avgWk !== 0 && Math.sign(avgWk) === Math.sign(target - latest)) {
@@ -8629,7 +8635,7 @@
           <div class="goal-bar"><div class="goal-bar-fill" style="width:${pct}%"></div></div>
           <div class="goal-meta">
             ${projection ? `<span>${projection}</span>` : ""}
-            ${g.targetDate ? `<span>Target date: <b>${g.targetDate}</b></span>` : ""}
+            ${g.targetDate ? `<span>Target date: <b>${escapeHtml(g.targetDate)}</b></span>` : ""}
           </div>
         </div>`;
     }
@@ -8673,8 +8679,19 @@
   function measurementList() {
     return Object.entries(state.measurements)
       .map(([k, v]) => ({ ...v, weekKey: k }))
-      .filter((e) => e.weight !== null || e.waist !== null || e.energy !== null || e.strengthTrend || e.notes)
+      .filter((e) => e.weight !== null || e.waist !== null || e.energy !== null || e.strengthTrend || e.notes || (e.custom && Object.keys(e.custom).length))
       .sort((a, b) => a.weekKey.localeCompare(b.weekKey));
+  }
+  // Actual calendar weeks between two "YYYY-MM-DD" week keys (Mondays). Used so
+  // weekly-rate math reflects elapsed time, not the number of logged entries
+  // (logging is sporadic, so entry-count is not a reliable week count).
+  function weeksBetween(weekKeyA, weekKeyB) {
+    const pa = String(weekKeyA).split("-").map(Number);
+    const pb = String(weekKeyB).split("-").map(Number);
+    if (pa.length !== 3 || pb.length !== 3 || pa.some(isNaN) || pb.some(isNaN)) return 0;
+    const a = new Date(pa[0], pa[1] - 1, pa[2]);
+    const b = new Date(pb[0], pb[1] - 1, pb[2]);
+    return Math.round((b - a) / (7 * 86400000));
   }
   function measurementsWithWeight() { return measurementList().filter((e) => e.weight !== null); }
 
@@ -8701,7 +8718,7 @@
       els.pStartWeight.textContent = `${round1(wDisp(start.weight))} ${wUnit()}`;
       els.pLatestWeight.textContent = `${round1(wDisp(latest.weight))} ${wUnit()}`;
       const change = latest.weight - start.weight;
-      const weeks = wl.length - 1;
+      const weeks = weeksBetween(wl[0].weekKey, wl[wl.length - 1].weekKey) || (wl.length - 1);
       setDeltaCard(els.pChange, wDisp(change), wUnit());
       setDeltaCard(els.pAvgWeekly, wDisp(weeks > 0 ? change / weeks : 0), wUnit());
     }
@@ -8760,7 +8777,7 @@
     if (wl.length >= 2) {
       const start = wl[0], latest = wl[wl.length - 1];
       const change = latest.weight - start.weight;
-      const weeks = wl.length - 1;
+      const weeks = weeksBetween(wl[0].weekKey, wl[wl.length - 1].weekKey) || (wl.length - 1);
       const avg = weeks > 0 ? change / weeks : 0;
       const dir = change < 0 ? "Down" : change > 0 ? "Up" : "Flat";
       parts.push(`${dir} ${round1(Math.abs(wDisp(change)))} ${wUnit()} over ${weeks} week${weeks === 1 ? "" : "s"} (~${round1(Math.abs(wDisp(avg)))}/wk).`);
