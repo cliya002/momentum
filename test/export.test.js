@@ -57,30 +57,47 @@ console.log("buildAllCsv (mood + supplement sections)");
   assert(!csv2.includes("SUPPLEMENTS"), "no supplement habits -> no supplements section");
 }
 
-console.log("calorieForecast (energy balance → weight projection)");
+console.log("calorieForecast (dynamic simulation + Mifflin)");
 {
-  // 500 kcal/day deficit, 200 lb. 500/3500 = 0.142857 lb/day.
+  // 500 kcal/day starting deficit, base 2200 @ 200 lb (scales with weight).
   const f = T.calorieForecast({ weightLb: 200, caloriesIn: 2000, baseBurn: 2200, exerciseBurn: 300, metric: false });
-  assert(f.deficit === 500, "deficit = base+exercise−intake = 500");
-  assert(Math.abs(f.perWeekDisp - 1) < 0.05, "~1 lb/week at 500 kcal deficit (" + f.perWeekDisp + ")");
-  const wk4 = f.horizons.find((h) => h.days === 28);
-  assert(Math.abs(wk4.changeDisp - 4) < 0.1, "4 weeks ≈ 4 lb lost (" + wk4.changeDisp + ")");
-  assert(Math.abs(wk4.projectedDisp - 196) < 0.1, "4 weeks ≈ 196 lb projected (" + wk4.projectedDisp + ")");
-  const mo4 = f.horizons.find((h) => h.days === 120);
-  assert(mo4.changeDisp > 0 && mo4.projectedDisp < 200, "4 months shows continued loss");
+  assert(f.deficit === 500, "starting deficit = base+exercise−intake = 500");
+  assert(Math.abs(f.perWeekDisp - 1) < 0.05, "~1 lb/week starting rate (" + f.perWeekDisp + ")");
   assert(f.horizons.length === 6, "six horizons (7d,4w,1m,2m,3m,4m)");
+  const wk4 = f.horizons.find((h) => h.days === 28);
+  // Dynamic: slightly LESS than the naive 4 lb because maintenance falls with weight.
+  assert(wk4.changeDisp > 3.6 && wk4.changeDisp < 4.0, "4 weeks a bit under 4 lb, dynamic (" + wk4.changeDisp + ")");
+  assert(wk4.projectedDisp > 196 && wk4.projectedDisp < 196.5, "4 weeks ~196.2 lb projected (" + wk4.projectedDisp + ")");
+  // Non-linear slowing: 120-day loss is well under 120/28 × the 4-week loss.
+  const mo4 = f.horizons.find((h) => h.days === 120);
+  assert(mo4.changeDisp > 0 && mo4.changeDisp < wk4.changeDisp * (120 / 28), "loss slows over time (sublinear): " + mo4.changeDisp);
 
-  // Surplus → gaining (negative change means weight goes up).
+  // Mifflin-St Jeor when a profile is provided.
+  // 220 lb ≈ 99.79 kg; BMR = 10*99.79 + 6.25*180 − 5*30 + 5 = 1977.9; ×1.375 ≈ 2720.
+  const p = T.calorieForecast({ weightLb: 220, caloriesIn: 2200, exerciseBurn: 0, metric: false,
+    profile: { heightCm: 180, age: 30, sex: "male", activity: 1.375 } });
+  assert(p.usedProfile === true, "uses the profile (Mifflin)");
+  assert(Math.abs(p.startMaintenance - 2720) < 3, "Mifflin maintenance ≈ 2720 (" + p.startMaintenance + ")");
+  const pFemale = T.calorieForecast({ weightLb: 220, caloriesIn: 2200, exerciseBurn: 0,
+    profile: { heightCm: 180, age: 30, sex: "female", activity: 1.375 } });
+  assert(pFemale.startMaintenance < p.startMaintenance, "female BMR lower than male, same stats");
+  // Incomplete profile falls back (not Mifflin).
+  const pIncomplete = T.calorieForecast({ weightLb: 200, caloriesIn: 2000, baseBurn: 2500, exerciseBurn: 0,
+    profile: { heightCm: 0, age: 30, sex: "male", activity: 1.2 } });
+  assert(pIncomplete.usedProfile === false, "incomplete profile → falls back to base estimate");
+
+  // Surplus → gaining.
   const g = T.calorieForecast({ weightLb: 180, caloriesIn: 3000, baseBurn: 2200, exerciseBurn: 0, metric: false });
-  assert(g.deficit < 0, "intake over burn → negative deficit (surplus)");
+  assert(g.deficit < 0, "intake over burn → surplus");
   assert(g.horizons.find((h) => h.days === 30).projectedDisp > 180, "1 month projects weight gain");
 
-  // Metric mode converts to kg.
+  // Metric mode reports kg.
   const m = T.calorieForecast({ weightLb: 220, caloriesIn: 2000, baseBurn: 2500, exerciseBurn: 0, metric: true });
   assert(m.unit === "kg", "metric mode reports kg");
 
   assert(T.calorieForecast({ weightLb: null }) === null, "no weight → null");
   assert(T.estimateMaintenanceKcal(200) === 2800, "maintenance estimate ~14 kcal/lb (200→2800)");
+  assert(Math.round(T.mifflinBmr(100, 180, 30, "male")) === 1980, "mifflinBmr(100kg,180cm,30,male)=1980");
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

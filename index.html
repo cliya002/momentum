@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=4.81.0" />
+  <link rel="stylesheet" href="styles.css?v=4.82.0" />
 </head>
 <body>
 
@@ -351,6 +351,37 @@
                 <button type="button" id="calPullBtn" class="btn-secondary" hidden>⚡ Pull today's exercise</button>
               </div>
             </form>
+            <details class="cal-profile">
+              <summary>Personalise the estimate (height, age, sex)</summary>
+              <div class="measurement-form" style="margin-top:0.5rem">
+                <label>
+                  Height (<span class="unit-l">in</span>)
+                  <input id="calHeight" type="number" inputmode="decimal" step="0.1" min="0" placeholder="e.g. 70" />
+                </label>
+                <label>
+                  Age
+                  <input id="calAge" type="number" inputmode="numeric" step="1" min="0" max="120" placeholder="e.g. 35" />
+                </label>
+                <label>
+                  Sex
+                  <select id="calSex">
+                    <option value="">—</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                  </select>
+                </label>
+                <label>
+                  Daily activity (excl. workouts)
+                  <select id="calActivity">
+                    <option value="1.2">Sedentary</option>
+                    <option value="1.375">Lightly active</option>
+                    <option value="1.55">Moderately active</option>
+                    <option value="1.725">Very active</option>
+                  </select>
+                </label>
+              </div>
+              <p class="card-sub">When your height, age and sex are set, maintenance uses the Mifflin-St Jeor formula and the forecast recomputes as your weight drops (so it curves realistically). Workouts are added separately via Exercise burn.</p>
+            </details>
             <div id="calBalance" class="cal-balance"></div>
             <div id="calForecast" class="cal-forecast"></div>
           </div>

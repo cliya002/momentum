@@ -10669,36 +10669,68 @@
     { label: "7 days", days: 7 }, { label: "4 weeks", days: 28 }, { label: "1 month", days: 30 },
     { label: "2 months", days: 60 }, { label: "3 months", days: 90 }, { label: "4 months", days: 120 },
   ];
+  const LB_TO_KG = 0.453592;
   function loadCalorie() { try { return JSON.parse(localStorage.getItem(KEYS.calorie)) || {}; } catch (e) { return {}; } }
   function saveCalorie(c) { localStorage.setItem(KEYS.calorie, JSON.stringify(c)); }
   // Rough maintenance estimate when the user hasn't set one (~14 kcal per lb).
   function estimateMaintenanceKcal(weightLb) { return weightLb ? Math.round(weightLb * 14) : null; }
-  // Pure energy-balance forecast. Positive deficit → weight loss. Computes in lb
-  // internally (3500 kcal/lb), converts to the display unit. Tested.
+  // Mifflin-St Jeor basal metabolic rate (kcal/day).
+  function mifflinBmr(kg, cm, age, sex) { return 10 * kg + 6.25 * cm - 5 * age + (sex === "female" ? -161 : 5); }
+  // Pure energy-balance forecast with a DAY-BY-DAY simulation, so maintenance
+  // (and therefore the deficit) tracks weight as it changes — the projection
+  // curves and slows, instead of a naive straight line. Maintenance comes from
+  // the Mifflin-St Jeor formula when a profile (height/age/sex/activity) is
+  // given; otherwise it scales the provided/estimated base with weight. Computes
+  // in lb (3500 kcal/lb), converts to the display unit. Tested.
   function calorieForecast(opts) {
-    const weightLb = opts && opts.weightLb;
-    if (weightLb == null) return null;
+    const w0 = opts && opts.weightLb;
+    if (w0 == null) return null;
     const inK = Number(opts.caloriesIn) || 0;
-    const base = Number(opts.baseBurn) || 0;
     const exer = Number(opts.exerciseBurn) || 0;
-    const deficit = base + exer - inK;               // kcal/day, +ve = deficit
-    const lossPerDayLb = deficit / KCAL_PER_LB;       // lb/day (+ve = losing)
     const metric = !!opts.metric;
-    const toDisp = (lb) => (metric ? lb * 0.453592 : lb);
+    const p = opts.profile;
+    const hasProfile = !!(p && p.heightCm > 0 && p.age > 0 && (p.sex === "male" || p.sex === "female"));
+    const activity = (p && Number(p.activity)) || 1.2;
+    const startBase = hasProfile
+      ? mifflinBmr(w0 * LB_TO_KG, p.heightCm, p.age, p.sex) * activity
+      : (Number(opts.baseBurn) > 0 ? Number(opts.baseBurn) : w0 * 14);
+    const ratePerLb = w0 > 0 ? startBase / w0 : 14; // for non-profile scaling
+    const maintenanceAt = (wlb) => hasProfile
+      ? mifflinBmr(wlb * LB_TO_KG, p.heightCm, p.age, p.sex) * activity
+      : ratePerLb * wlb;
+    const toDisp = (lb) => (metric ? lb * LB_TO_KG : lb);
+    // Simulate each day, updating weight so the deficit adapts.
+    const maxDays = 120;
+    const wByDay = new Array(maxDays + 1);
+    wByDay[0] = w0;
+    let w = w0;
+    for (let day = 1; day <= maxDays; day++) {
+      const deficit = maintenanceAt(w) + exer - inK;
+      w = Math.max(0, w - deficit / KCAL_PER_LB);
+      wByDay[day] = w;
+    }
+    const startDeficit = maintenanceAt(w0) + exer - inK;
     const horizons = CAL_HORIZONS.map((h) => {
-      const changeLb = lossPerDayLb * h.days;         // +ve = lost
+      const wl = wByDay[h.days];
       return {
         label: h.label, days: h.days,
-        changeDisp: Math.round(toDisp(changeLb) * 10) / 10,
-        projectedDisp: Math.round(toDisp(weightLb - changeLb) * 10) / 10,
+        changeDisp: Math.round(toDisp(w0 - wl) * 10) / 10,
+        projectedDisp: Math.round(toDisp(wl) * 10) / 10,
       };
     });
     return {
-      deficit,
-      perWeekDisp: Math.round(toDisp(lossPerDayLb * 7) * 10) / 10,
+      deficit: Math.round(startDeficit),
+      startMaintenance: Math.round(startBase),
+      usedProfile: hasProfile,
+      perWeekDisp: Math.round(toDisp((startDeficit / KCAL_PER_LB) * 7) * 10) / 10,
       unit: metric ? "kg" : "lb",
       horizons,
     };
+  }
+  // Build the profile object (heightCm/age/sex/activity) from the store.
+  function calorieProfile(c) {
+    const p = (c && c.profile) || {};
+    return { heightCm: Number(p.heightCm) || 0, age: Number(p.age) || 0, sex: p.sex || "", activity: Number(p.activity) || 1.2 };
   }
   function renderCalorieForecast() {
     const balEl = document.getElementById("calBalance");
@@ -10707,35 +10739,53 @@
     if (pullBtn) pullBtn.hidden = !ghConnected();
     if (!balEl || !fcEl) return;
     const c = loadCalorie();
+    const doc = typeof document !== "undefined" ? document : null;
+    const notFocused = (el) => el && doc && doc.activeElement !== el;
     const inEl = document.getElementById("calIn");
     const baseEl = document.getElementById("calBase");
     const exEl = document.getElementById("calExercise");
     const wl = measurementsWithWeight();
     const weightLb = wl.length ? wl[wl.length - 1].weight : null;
-    // Prefill fields (don't stomp what the user is typing).
-    const doc = typeof document !== "undefined" ? document : null;
-    if (inEl && doc && doc.activeElement !== inEl) inEl.value = c.caloriesIn != null ? c.caloriesIn : "";
-    if (baseEl && doc && doc.activeElement !== baseEl) baseEl.value = c.baseBurn != null ? c.baseBurn : (estimateMaintenanceKcal(weightLb) || "");
-    if (exEl && doc && doc.activeElement !== exEl) exEl.value = c.exerciseBurn != null ? c.exerciseBurn : "";
+    const prof = calorieProfile(c);
+    // Fill profile inputs (height shown in the user's length unit).
+    const hEl = document.getElementById("calHeight");
+    const ageEl = document.getElementById("calAge");
+    const sexEl = document.getElementById("calSex");
+    const actEl = document.getElementById("calActivity");
+    if (notFocused(hEl)) hEl.value = prof.heightCm ? round1(isMetric() ? prof.heightCm : prof.heightCm / 2.54) : "";
+    if (notFocused(ageEl)) ageEl.value = prof.age || "";
+    if (sexEl && doc && doc.activeElement !== sexEl) sexEl.value = prof.sex || "";
+    if (actEl && doc && doc.activeElement !== actEl) actEl.value = String(prof.activity || 1.2);
+    // Prefill intake/exercise (don't stomp typing).
+    if (notFocused(inEl)) inEl.value = c.caloriesIn != null ? c.caloriesIn : "";
+    if (notFocused(exEl)) exEl.value = c.exerciseBurn != null ? c.exerciseBurn : "";
     if (weightLb == null) {
+      if (notFocused(baseEl)) baseEl.value = c.baseBurn != null ? c.baseBurn : "";
       balEl.innerHTML = '<span class="cal-sub">Log your weight above to see a forecast.</span>';
       fcEl.innerHTML = "";
       return;
     }
-    const baseBurn = baseEl && baseEl.value !== "" ? Number(baseEl.value) : (c.baseBurn != null ? c.baseBurn : estimateMaintenanceKcal(weightLb));
+    const profileComplete = prof.heightCm > 0 && prof.age > 0 && (prof.sex === "male" || prof.sex === "female");
+    const baseBurn = baseEl && baseEl.value !== "" && !profileComplete ? Number(baseEl.value)
+      : (c.baseBurn != null && !profileComplete ? c.baseBurn : estimateMaintenanceKcal(weightLb));
     const f = calorieForecast({
       weightLb,
       caloriesIn: inEl ? Number(inEl.value) : c.caloriesIn,
       baseBurn,
       exerciseBurn: exEl ? Number(exEl.value) : c.exerciseBurn,
+      profile: profileComplete ? prof : null,
       metric: isMetric(),
     });
     if (!f) { balEl.innerHTML = ""; fcEl.innerHTML = ""; return; }
+    // When a profile drives it, show the computed maintenance in the field.
+    if (baseEl && notFocused(baseEl) && f.usedProfile) baseEl.value = f.startMaintenance;
+    else if (baseEl && notFocused(baseEl) && baseEl.value === "") baseEl.value = f.startMaintenance;
     const losing = f.deficit > 0;
     const word = losing ? "deficit" : "surplus";
     const cls = losing ? "cal-deficit" : "cal-surplus";
+    const method = f.usedProfile ? "Mifflin-St Jeor · recomputed as you lose" : "estimate · recomputed as you lose";
     balEl.innerHTML = `<span class="${cls}">${Math.abs(Math.round(f.deficit))} kcal/day ${word}</span>` +
-      `<span class="cal-sub">${losing ? "Losing" : "Gaining"} about ${Math.abs(f.perWeekDisp)} ${f.unit}/week at this rate</span>`;
+      `<span class="cal-sub">${losing ? "Losing" : "Gaining"} about ${Math.abs(f.perWeekDisp)} ${f.unit}/week to start · ${method}</span>`;
     fcEl.innerHTML = f.horizons.map((h) => {
       const lost = h.changeDisp > 0;
       const sign = h.changeDisp > 0 ? "−" : h.changeDisp < 0 ? "+" : "";
@@ -10770,9 +10820,18 @@
   function onCalorieInput() {
     const c = loadCalorie();
     const num = (id) => { const el = document.getElementById(id); return el && el.value !== "" ? Number(el.value) : null; };
+    const str = (id) => { const el = document.getElementById(id); return el ? el.value : ""; };
     c.caloriesIn = num("calIn");
     c.baseBurn = num("calBase");
     c.exerciseBurn = num("calExercise");
+    // Profile: height stored as cm (converted from the display unit).
+    const hVal = num("calHeight");
+    c.profile = {
+      heightCm: hVal == null ? 0 : (isMetric() ? hVal : hVal * 2.54),
+      age: num("calAge") || 0,
+      sex: str("calSex"),
+      activity: num("calActivity") || 1.2,
+    };
     c.updatedAt = Date.now();
     saveCalorie(c);
     renderCalorieForecast();
@@ -12072,9 +12131,13 @@
     if (recoverySyncBtn) recoverySyncBtn.addEventListener("click", syncRecovery);
     const calPullBtn = $("#calPullBtn");
     if (calPullBtn) calPullBtn.addEventListener("click", pullExerciseCalories);
-    ["calIn", "calBase", "calExercise"].forEach((id) => {
+    ["calIn", "calBase", "calExercise", "calHeight", "calAge"].forEach((id) => {
       const el = $("#" + id);
       if (el) el.addEventListener("input", onCalorieInput);
+    });
+    ["calSex", "calActivity"].forEach((id) => {
+      const el = $("#" + id);
+      if (el) el.addEventListener("change", onCalorieInput);
     });
     // Photos
     els.mPhoto.addEventListener("change", onPhotoPick);
@@ -12454,7 +12517,7 @@
       isWorkoutHabit, isSleepHabit, isTempHabit, latestSkinTempDeltaC, fmtSkinTemp,
       metricNumber, dailyPointMs, recoveryScore, seriesBaseline, recoveryTrend,
       isRecoveryHabit, isRhrHabit, isHrvHabit, isSpo2Habit, buildAllCsv,
-      calorieForecast, estimateMaintenanceKcal,
+      calorieForecast, estimateMaintenanceKcal, mifflinBmr,
       getState: () => state, setState: (s) => { state = s; },
     };
   }
