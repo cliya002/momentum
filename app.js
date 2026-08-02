@@ -127,6 +127,7 @@
         { name: "Water 4 L",       icon: "💧",  color: "#3b82f6", category: "Nutrition", time: "All day", notes: "Stay hydrated", type: "count", target: 4, unit: "L", increment: 0.5 },
         { name: "Eat vegetables",  icon: "🥦",  color: "#22c55e", category: "Nutrition", time: "All day", notes: "Veggies with 2+ meals" },
         { name: "Eat fruit",       icon: "🍎",  color: "#ef4444", category: "Nutrition", time: "All day", notes: "Add colour to your plate — aim for variety." },
+        { name: "Chia seeds",      icon: "🌱",  color: "#22c55e", category: "Nutrition", time: "Morning", notes: "1-2 tbsp soaked in water, oats or a smoothie — fiber, omega-3s and protein. Drink plenty of water with them." },
         { name: "No junk food",    icon: "🎯",  color: "#f59e0b", category: "Nutrition", time: "All day", notes: "One day at a time — your clean streak keeps count." },
         { name: "No sugary drinks", icon: "🧃", color: "#38bdf8", category: "Nutrition", time: "All day", notes: "One day at a time — your clean streak keeps count." },
         { name: "Intermittent fasting", icon: "⏰", color: "#a855f7", category: "Nutrition", time: "All day", notes: "16:8 window" },
