@@ -2929,6 +2929,42 @@
     showToast(n ? `Smart-filled ${n} habit${n === 1 ? "" : "s"}.` : "Nothing to fill — you're all set.", "success");
   }
 
+  // Copy the matching template's note onto any habit (by name) that has no note
+  // yet. Never overwrites a note you've written. Returns the count filled.
+  function templateNoteMap() {
+    const map = {};
+    for (const sec of TEMPLATE_LIBRARY) {
+      for (const it of sec.items) {
+        const key = (it.name || "").trim().toLowerCase();
+        if (key && it.notes && !map[key]) map[key] = it.notes;
+      }
+    }
+    return map;
+  }
+  function fillNotesFromTemplates() {
+    const map = templateNoteMap();
+    let n = 0;
+    for (const h of state.habits) {
+      if (h.notes && h.notes.trim()) continue; // keep notes you've written
+      const note = map[(h.name || "").trim().toLowerCase()];
+      if (note) { h.notes = note.slice(0, 500); h.updatedAt = Date.now(); n++; }
+    }
+    if (typeof document === "undefined") return n; // test sandbox: skip UI
+    if (n) {
+      save();
+      if (currentView === "habits") renderHabits();
+      if (currentView === "today") renderToday();
+    }
+    const el = getEls().smartFillStatus;
+    if (el) {
+      el.hidden = false;
+      el.className = "sync-status success";
+      el.textContent = n ? `Added notes to ${n} habit${n === 1 ? "" : "s"} from templates.` : "No matching template notes to fill.";
+    }
+    showToast(n ? `Added notes to ${n} habit${n === 1 ? "" : "s"}.` : "No blank notes matched a template.", "success");
+    return n;
+  }
+
   function addSelectedTemplates() {
     if (templateSelected.size === 0) return;
     let count = 0;
@@ -3251,6 +3287,7 @@
       resetAllBtn: $("#resetAllBtn"),
       browseTemplatesBtn: $("#browseTemplatesBtn"),
       smartFillBtn: $("#smartFillBtn"),
+      fillNotesBtn: $("#fillNotesBtn"),
       smartFillStatus: $("#smartFillStatus"),
       // template picker modal
       templateModal: $("#templateModal"),
@@ -9622,6 +9659,7 @@
     // Template picker
     els.browseTemplatesBtn.addEventListener("click", openTemplateModal);
     els.smartFillBtn.addEventListener("click", smartFillReminders);
+    if (els.fillNotesBtn) els.fillNotesBtn.addEventListener("click", fillNotesFromTemplates);
     els.templateCancelBtn.addEventListener("click", closeTemplateModal);
     els.templateCloseBtn.addEventListener("click", closeTemplateModal);
     els.templateSelectAll.addEventListener("click", templateSelectAll);
@@ -9822,7 +9860,7 @@
       habitCompletionStats, purgeTrash, countsForAdherence, resetRenderCaches,
       restoreFromTrash, permanentDeleteFromTrash, deleteHabitById,
       fmtClockLabel, formatClock, timeFmt, timeChipLabel, applyBackup,
-      clockFromTimeStr, habitFromTemplate,
+      clockFromTimeStr, habitFromTemplate, templateNoteMap, fillNotesFromTemplates,
       isWeekly, weeklyTarget, weeklyDoneCount, weeklyMet, todayStatus, weekAdherencePct,
       dayPartsForHabit, dayPartForTime, isAutoTimeSummary, doseSlots, doseStatus, toggleDose,
       weekKeyOf, computeWeekReview, reviewTargetWeek,
