@@ -4425,6 +4425,29 @@
     if (collapseTimers[id]) { clearTimeout(collapseTimers[id]); delete collapseTimers[id]; }
     renderToday();
   }
+  // Same focus mode for the Habits tab's category groups.
+  const expandedCats = new Set();
+  const catCollapseTimers = {};
+  function expandCatTemporarily(cat) {
+    expandedCats.add(cat);
+    if (catCollapseTimers[cat]) clearTimeout(catCollapseTimers[cat]);
+    catCollapseTimers[cat] = setTimeout(() => {
+      expandedCats.delete(cat);
+      delete catCollapseTimers[cat];
+      if (currentView === "habits") renderHabits();
+    }, COLLAPSE_MS);
+    renderHabits();
+  }
+  function collapseCatNow(cat) {
+    expandedCats.delete(cat);
+    if (catCollapseTimers[cat]) { clearTimeout(catCollapseTimers[cat]); delete catCollapseTimers[cat]; }
+    renderHabits();
+  }
+  function clearFocusTimers() {
+    expandedParts.clear(); expandedCats.clear();
+    Object.keys(collapseTimers).forEach((k) => { clearTimeout(collapseTimers[k]); delete collapseTimers[k]; });
+    Object.keys(catCollapseTimers).forEach((k) => { clearTimeout(catCollapseTimers[k]); delete catCollapseTimers[k]; });
+  }
   // Set true when we want the NOW block scrolled into view after render.
   let scrollToNowPending = false;
 
@@ -6916,10 +6939,26 @@
         wrap.classList.remove("drop-over");
         if (draggingHabitId) moveHabitToCategory(draggingHabitId, cat);
       });
+      const cmeta = categoryMeta(cat);
+      // Focus mode: collapse the category into a tappable strip (auto-closes).
+      if (collapseTodayEnabled() && !expandedCats.has(cat)) {
+        const strip = document.createElement("div");
+        strip.className = "daypart-done-strip daypart-collapsed";
+        strip.innerHTML = `<span><span class="cat-head-icon" style="color:${escapeHtml(cmeta.color)}">${escapeHtml(cmeta.icon)}</span> ${escapeHtml(cat)}</span>` +
+          `<span class="strip-reopen">${list.length} habit${list.length === 1 ? "" : "s"} · tap</span>`;
+        strip.addEventListener("click", () => expandCatTemporarily(cat));
+        wrap.appendChild(strip);
+        els.habitsGroups.appendChild(wrap);
+        continue;
+      }
       const heading = document.createElement("div");
       heading.className = "category-group-title";
-      const cmeta = categoryMeta(cat);
       heading.innerHTML = `<span><span class="cat-head-icon" style="color:${escapeHtml(cmeta.color)}">${escapeHtml(cmeta.icon)}</span> ${escapeHtml(cat)}</span><span class="time-group-count">${list.length}</span>`;
+      if (collapseTodayEnabled()) {
+        heading.style.cursor = "pointer";
+        heading.title = "Tap to collapse";
+        heading.addEventListener("click", () => collapseCatNow(cat));
+      }
       wrap.appendChild(heading);
 
       const ul = document.createElement("ul");
@@ -10592,9 +10631,8 @@
     const collapseTodayToggle = document.getElementById("collapseTodayToggle");
     if (collapseTodayToggle) collapseTodayToggle.addEventListener("change", () => {
       localStorage.setItem(KEYS.collapseToday, collapseTodayToggle.checked ? "true" : "false");
-      expandedParts.clear();
-      Object.keys(collapseTimers).forEach((k) => { clearTimeout(collapseTimers[k]); delete collapseTimers[k]; });
-      renderToday();
+      clearFocusTimers();
+      if (currentView === "habits") renderHabits(); else renderToday();
     });
     els.timeFormatSelect.addEventListener("change", () => {
       localStorage.setItem(KEYS.timeFormat, els.timeFormatSelect.value === "24" ? "24" : "12");
