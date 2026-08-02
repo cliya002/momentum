@@ -673,6 +673,68 @@
         { name: "Vitamin D",       icon: "☀️", color: "#f59e0b", category: "Supplements", time: "Morning", notes: "Supports bone and muscle. Take with a meal that has some fat." },
       ],
     },
+    {
+      title: "🧹 Household & chores rota",
+      items: [
+        { name: "Trash / recycling out", icon: "🗑️", color: "#6366f1", category: "Custom", time: "Evening", days: [0], notes: "Bins out the night before collection — set your own day." },
+        { name: "Dishes",         icon: "🍽️", color: "#38bdf8", category: "Custom", time: "Evening", notes: "Clear the sink before bed — future-you says thanks." },
+        { name: "Laundry",        icon: "🧺", color: "#a855f7", category: "Custom", time: "Morning", days: [6], notes: "Wash, dry, fold — one load keeps it from piling up." },
+        { name: "Vacuum / floors", icon: "🧹", color: "#14b8a6", category: "Custom", time: "Morning", days: [6], notes: "A quick pass over the main rooms." },
+        { name: "Wipe kitchen counters", icon: "🧽", color: "#22c55e", category: "Custom", time: "Evening", notes: "A 30-second reset keeps the kitchen usable." },
+        { name: "Water the plants", icon: "🪴", color: "#22c55e", category: "Custom", time: "Morning", days: [1,4], notes: "A little, consistently — check the soil first." },
+        { name: "Tidy 10 minutes", icon: "⏲️", color: "#f59e0b", category: "Custom", time: "Evening", notes: "Set a timer and reset the main room. Done beats spotless." },
+      ],
+    },
+    {
+      title: "🍼 Newborn & baby care",
+      items: [
+        { name: "Feeds",          icon: "🍼", color: "#ec4899", category: "Custom", time: "All day", notes: "Newborns feed often — tap for each feed to spot the rhythm.", type: "count", target: 8, unit: "feeds", increment: 1 },
+        { name: "Diaper changes", icon: "🧷", color: "#38bdf8", category: "Custom", time: "All day", notes: "Tap each change — helps track wet/dirty patterns.", type: "count", target: 8, unit: "changes", increment: 1 },
+        { name: "Tummy time",     icon: "🤸", color: "#f59e0b", category: "Custom", time: "All day", notes: "A few short sessions while baby's awake and calm.", type: "count", target: 3, unit: "sessions", increment: 1 },
+        { name: "Nap log",        icon: "😴", color: "#a855f7", category: "Sleep", time: "All day", notes: "Note naps to learn the day's rhythm." },
+        { name: "Vitamin D drops", icon: "💧", color: "#f59e0b", category: "Supplements", time: "9:00 AM", notes: "As advised by your pediatrician. General reminder, not medical advice.", reminderTimes: ["09:00"] },
+        { name: "Bath",           icon: "🛁", color: "#38bdf8", category: "Custom", time: "Evening", days: [1,3,5], notes: "A few times a week is plenty for a newborn." },
+      ],
+    },
+    {
+      title: "🩸 Diabetes management",
+      items: [
+        { name: "Glucose checks", icon: "🩸", color: "#ef4444", category: "Custom", time: "All day", notes: "Check as advised — e.g. before and after meals — and log the reading. Not medical advice; follow your care team.", type: "count", target: 4, unit: "checks", increment: 1 },
+        { name: "Medication / insulin", icon: "💉", color: "#6366f1", category: "Supplements", time: "8:00 AM", notes: "Take exactly as prescribed by your doctor.", reminderTimes: ["08:00"] },
+        { name: "Carb-aware meal", icon: "🍽️", color: "#14b8a6", category: "Nutrition", time: "All day", notes: "Balance carbs with protein and fiber to steady blood sugar." },
+        { name: "Foot check",     icon: "🦶", color: "#f59e0b", category: "Custom", time: "Evening", notes: "A quick daily look for cuts or sores — important in diabetes care." },
+        { name: "Walk after meals", icon: "🚶", color: "#22c55e", category: "Fitness", time: "All day", notes: "A short walk after eating helps blood-sugar control." },
+      ],
+    },
+    {
+      title: "❤️ Heart & blood pressure",
+      items: [
+        { name: "BP log (AM & PM)", icon: "🩸", color: "#ef4444", category: "Custom", time: "8:00 AM & 8:00 PM", notes: "Seated and relaxed, same times daily. Log the reading below.", type: "count", target: 2, unit: "", increment: 1, reminderTimes: ["08:00", "20:00"] },
+        { name: "Low-sodium meal", icon: "🧂", color: "#14b8a6", category: "Nutrition", time: "All day", notes: "Go easy on salt and processed food — it adds up fast." },
+        { name: "Cardio",         icon: "❤️", color: "#ef4444", category: "Fitness", time: "Morning", notes: "Get the heart rate up — even a brisk walk counts." },
+        { name: "Heart meds",     icon: "💊", color: "#6366f1", category: "Supplements", time: "8:00 AM", notes: "Take as prescribed, same time daily.", reminderTimes: ["08:00"] },
+        { name: "Weekly weigh-in", icon: "⚖️", color: "#3b82f6", category: "Custom", time: "Morning", days: [1], notes: "Same time weekly; sudden gains can matter for the heart." },
+      ],
+    },
+    {
+      title: "😮‍💨 Stress & anxiety toolkit",
+      items: [
+        { name: "Box breathing",  icon: "🫁", color: "#38bdf8", category: "Custom", time: "All day", notes: "4 in, 4 hold, 4 out, 4 hold — a few rounds resets the nervous system." },
+        { name: "5-4-3-2-1 grounding", icon: "🌍", color: "#a855f7", category: "Custom", time: "All day", notes: "Name 5 things you see, 4 you feel, 3 you hear, 2 you smell, 1 you taste." },
+        { name: "Worry window",   icon: "⏳", color: "#6366f1", category: "Custom", time: "Evening", notes: "15 set minutes to worry on purpose — then let it go for the day." },
+        { name: "Gratitude — 3 things", icon: "🙏", color: "#f59e0b", category: "Custom", time: "Evening", notes: "Three small good things from today." },
+        { name: "Short walk",     icon: "🚶", color: "#22c55e", category: "Fitness", time: "All day", notes: "Movement is one of the fastest ways to lower stress." },
+      ],
+    },
+    {
+      title: "🛏️ CPAP / sleep apnea",
+      items: [
+        { name: "Use CPAP tonight", icon: "🛏️", color: "#a855f7", category: "Sleep", time: "10:30 PM", notes: "Wear it the whole night — consistency is what makes it work.", nightPrevDay: true },
+        { name: "Clean the mask", icon: "🧽", color: "#38bdf8", category: "Custom", time: "Morning", notes: "Wipe the cushion daily to keep a good seal and stay hygienic." },
+        { name: "Refill humidifier water", icon: "💧", color: "#14b8a6", category: "Custom", time: "Evening", notes: "Top up with distilled water before bed." },
+        { name: "Weekly deep clean", icon: "🧼", color: "#22c55e", category: "Custom", time: "Morning", days: [0], notes: "Wash mask, tubing, and reservoir once a week." },
+      ],
+    },
   ];
 
   const TEMPLATE_ITEM_DEFAULTS = {
