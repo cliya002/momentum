@@ -58,6 +58,7 @@
     ghLastSync: "ht_gh_last_sync",
     ghHabitId: "ht_gh_habit_id",
     ghImportWeight: "ht_gh_import_weight",
+    collapseToday: "ht_collapse_today",
   };
   const DEFAULT_CATEGORIES = ["Fitness","Nutrition","Sleep","Supplements","Custom"];
   // Fallback color/icon per default category (used until the user customizes).
@@ -4403,6 +4404,27 @@
 
   // Sections whose fully-done state has been manually expanded this session.
   const reopenedDoneSections = new Set();
+  // Focus mode: Today sections start collapsed and a tapped section auto-closes
+  // after a short delay. `expandedParts` holds the currently-open sections.
+  const expandedParts = new Set();
+  const collapseTimers = {};
+  const COLLAPSE_MS = 30000;
+  function collapseTodayEnabled() { return localStorage.getItem(KEYS.collapseToday) === "true"; }
+  function expandPartTemporarily(id) {
+    expandedParts.add(id);
+    if (collapseTimers[id]) clearTimeout(collapseTimers[id]);
+    collapseTimers[id] = setTimeout(() => {
+      expandedParts.delete(id);
+      delete collapseTimers[id];
+      if (currentView === "today") renderToday();
+    }, COLLAPSE_MS);
+    renderToday();
+  }
+  function collapsePartNow(id) {
+    expandedParts.delete(id);
+    if (collapseTimers[id]) { clearTimeout(collapseTimers[id]); delete collapseTimers[id]; }
+    renderToday();
+  }
   // Set true when we want the NOW block scrolled into view after render.
   let scrollToNowPending = false;
 
@@ -4546,6 +4568,18 @@
       const settled = list.filter((e) => entryStatus(e) !== "pending").sort(byOrderTime);
       const doneCount = list.filter((e) => entryStatus(e) === "done").length;
 
+      // Focus mode: every section starts collapsed; tap to expand (auto-closes).
+      if (collapseTodayEnabled() && !expandedParts.has(part.id)) {
+        const strip = document.createElement("div");
+        strip.className = "daypart-done-strip daypart-collapsed" + (part.id === nowPart ? " is-now" : "");
+        const remaining = pending.length;
+        strip.innerHTML = `<span>${escapeHtml(part.title)}${part.id === nowPart ? ' <span class="now-chip">NOW</span>' : ""}</span>` +
+          `<span class="strip-reopen">${doneCount}/${list.length} done${remaining ? " · " + remaining + " to do" : ""} · tap</span>`;
+        strip.addEventListener("click", () => expandPartTemporarily(part.id));
+        els.todayGroups.appendChild(strip);
+        continue;
+      }
+
       // Fully-settled block → collapse into a single strip unless reopened.
       if (pending.length === 0 && settled.length > 0 && !reopenedDoneSections.has(part.id)) {
         const strip = document.createElement("div");
@@ -4595,6 +4629,11 @@
       right.appendChild(count);
       heading.appendChild(left);
       heading.appendChild(right);
+      if (collapseTodayEnabled()) {
+        heading.style.cursor = "pointer";
+        heading.title = "Tap to collapse";
+        heading.addEventListener("click", () => collapsePartNow(part.id));
+      }
       wrap.appendChild(heading);
 
       // Pending items (drag-reorderable — dose rows aren't reorderable)
@@ -9988,6 +10027,7 @@
     els.timeFormatSelect.value = timeFmt();
     els.showDetailsToggle.checked = localStorage.getItem(KEYS.showDetails) === "true";
     if (els.showTodayNotesToggle) els.showTodayNotesToggle.checked = localStorage.getItem(KEYS.showTodayNotes) === "true";
+    { const ct = document.getElementById("collapseTodayToggle"); if (ct) ct.checked = localStorage.getItem(KEYS.collapseToday) === "true"; }
     renderTrash();
     els.unitsSelect.value = localStorage.getItem(KEYS.units) === "metric" ? "metric" : "imperial";
     els.deviceNameInput.value = localStorage.getItem(KEYS.deviceName) || "";
@@ -10547,6 +10587,13 @@
     });
     if (els.showTodayNotesToggle) els.showTodayNotesToggle.addEventListener("change", () => {
       localStorage.setItem(KEYS.showTodayNotes, els.showTodayNotesToggle.checked ? "true" : "false");
+      renderToday();
+    });
+    const collapseTodayToggle = document.getElementById("collapseTodayToggle");
+    if (collapseTodayToggle) collapseTodayToggle.addEventListener("change", () => {
+      localStorage.setItem(KEYS.collapseToday, collapseTodayToggle.checked ? "true" : "false");
+      expandedParts.clear();
+      Object.keys(collapseTimers).forEach((k) => { clearTimeout(collapseTimers[k]); delete collapseTimers[k]; });
       renderToday();
     });
     els.timeFormatSelect.addEventListener("change", () => {

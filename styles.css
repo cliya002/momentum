@@ -2498,6 +2498,14 @@ body.hc .btn-secondary { border-color: var(--border); }
 }
 [data-theme="dark"] .daypart-done-strip { color: var(--success); }
 .daypart-done-strip .strip-reopen { font-size: 0.75rem; opacity: 0.8; }
+/* Focus-mode collapsed section (neutral, not "done" green) */
+.daypart-done-strip.daypart-collapsed {
+  background: var(--card-soft);
+  color: var(--text);
+  border-color: var(--border);
+}
+.daypart-done-strip.daypart-collapsed.is-now { border-color: var(--primary); }
+.daypart-done-strip.daypart-collapsed .now-chip { margin-left: 0.4rem; }
 
 /* Confetti */
 .confetti-layer {
