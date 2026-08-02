@@ -9891,13 +9891,15 @@
     showToast("Week CSV downloaded.", "success");
   }
 
-  // CSV of all history: every dated check-in + weekly measurements.
-  function downloadAllCsv() {
+  // Build the full-history CSV as a string: check-ins, measurements, mood &
+  // journal, and a dedicated supplement dose log. Pure (reads state) + tested.
+  function buildAllCsv() {
     const lines = [];
-    lines.push("HABIT CHECK-INS");
-    lines.push(["Date", "Habit", "Category", "Status", "Value"].map(csvEscape).join(","));
     const habitById = new Map(state.habits.map((h) => [h.id, h]));
     const dates = Object.keys(state.completions).sort();
+
+    lines.push("HABIT CHECK-INS");
+    lines.push(["Date", "Habit", "Category", "Status", "Value"].map(csvEscape).join(","));
     for (const d of dates) {
       for (const [hid, val] of Object.entries(state.completions[d])) {
         const h = habitById.get(hid);
@@ -9906,6 +9908,7 @@
         lines.push([d, h.name, h.category, status, val < 0 ? "" : val].map(csvEscape).join(","));
       }
     }
+
     lines.push("");
     lines.push("MEASUREMENTS");
     const mHeader = ["Date", "Weight(lb)", "Waist(in)", "Energy", "Strength", "Notes"];
@@ -9916,7 +9919,44 @@
       const custom = state.customMetrics.map((c) => (m.custom && m.custom[c.id] != null ? m.custom[c.id] : ""));
       lines.push([wk, m.weight ?? "", m.waist ?? "", m.energy ?? "", m.strengthTrend || "", m.notes || "", ...custom].map(csvEscape).join(","));
     }
-    downloadFile(`momentum-all-${todayKey()}.csv`, lines.join("\n"), "text/csv");
+
+    // Mood & journal per day (union of days that have either).
+    const moodLabel = {};
+    for (const m of MOODS) moodLabel[m.v] = m.label;
+    const moodDays = [...new Set([...Object.keys(state.moods || {}), ...Object.keys(state.journal || {})])].sort();
+    if (moodDays.length) {
+      lines.push("");
+      lines.push("MOOD & JOURNAL");
+      lines.push(["Date", "Energy(1-5)", "Mood", "Note"].map(csvEscape).join(","));
+      for (const d of moodDays) {
+        const mo = state.moods && state.moods[d];
+        const jo = state.journal && state.journal[d];
+        const v = mo && mo.mood != null ? mo.mood : "";
+        lines.push([d, v, v ? (moodLabel[v] || "") : "", jo ? jo.text : ""].map(csvEscape).join(","));
+      }
+    }
+
+    // Dedicated supplement dose log (category "Supplements").
+    const suppHabits = state.habits.filter((h) => h.category === "Supplements");
+    if (suppHabits.length) {
+      lines.push("");
+      lines.push("SUPPLEMENTS");
+      lines.push(["Date", "Supplement", "Taken", "Target", "Status"].map(csvEscape).join(","));
+      for (const d of dates) {
+        const day = state.completions[d] || {};
+        for (const h of suppHabits) {
+          if (!(h.id in day)) continue;
+          const val = day[h.id];
+          const status = val < 0 ? "not done" : (val >= h.target ? "taken" : "partial");
+          lines.push([d, h.name, val < 0 ? 0 : val, h.target, status].map(csvEscape).join(","));
+        }
+      }
+    }
+    return lines.join("\n");
+  }
+  // CSV of all history: check-ins, measurements, mood/journal, supplements.
+  function downloadAllCsv() {
+    downloadFile(`momentum-all-${todayKey()}.csv`, buildAllCsv(), "text/csv");
     showToast("Full history CSV downloaded.", "success");
   }
 
@@ -12284,7 +12324,7 @@
       recentSleepHours, sleepSessionSeconds, sleepSessionEndMs, sleepSessionStartMs, ghScopeHint,
       isWorkoutHabit, isSleepHabit, isTempHabit, latestSkinTempDeltaC, fmtSkinTemp,
       metricNumber, dailyPointMs, recoveryScore, seriesBaseline, recoveryTrend,
-      isRecoveryHabit, isRhrHabit, isHrvHabit, isSpo2Habit,
+      isRecoveryHabit, isRhrHabit, isHrvHabit, isSpo2Habit, buildAllCsv,
       getState: () => state, setState: (s) => { state = s; },
     };
   }
