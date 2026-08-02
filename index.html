@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=4.82.3" />
+  <link rel="stylesheet" href="styles.css?v=4.83.0" />
 </head>
 <body>
 
@@ -349,6 +349,7 @@
               </label>
               <div class="row-actions full">
                 <button type="button" id="calPullBtn" class="btn-secondary" hidden>⚡ Pull exercise</button>
+                <button type="button" id="calTotalPullBtn" class="btn-secondary" hidden>📊 Compare Google total burn</button>
               </div>
             </form>
             <details class="cal-profile">
@@ -383,6 +384,7 @@
               <p class="card-sub">When your height, age and sex are set, maintenance uses the Mifflin-St Jeor formula and the forecast recomputes as your weight drops (so it curves realistically). Workouts are added separately via Exercise burn.</p>
             </details>
             <div id="calTodayBurn" class="cal-today" hidden></div>
+            <div id="calTotalCompare" class="cal-compare" hidden></div>
             <div id="calBalance" class="cal-balance"></div>
             <div id="calForecast" class="cal-forecast"></div>
             <div id="calExerciseList" class="cal-ex-list"></div>

@@ -155,7 +155,13 @@ export default {
         if (body.filter) target.searchParams.set("filter", body.filter);
         if (body.pageToken) target.searchParams.set("pageToken", String(body.pageToken));
         if (body.pageSize) target.searchParams.set("pageSize", String(body.pageSize));
-        const r = await fetch(target.toString(), { headers: { Authorization: "Bearer " + body.access_token, Accept: "application/json" } });
+        // Optional POST body (e.g. for read-only rollup methods like
+        // dataPoints:dailyRollUp). When present, proxy as a POST with JSON.
+        const isPost = body.post && typeof body.post === "object";
+        const init = isPost
+          ? { method: "POST", headers: { Authorization: "Bearer " + body.access_token, Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify(body.post) }
+          : { headers: { Authorization: "Bearer " + body.access_token, Accept: "application/json" } };
+        const r = await fetch(target.toString(), init);
         const data = await r.json().catch(() => ({}));
         return json(data, r.ok ? 200 : (r.status || 400));
       }

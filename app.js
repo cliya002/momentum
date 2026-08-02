@@ -3757,6 +3757,35 @@
     }
     return null;
   }
+  // POST to the Health API via the Worker proxy (for read-only rollup methods).
+  async function ghApiPost(path, postBody) {
+    const at = await ghAccessToken();
+    if (!at) throw new Error("Sign in to Google again");
+    const r = await fetch(ghWorkerBase() + "/google/health", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ access_token: at, path, post: postBody }),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error((j && (j.error && j.error.message || j.error)) || ("HTTP " + r.status));
+    return j;
+  }
+  // Total Calories (full TDEE: BMR + activity) per day via the dailyRollUp
+  // method. Returns { dateKey: kcal } for the last few days, or null on error.
+  async function ghTotalCaloriesByDay() {
+    const civ = (d) => ({ date: { year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate() } });
+    const today = new Date();
+    const body = { range: { start: civ(addDays(today, -3)), end: civ(addDays(today, 1)) }, windowSizeDays: 1 };
+    const data = await ghApiPost("v4/users/me/dataTypes/total-calories/dataPoints:dailyRollUp", body);
+    const pts = (data && data.rollupDataPoints) || [];
+    const pad = (n) => String(n).padStart(2, "0");
+    const byDay = {};
+    for (const p of pts) {
+      const d = p.civilStartTime && p.civilStartTime.date;
+      const kcal = p.totalCalories && Number(p.totalCalories.kcalSum);
+      if (d && d.year && Number.isFinite(kcal) && kcal > 0) byDay[`${d.year}-${pad(d.month)}-${pad(d.day)}`] = Math.round(kcal);
+    }
+    return byDay;
+  }
   // Total calories burned by today's logged exercise (kcal). null on failure.
   async function ghExerciseKcalToday() {
     try { return Math.round(mapExerciseDataPoints(await ghAllPages("v4/users/me/dataTypes/exercise/dataPoints", googleTodayFilter())).caloriesKcal) || 0; }
@@ -10766,6 +10795,9 @@
     const fcEl = document.getElementById("calForecast");
     const pullBtn = document.getElementById("calPullBtn");
     if (pullBtn) pullBtn.hidden = !ghConnected();
+    const totalBtn = document.getElementById("calTotalPullBtn");
+    if (totalBtn) totalBtn.hidden = !ghConnected();
+    renderTotalCompare();
     if (!balEl || !fcEl) return;
     const c = loadCalorie();
     const doc = typeof document !== "undefined" ? document : null;
@@ -10915,6 +10947,55 @@
       ghInFlight = false;
       if (btn) { btn.disabled = false; btn.textContent = "⚡ Pull exercise"; }
     }
+  }
+  async function pullTotalCalories() {
+    if (!ghConnected()) { showToast("Connect Google Health in Settings first.", "warn"); return; }
+    if (!navigator.onLine) { showToast("You're offline.", "warn"); return; }
+    if (ghInFlight) return;
+    ghInFlight = true;
+    const btn = document.getElementById("calTotalPullBtn");
+    if (btn) { btn.disabled = true; btn.textContent = "⏳ Pulling…"; }
+    try {
+      const byDay = await ghTotalCaloriesByDay();
+      const c = loadCalorie();
+      c.totalByDay = Object.assign({}, c.totalByDay, byDay);
+      c.updatedAt = Date.now();
+      saveCalorie(c);
+      renderCalorieForecast();
+      const n = Object.keys(byDay).length;
+      showToast(n > 0 ? `📊 Pulled Google total burn for ${n} day${n === 1 ? "" : "s"}` : "📊 No total-calories data found for the last few days.", n > 0 ? "success" : "warn");
+    } catch (e) {
+      showGhBanner("📊 Couldn't read Total Calories: " + (e.message || e));
+    } finally {
+      ghInFlight = false;
+      if (btn) { btn.disabled = false; btn.textContent = "📊 Compare Google total burn"; }
+    }
+  }
+  // Compare Google's Total Calories (TDEE) with our maintenance+exercise estimate.
+  function renderTotalCompare() {
+    const el = document.getElementById("calTotalCompare");
+    if (!el) return;
+    const c = loadCalorie();
+    const byDay = c.totalByDay || {};
+    const keys = Object.keys(byDay).sort();
+    if (!keys.length) { el.hidden = true; return; }
+    // Prefer today; else the most recent day pulled.
+    const todayKeyStr = dateKey(new Date());
+    const dayKey = byDay[todayKeyStr] != null ? todayKeyStr : keys[keys.length - 1];
+    const googleTotal = byDay[dayKey];
+    // Our estimate = maintenance (base) + exercise burn.
+    const baseEl = document.getElementById("calBase");
+    const exEl = document.getElementById("calExercise");
+    const base = baseEl && baseEl.value !== "" ? Number(baseEl.value) : (c.baseBurn || 0);
+    const exer = exEl && exEl.value !== "" ? Number(exEl.value) : (c.exerciseBurn || 0);
+    const estimate = Math.round(base + exer);
+    const diff = googleTotal - estimate;
+    const when = dayKey === todayKeyStr ? "today" : formatDateShort(parseDateKey(dayKey));
+    el.hidden = false;
+    el.innerHTML =
+      `<div class="cal-cmp-row"><span>📊 Google total burn (${escapeHtml(when)})</span><span><b>${googleTotal} kcal</b></span></div>` +
+      `<div class="cal-cmp-row"><span>Your estimate (maintenance + exercise)</span><span>${estimate} kcal</span></div>` +
+      `<div class="cal-cmp-diff">${diff === 0 ? "Matches your estimate" : (diff > 0 ? "Google is " + diff + " kcal higher" : "Google is " + Math.abs(diff) + " kcal lower")}</div>`;
   }
   function onCalorieInput() {
     const c = loadCalorie();
@@ -12230,6 +12311,8 @@
     if (recoverySyncBtn) recoverySyncBtn.addEventListener("click", syncRecovery);
     const calPullBtn = $("#calPullBtn");
     if (calPullBtn) calPullBtn.addEventListener("click", pullExerciseCalories);
+    const calTotalPullBtn = $("#calTotalPullBtn");
+    if (calTotalPullBtn) calTotalPullBtn.addEventListener("click", pullTotalCalories);
     ["calIn", "calBase", "calExercise", "calHeight", "calAge"].forEach((id) => {
       const el = $("#" + id);
       if (el) el.addEventListener("input", onCalorieInput);
