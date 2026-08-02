@@ -1848,6 +1848,16 @@
     let html = `<div class="detail-head"><span class="habit-icon" style="background:${escapeHtml(habit.color)}">${escapeHtml(habit.icon || "🎯")}</span>` +
       `<div><h2 style="margin:0">${escapeHtml(habit.name)}</h2>` +
       `<span class="hint">${escapeHtml(habit.category)}${habit.archived ? " · archived" : ""}</span></div></div>`;
+    // Notes + schedule up top so tapping any habit (incl. dose rows) shows them.
+    const dTimes = (habit.reminderTimes && habit.reminderTimes.length ? habit.reminderTimes : (habit.reminderTime ? [habit.reminderTime] : []))
+      .filter((t) => /^\d{2}:\d{2}$/.test(t)).map(fmtClockLabel);
+    if (habit.notes && habit.notes.trim()) {
+      html += `<div class="detail-note">${escapeHtml(habit.notes.trim())}</div>`;
+    }
+    if (dTimes.length || habit.time) {
+      const when = dTimes.length ? dTimes.join(" · ") : escapeHtml(habit.time);
+      html += `<p class="detail-line hint">🕒 ${when}${habit.type === "count" ? ` · target ${fmtValue(habit, habit.target)}` : ""}</p>`;
+    }
     html += `<div class="detail-stats">` +
       `<div class="detail-stat"><div class="ds-num">${habit.quit ? "🟢" : "🔥"} ${cur}</div><div class="ds-lbl">${habit.quit ? "days clean" : "current streak"}</div></div>` +
       `<div class="detail-stat"><div class="ds-num">🏆 ${longest}</div><div class="ds-lbl">longest</div></div>` +
