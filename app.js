@@ -3409,26 +3409,44 @@
   // enough to identify the value). Pure + tested.
   function metricNumber(p, lo, hi) {
     let best = null;
-    const skip = /time|date|name|source|version|\bid\b|zone|offset/i;
+    // Skip time/name/source metadata and min/max bounds so we take the average.
+    const skip = /time|date|name|source|version|\bid\b|zone|offset|bound|lower|upper/i;
     const walk = (o, depth) => {
       if (best != null || !o || typeof o !== "object" || depth > 4) return;
       for (const k of Object.keys(o)) {
         if (skip.test(k)) continue;
-        const v = o[k];
-        if (typeof v === "number") { if (v >= lo && v <= hi) { best = Math.round(v * 10) / 10; return; } }
-        else if (v && typeof v === "object") walk(v, depth + 1);
+        const raw = o[k];
+        if (raw && typeof raw === "object") { walk(raw, depth + 1); continue; }
+        // Accept numbers and numeric strings (e.g. beatsPerMinute: "75").
+        const n = typeof raw === "number" ? raw
+          : (typeof raw === "string" && raw.trim() !== "" ? Number(raw) : NaN);
+        if (Number.isFinite(n) && n >= lo && n <= hi) { best = Math.round(n * 10) / 10; return; }
       }
     };
     walk(p, 0);
     return best;
   }
-  // Timestamp (ms) of a daily dataPoint (handles nested sampleTime.physicalTime).
+  // Timestamp (ms) of a daily dataPoint. Handles a plain string, a nested
+  // {physicalTime}, and the daily-rollup shape where the type-specific object
+  // holds date: {year, month, day}.
   function dailyPointMs(p) {
-    const cands = [p && p.sampleTime, p && p.startTime, p && p.date, p && p.interval && p.interval.startTime, p && p.endTime];
-    for (const c of cands) {
-      if (!c) continue;
-      if (typeof c === "string") { const t = Date.parse(c); if (t) return t; }
-      else if (typeof c === "object" && c.physicalTime) { const t = Date.parse(c.physicalTime); if (t) return t; }
+    if (!p || typeof p !== "object") return 0;
+    const fromTime = (c) => {
+      if (!c) return 0;
+      if (typeof c === "string") return Date.parse(c) || 0;
+      if (typeof c === "object" && c.physicalTime) return Date.parse(c.physicalTime) || 0;
+      return 0;
+    };
+    let t = fromTime(p.sampleTime) || fromTime(p.startTime) || fromTime(p.endTime) || fromTime(p.interval && p.interval.startTime);
+    if (t) return t;
+    for (const k of Object.keys(p)) {
+      const v = p[k];
+      if (v && typeof v === "object") {
+        const d = v.date;
+        if (d && typeof d === "object" && d.year) return new Date(d.year, (d.month || 1) - 1, d.day || 1).getTime();
+        const nested = fromTime(v.sampleTime);
+        if (nested) return nested;
+      }
     }
     return 0;
   }
@@ -12123,7 +12141,7 @@
       mapSleepHours, parseDurationSeconds, mapWorkoutSessions, workoutHabitMatch,
       recentSleepHours, sleepSessionSeconds, sleepSessionEndMs, sleepSessionStartMs, ghScopeHint,
       isWorkoutHabit, isSleepHabit, isTempHabit, latestSkinTempDeltaC, fmtSkinTemp,
-      metricNumber, recoveryScore,
+      metricNumber, dailyPointMs, recoveryScore,
       getState: () => state, setState: (s) => { state = s; },
     };
   }

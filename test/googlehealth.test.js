@@ -256,6 +256,22 @@ console.log("recovery: metricNumber (deep plausible-range scan)");
   // Out-of-range numbers are skipped (e.g. a year in a date-ish field slips only if named).
   assert(T.metricNumber({ foo: 5000 }, 30, 120) === null, "ignores out-of-range values");
   assert(T.metricNumber({}, 30, 120) === null, "empty -> null");
+
+  // Real API shapes (from a live pull):
+  const rhrReal = { dataSource: {}, dailyRestingHeartRate: { date: { year: 2026, month: 2, day: 20 }, beatsPerMinute: "75" } };
+  assert(T.metricNumber(rhrReal, 30, 120) === 75, "reads beatsPerMinute string '75' -> 75");
+  const hrvReal = { dailyHeartRateVariability: { date: { year: 2026, month: 2, day: 20 }, averageHeartRateVariabilityMilliseconds: 21.526, deepSleepRootMeanSquareOfSuccessiveDifferencesMilliseconds: 0 } };
+  assert(T.metricNumber(hrvReal, 3, 300) === 21.5, "reads averageHRV ms (21.526 -> 21.5), skips date & the 0 field");
+  const spo2Real = { dailyOxygenSaturation: { date: { year: 2026, month: 2, day: 20 }, averagePercentage: 98.3, lowerBoundPercentage: 98, upperBoundPercentage: 99 } };
+  assert(T.metricNumber(spo2Real, 70, 100) === 98.3, "reads averagePercentage 98.3, not the lower/upper bounds");
+  const respReal = { dailyRespiratoryRate: { date: { year: 2026, month: 2, day: 21 }, breathsPerMinute: 20.625 } };
+  assert(T.metricNumber(respReal, 4, 45) === 20.6, "reads breathsPerMinute 20.625 -> 20.6");
+
+  // dailyPointMs parses the nested date object so latest-day selection works.
+  assert(T.dailyPointMs(hrvReal) === new Date(2026, 1, 20).getTime(), "parses nested date {2026,2,20}");
+  assert(T.dailyPointMs(respReal) === new Date(2026, 1, 21).getTime(), "parses nested date {2026,2,21}");
+  assert(T.dailyPointMs({ sampleTime: { physicalTime: "2026-02-22T06:00:00Z" } }) === Date.parse("2026-02-22T06:00:00Z"), "parses sampleTime.physicalTime");
+  assert(T.dailyPointMs({}) === 0, "no timestamp -> 0");
 }
 
 console.log("recovery: recoveryScore (heuristic)");
