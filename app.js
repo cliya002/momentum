@@ -1625,7 +1625,9 @@
 
   // A habit is "at risk" if it has a running streak but is still pending today.
   function isStreakAtRisk(habit, date) {
-    return habitStatus(habit, date) === "pending" && currentStreak(habit) >= 2;
+    // Weekly habits' streaks are counted in weeks; a met weekly quota is not at
+    // risk just because today's box isn't ticked, so use the weekly-aware status.
+    return todayStatus(habit, date) === "pending" && currentStreak(habit) >= 2;
   }
 
   // Historical completion rate (0..1) for a habit on one weekday, plus the
@@ -3970,7 +3972,7 @@
     const timeOf = (h) => parseTimeToMinutes(effectiveTime(h, tIdx));
     const nowMin = today.getHours() * 60 + today.getMinutes();
 
-    const pending = active.filter((h) => habitStatus(h, today) === "pending");
+    const pending = active.filter((h) => todayStatus(h, today) === "pending");
     if (pending.length === 0) { el.hidden = true; el.innerHTML = ""; return; }
 
     const timed = pending.filter((h) => { const m = timeOf(h); return m !== null && m < 24 * 60; });
@@ -5136,6 +5138,9 @@
 
   /* ---- Reminders ---- */
   let reminderTimers = [];
+  // Snooze timers live in their own list so re-scheduling (on tab focus, edits,
+  // etc.) doesn't silently cancel a pending snooze the user just set.
+  let snoozeTimers = [];
   function clearReminderTimers() {
     reminderTimers.forEach((t) => clearTimeout(t));
     reminderTimers = [];
@@ -5423,7 +5428,9 @@
   function fireEveningNudge() {
     const today = new Date();
     const scheduled = state.habits.filter((h) => isHabitActiveOn(h, today));
-    const pending = scheduled.filter((h) => habitStatus(h, today) === "pending");
+    // Weekly-quota habits that already met their target aren't pending — use
+    // todayStatus so we don't nag about habits that are done for the week.
+    const pending = scheduled.filter((h) => todayStatus(h, today) === "pending");
     if (pending.length === 0) return;
     const atRisk = pending.filter((h) => isStreakAtRisk(h, today));
     let title = "🌙 Before you wind down";
@@ -5545,19 +5552,24 @@
     const entries = [];
     if (vacationActiveNow()) return entries; // no background pushes during vacation
     const today = new Date();
+    // Group by time AND day-set. Grouping by time alone would union the days of
+    // every habit in the slot, so a Monday-only habit sharing 08:00 with a daily
+    // one would get pushed all week. Keying on the day-set keeps each habit on
+    // its own days (habits with identical time+days still share one push).
     const byTime = new Map();
     for (const h of state.habits) {
       if (h.archived) continue;
       if (h.noPush) continue; // habit opted out of background reminders
+      const hDays = (h.days && h.days.length) ? h.days.slice().sort((a, b) => a - b) : [0, 1, 2, 3, 4, 5, 6];
       for (const rt of habitReminderTimes(h, today)) {
         const [qh, qm] = rt.split(":").map(Number);
         if (inQuietHours(qh, qm)) continue; // don't push during quiet hours
-        if (!byTime.has(rt)) byTime.set(rt, []);
-        byTime.get(rt).push(h);
+        const key = rt + "|" + hDays.join(",");
+        if (!byTime.has(key)) byTime.set(key, { time: rt, days: hDays, hs: [] });
+        byTime.get(key).hs.push(h);
       }
     }
-    for (const [time, hs] of byTime) {
-      const days = [...new Set(hs.flatMap((h) => (h.days && h.days.length ? h.days : [0, 1, 2, 3, 4, 5, 6])))];
+    for (const { time, days, hs } of byTime.values()) {
       const label = fmtClockLabel(time);
       let title, body;
       if (hs.length === 1) {
@@ -5694,7 +5706,7 @@
     const els = getEls();
     const url = ((localStorage.getItem(KEYS.pushUrl) || els.pushUrl.value) || "").trim().replace(/\/$/, "");
     if (!/^https:\/\//.test(url)) { showPushStatus("Enter your push server URL first.", "warn"); return; }
-    if (Notification.permission !== "granted") { showPushStatus("Allow notifications first (toggle background reminders on).", "warn"); return; }
+    if (!("Notification" in window) || Notification.permission !== "granted") { showPushStatus("Allow notifications first (toggle background reminders on).", "warn"); return; }
     try {
       const sub = await getPushSubscription();
       if (!sub) { showPushStatus("This device isn't subscribed yet — turn the toggle on first.", "warn"); return; }
@@ -5807,7 +5819,7 @@
     } else if (action === "snooze" && ids.length) {
       const mins = snoozeMinutes();
       const t = setTimeout(() => fireGroupReminder(ids), mins * 60 * 1000);
-      reminderTimers.push(t);
+      snoozeTimers.push(t); // survive re-scheduling so the snooze actually fires
       showToast(`Snoozed ${snoozeLabel()}.`);
     }
   }
@@ -5910,7 +5922,7 @@
 
   function testReminder() {
     ensureAudioCtx();
-    const sample = state.habits.find((h) => h.reminderTime && isHabitActiveOn(h, new Date()));
+    const sample = state.habits.find((h) => habitReminderTimes(h, new Date()).length && isHabitActiveOn(h, new Date()));
     if (sample) {
       fireGroupReminder([sample.id]);
     } else {
@@ -5925,7 +5937,7 @@
     try {
       if (!("setAppBadge" in navigator)) return;
       const today = new Date();
-      const pending = state.habits.filter((h) => isHabitActiveOn(h, today) && habitStatus(h, today) === "pending").length;
+      const pending = state.habits.filter((h) => isHabitActiveOn(h, today) && todayStatus(h, today) === "pending").length;
       if (pending > 0) navigator.setAppBadge(pending).catch(() => {});
       else navigator.clearAppBadge && navigator.clearAppBadge().catch(() => {});
     } catch (e) { /* unsupported */ }
@@ -5949,7 +5961,7 @@
       }
       localStorage.setItem(KEYS.remindersEnabled, "true");
       scheduleReminders();
-      const withTimes = state.habits.filter((h) => h.reminderTime).length;
+      const withTimes = state.habits.filter((h) => habitReminderTimes(h, new Date()).length > 0).length;
       showReminderStatus(withTimes > 0
         ? `Reminders on. ${withTimes} habit${withTimes === 1 ? "" : "s"} have a reminder time.`
         : "Reminders on. Set a reminder time on a habit to get notified.", "success");
