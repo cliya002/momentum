@@ -36,8 +36,11 @@ export default {
         return json({ ok: true, publicKey: env.VAPID_PUBLIC });
       }
       if (url.pathname === "/subscribe" && request.method === "POST") {
-        const body = await request.json();
+        const body = await readJsonBody(request);
+        if (!body) return json({ error: "invalid json" }, 400);
         if (!body.subscription || !body.subscription.endpoint) return json({ error: "missing subscription" }, 400);
+        // Encryption needs both keys; reject early so we never store an unusable sub.
+        if (!body.subscription.keys || !body.subscription.keys.p256dh || !body.subscription.keys.auth) return json({ error: "missing subscription keys" }, 400);
         // Key by a stable device id when provided so re-registering the same
         // device OVERWRITES its entry instead of creating a duplicate.
         const id = await keyFor(body);
@@ -54,7 +57,8 @@ export default {
         return json({ ok: true, id, entries: rec.schedule.length });
       }
       if (url.pathname === "/unsubscribe" && request.method === "POST") {
-        const body = await request.json();
+        const body = await readJsonBody(request);
+        if (!body) return json({ error: "invalid json" }, 400);
         const id = await keyFor(body);
         if (id) await env.SUBS.delete("sub:" + id);
         return json({ ok: true });
@@ -71,6 +75,8 @@ export default {
         return json({ ok: true, cleared: n });
       }
       if (url.pathname === "/debug") {
+        // Exposes every subscription's schedule — require the admin token.
+        if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
         const subs = []; let cursor;
         do {
           const list = await env.SUBS.list({ prefix: "sub:", cursor });
@@ -87,14 +93,15 @@ export default {
         return json({ count: subs.length, subs });
       }
       if (url.pathname === "/test" && request.method === "POST") {
-        const body = await request.json();
+        const body = await readJsonBody(request);
+        if (!body) return json({ error: "invalid json" }, 400);
         if (!body.subscription) return json({ error: "missing subscription" }, 400);
         const r = await sendPush(env, body.subscription, {
           title: "🔔 Background test",
           body: "Momentum background push is working.",
           tag: "ht-push-test",
         });
-        return json({ ok: r !== false, result: r });
+        return json({ ok: r === true, result: r });
       }
       return json({ error: "not found" }, 404);
     } catch (e) {
@@ -113,31 +120,34 @@ async function runSchedule(env) {
     const list = await env.SUBS.list({ prefix: "sub:", cursor });
     cursor = list.list_complete ? null : list.cursor;
     for (const k of list.keys) {
-      const rec = safeParse(await env.SUBS.get(k.name));
-      if (!rec || !rec.subscription) continue;
-      const { hhmm, weekday, dateStr } = localParts(rec.tz);
-      rec.sent = rec.sent || {};
-      let changed = false, gone = false;
-      for (const entry of rec.schedule || []) {
-        if (!entry || entry.time !== hhmm) continue;
-        if (Array.isArray(entry.days) && entry.days.length && !entry.days.includes(weekday)) continue;
-        const sk = entry.time + "|" + (entry.title || "");
-        if (rec.sent[sk] === dateStr) continue; // already sent today
-        const res = await sendPush(env, rec.subscription, {
-          title: entry.title || "Momentum",
-          body: entry.body || "",
-          tag: entry.tag || ("ht-push-" + entry.time),
-          ids: Array.isArray(entry.ids) ? entry.ids : [],
-        });
-        if (res === "gone") { gone = true; break; }
-        rec.sent[sk] = dateStr;
-        changed = true;
-      }
-      if (gone) { await env.SUBS.delete(k.name); continue; }
-      if (changed) {
-        for (const key of Object.keys(rec.sent)) if (rec.sent[key] !== dateStr) delete rec.sent[key];
-        await env.SUBS.put(k.name, JSON.stringify(rec));
-      }
+      // Isolate each subscription so one failing push can't abort the whole run.
+      try {
+        const rec = safeParse(await env.SUBS.get(k.name));
+        if (!rec || !rec.subscription) continue;
+        const { hhmm, weekday, dateStr } = localParts(rec.tz);
+        rec.sent = rec.sent || {};
+        let changed = false, gone = false;
+        for (const entry of rec.schedule || []) {
+          if (!entry || entry.time !== hhmm) continue;
+          if (Array.isArray(entry.days) && entry.days.length && !entry.days.includes(weekday)) continue;
+          const sk = entry.time + "|" + (entry.title || "");
+          if (rec.sent[sk] === dateStr) continue; // already sent today
+          const res = await sendPush(env, rec.subscription, {
+            title: entry.title || "Momentum",
+            body: entry.body || "",
+            tag: entry.tag || ("ht-push-" + entry.time),
+            ids: Array.isArray(entry.ids) ? entry.ids : [],
+          });
+          if (res === "gone") { gone = true; break; }
+          rec.sent[sk] = dateStr;
+          changed = true;
+        }
+        if (gone) { await env.SUBS.delete(k.name); continue; }
+        if (changed) {
+          for (const key of Object.keys(rec.sent)) if (rec.sent[key] !== dateStr) delete rec.sent[key];
+          await env.SUBS.put(k.name, JSON.stringify(rec));
+        }
+      } catch (e) { /* skip this subscription, keep processing the rest */ }
     }
   } while (cursor);
 }
@@ -158,6 +168,8 @@ function localParts(tz) {
 
 // ---- Web Push (RFC 8291 aes128gcm + RFC 8292 VAPID) ------------------------
 async function sendPush(env, subscription, payloadObj) {
+  // Guard against malformed/legacy subscriptions missing endpoint or keys.
+  if (!subscription || !subscription.endpoint || !subscription.keys || !subscription.keys.p256dh || !subscription.keys.auth) return false;
   const endpoint = subscription.endpoint;
   const audience = new URL(endpoint).origin;
   const jwt = await makeVapidJwt(audience, env.VAPID_SUBJECT || "mailto:admin@example.com", env.VAPID_PUBLIC, env.VAPID_PRIVATE);
@@ -257,6 +269,8 @@ function authed(request, env) {
   return t === env.ADMIN_TOKEN;
 }
 function safeParse(s) { try { return s ? JSON.parse(s) : null; } catch (e) { return null; } }
+// Parse a request body, returning null on malformed JSON (so callers can 400).
+async function readJsonBody(request) { try { return await request.json(); } catch (e) { return null; } }
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json", ...CORS } });
 }

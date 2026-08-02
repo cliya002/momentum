@@ -959,7 +959,7 @@
     if (Array.isArray(s.customMetrics)) {
       for (const cm of s.customMetrics) {
         if (cm && cm.id && cm.name) {
-          st.customMetrics.push({ id: cm.id, name: String(cm.name).slice(0, 30), unit: String(cm.unit || "").slice(0, 12) });
+          st.customMetrics.push({ id: cm.id, name: String(cm.name).slice(0, 30), unit: String(cm.unit || "").slice(0, 12), updatedAt: Number(cm.updatedAt) || 0 });
         }
       }
     }
@@ -1201,8 +1201,12 @@
       const lts = Number(localTs[d]) || 0;
       const rts = Number(remoteTs[d]) || 0;
       const pickRemote = rts > lts && remoteComp[d];
-      const src = pickRemote ? remoteComp[d] : (localComp[d] || remoteComp[d]);
-      if (!src) return;
+      // Union both sides so two devices completing DIFFERENT habits on the same
+      // day both survive; the newer side wins genuine per-habit conflicts.
+      const winner = (pickRemote ? remoteComp[d] : localComp[d]) || {};
+      const loser = (pickRemote ? localComp[d] : remoteComp[d]) || {};
+      const src = { ...loser, ...winner };
+      if (!src || Object.keys(src).length === 0) return;
       const cleaned = {};
       for (const [hid, val] of Object.entries(src)) {
         if (survivingIds.has(hid)) cleaned[hid] = val;
@@ -1210,10 +1214,12 @@
       if (Object.keys(cleaned).length > 0) {
         merged.completions[d] = cleaned;
         merged.completionsUpdatedAt[d] = Math.max(lts, rts) || now;
-        // Dose masks follow the same winning side for that day.
-        const dtSrc = (pickRemote ? (remote.doseTicks || {}) : (local.doseTicks || {}))[d]
-          || (local.doseTicks || {})[d] || (remote.doseTicks || {})[d];
-        if (dtSrc) {
+        // Dose masks: union both sides too (newer wins per-habit), matching the
+        // completion union above so dose ticks aren't dropped for the same reason.
+        const dtWin = (pickRemote ? (remote.doseTicks || {}) : (local.doseTicks || {}))[d] || {};
+        const dtLose = (pickRemote ? (local.doseTicks || {}) : (remote.doseTicks || {}))[d] || {};
+        const dtSrc = { ...dtLose, ...dtWin };
+        if (Object.keys(dtSrc).length) {
           const cd = {};
           for (const [hid, mask] of Object.entries(dtSrc)) if (survivingIds.has(hid)) cd[hid] = mask;
           if (Object.keys(cd).length) merged.doseTicks[d] = cd;
@@ -1295,7 +1301,11 @@
     // Custom metrics: union by id
     const cmMap = new Map();
     (local.customMetrics || []).forEach((c) => cmMap.set(c.id, c));
-    (remote.customMetrics || []).forEach((c) => { if (!cmMap.has(c.id)) cmMap.set(c.id, c); });
+    (remote.customMetrics || []).forEach((c) => {
+      const ex = cmMap.get(c.id);
+      // Newest edit wins on id conflict, so a rename/unit change propagates.
+      if (!ex || (Number(c.updatedAt) || 0) > (Number(ex.updatedAt) || 0)) cmMap.set(c.id, c);
+    });
     merged.customMetrics = [...cmMap.values()];
 
     // Categories: newer categoriesUpdatedAt wins, fall back to whichever exists
@@ -2381,7 +2391,7 @@
     if (!at) return silent ? null : showOdStatus("Sign in to OneDrive again.", "warn");
     try {
       const res = await fetch(OD_FILE_URL, { headers: { Authorization: "Bearer " + at } });
-      if (res.status === 404) { if (!silent) showOdStatus("No OneDrive backup yet — push first.", "success"); return; }
+      if (res.status === 404) { if (!silent) showOdStatus("No OneDrive backup yet — push first.", "success"); return true; }
       if (!res.ok) throw new Error("HTTP " + res.status);
       const text = await res.text();
       const remote = readRemotePayload(text);
@@ -2396,8 +2406,10 @@
       localStorage.setItem(KEYS.odLastSync, String(Date.now()));
       renderOneDriveState();
       if (!opts.internal && !silent) { showOdStatus("✓ Pulled from OneDrive.", "success"); switchView(currentView); }
+      return true;
     } catch (e) {
       if (!silent) showOdStatus("OneDrive pull failed: " + (e.message || e), "error");
+      return false; // signal the caller (push) so it won't clobber remote data
     }
   }
 
@@ -2412,7 +2424,8 @@
       const at = await odAccessToken();
       if (!at) { if (!silent) showOdStatus("Sign in to OneDrive again.", "warn"); return; }
       // Pull-merge first so we never clobber another device's changes.
-      await oneDrivePull({ silent: true, internal: true });
+      const merged = await oneDrivePull({ silent: true, internal: true });
+      if (merged === false) throw new Error("Skipped push: couldn't read cloud copy first");
       stampThisDevice();
       persistRaw();
       const payload = JSON.stringify({ version: 2, app: "health-tracker", updatedAt: new Date().toISOString(), state });
@@ -2485,20 +2498,20 @@
           const res = await ghFetch(`https://api.github.com/gists/${gistId}`, {
             headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${token}` },
           });
-          if (res.ok) {
-            const data = await res.json();
-            const file = data.files && data.files[SYNC_FILENAME];
-            if (file) {
-              const remoteState = readRemotePayload(file.content);
-              if (remoteState) {
-                state = mergeStates(state, remoteState);
-                persistRaw();
-              }
+          if (!res.ok) throw new Error("pre-push fetch failed: HTTP " + res.status);
+          const data = await res.json();
+          const file = data.files && data.files[SYNC_FILENAME];
+          if (file) {
+            const remoteState = readRemotePayload(file.content);
+            if (remoteState) {
+              state = mergeStates(state, remoteState);
+              persistRaw();
             }
           }
         } catch (e) {
           if (e && e.rateLimited) throw e; // bubble up so we pause, don't PATCH
-          console.warn("pre-push merge failed", e);
+          // Don't fall through to PATCH — that would clobber newer remote data.
+          throw new Error("Skipped push to avoid overwriting cloud data: " + (e.message || e));
         }
       }
 
@@ -8492,7 +8505,7 @@
     const name = prompt("Metric name (e.g. Body fat, Chest, Sleep hrs):");
     if (!name || !name.trim()) return;
     const unit = prompt("Unit (optional, e.g. %, in, hrs):") || "";
-    state.customMetrics.push({ id: uid(), name: name.trim().slice(0, 30), unit: unit.trim().slice(0, 12) });
+    state.customMetrics.push({ id: uid(), name: name.trim().slice(0, 30), unit: unit.trim().slice(0, 12), updatedAt: Date.now() });
     save();
     renderProgress();
   }

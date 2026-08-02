@@ -140,5 +140,33 @@ console.log("Scenario 9: devices merge — union by id, newest lastSync wins");
   assert(!!m.devices.laptop && !!m.devices.tablet, "unique devices from both sides kept");
 }
 
+// ---------------------------------------------------------------
+console.log("Scenario 10: two devices check off DIFFERENT habits the SAME day → both kept");
+{
+  const A = defaultState(); const B = defaultState();
+  const hx = habit("hx", "Workout"); const hy = habit("hy", "Read");
+  A.habits = [hx, hy]; B.habits = [hx, hy];
+  // A did Workout at 09:00; B (unaware of A's tick) did Read at 10:00 the same day.
+  A.completions[today] = { hx: 1 }; A.completionsUpdatedAt[today] = 1000;
+  B.completions[today] = { hy: 1 }; B.completionsUpdatedAt[today] = 2000; // newer side
+  const m = mergeStates(A, B);
+  assert(m.completions[today] && m.completions[today].hx === 1, "device A's Workout survives");
+  assert(m.completions[today] && m.completions[today].hy === 1, "device B's Read survives");
+  const m2 = mergeStates(B, A);
+  assert(m2.completions[today].hx === 1 && m2.completions[today].hy === 1, "union is order-independent");
+}
+
+// ---------------------------------------------------------------
+console.log("Scenario 11: same habit, same day, conflicting values → newer side wins in the union");
+{
+  const A = defaultState(); const B = defaultState();
+  const h = habit("h1", "Steps");
+  A.habits = [h]; B.habits = [h];
+  A.completions[today] = { h1: 5 }; A.completionsUpdatedAt[today] = 9000; // newer
+  B.completions[today] = { h1: 2 }; B.completionsUpdatedAt[today] = 3000;
+  const m = mergeStates(A, B);
+  assert(m.completions[today].h1 === 5, "newer value wins the per-habit conflict");
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

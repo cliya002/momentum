@@ -727,7 +727,7 @@
             <div id="reminderHealth" class="reminder-health" hidden></div>
             <div id="smartTiming" class="smart-timing" hidden></div>
             <div class="field">
-              <label>Quiet hours <span class="hint">(no reminders between)</span></label>
+              <label for="quietStart">Quiet hours <span class="hint">(no reminders between)</span></label>
               <div class="quiet-row">
                 <input type="time" id="quietStart" aria-label="Quiet start" />
                 <span>to</span>
@@ -1000,9 +1000,9 @@
           </datalist>
         </label>
 
-        <label>
+        <div class="modal-caption">
           Reminders <span class="hint">(optional — needs notifications on)</span>
-        </label>
+        </div>
         <div id="habitReminderList" class="reminder-times"></div>
         <button type="button" id="addReminderTimeBtn" class="btn-secondary" style="margin-bottom:0.6rem">+ Add another time</button>
         <p id="habitDoseSpacingHint" class="form-warn" hidden></p>

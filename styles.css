@@ -1886,7 +1886,8 @@ body.hc .btn-secondary { border-color: var(--border); }
   .modal-content { border-radius: 20px; }
 }
 .modal h2 { margin: 0 0 1rem; font-size: 1.2rem; }
-.modal label {
+.modal label,
+.modal-caption {
   display: block;
   margin-bottom: 0.85rem;
   font-size: 0.8rem;
