@@ -3188,25 +3188,24 @@
   function findStepsGoalHabit(excludeId) {
     return state.habits.find((h) => !h.archived && h.id !== excludeId && h.type === "count" && /step/i.test(h.name || ""));
   }
-  const SLEEP_MET_HRS = 6.5; // "slept enough" — used for messaging + generous count-done
-  // Apply sleep hours to a habit. Returns whether the habit ended up DONE.
-  //   yes/no  → a "Sleep" habit means "I slept last night", so it's ticked as
-  //             soon as ANY sleep is logged (no minimum-hours gate).
-  //   count   → record the real hours; done when you reach the habit's own
-  //             target, or when you slept "enough" (>6.5h) even if the target is
-  //             higher. Recording keeps the actual hours visible on the card.
+  const SLEEP_MET_HRS = 6.5; // slept MORE than this → the sleep habit counts as done
+  // Apply sleep hours to a habit. Only "enough" sleep (>6.5h) checks the habit.
+  //   count  → always record the real hours so the card shows them; mark done
+  //            only when you slept enough (fills to target so it counts).
+  //   yes/no → checked only when you slept enough; left unchecked otherwise.
+  // Returns whether the habit ended up DONE.
   function applySleepToHabit(habit, hrs, date) {
     if (hrs <= 0) return isCompleted(habit, date);
+    const met = hrs > SLEEP_MET_HRS;
     if (habit.type === "count") {
       const wasDone = isCompleted(habit, date);
-      const met = hrs > SLEEP_MET_HRS;
       setCompletionValue(habit.id, date, met ? Math.max(hrs, habit.target || 1) : hrs);
       const done = isCompleted(habit, date);
       if (done && !wasDone) maybeCelebrate(habit, date);
       return done;
     }
-    if (!isCompleted(habit, date)) { setCompletionValue(habit.id, date, 1); maybeCelebrate(habit, date); }
-    return true;
+    if (met && !isCompleted(habit, date)) { setCompletionValue(habit.id, date, 1); maybeCelebrate(habit, date); }
+    return met;
   }
   // Apply a matched workout session to a habit (count → active minutes; yes/no → done).
   function applyWorkoutToHabit(habit, match, date) {
@@ -3348,7 +3347,7 @@
       showToast(
         done
           ? `😴 Slept ${hrs}h — checked ✓`
-          : `😴 Logged ${hrs}h${habit.type === "count" && habit.target ? ` (target ${habit.target}h)` : ""} — not enough to check`,
+          : `😴 Slept ${hrs}h — under ${SLEEP_MET_HRS}h, not checked`,
         done ? "success" : "warn");
       localStorage.setItem(KEYS.ghLastSync, String(Date.now()));
       renderToday();
