@@ -3007,6 +3007,8 @@
     }
     const impW = document.getElementById("ghImportWeight");
     if (impW) { impW.disabled = !connected; impW.checked = localStorage.getItem(KEYS.ghImportWeight) === "true"; }
+    const wu = document.getElementById("ghWorkerUrl");
+    if (wu && document.activeElement !== wu) wu.value = localStorage.getItem(KEYS.pushUrl) || "";
     const line = document.getElementById("ghStateLine");
     if (line) {
       if (!connected) line.hidden = true;
@@ -10745,6 +10747,12 @@
     if (ghHabitSelect) ghHabitSelect.addEventListener("change", () => localStorage.setItem(KEYS.ghHabitId, ghHabitSelect.value || ""));
     const ghImportWeight = document.getElementById("ghImportWeight");
     if (ghImportWeight) ghImportWeight.addEventListener("change", () => localStorage.setItem(KEYS.ghImportWeight, ghImportWeight.checked ? "true" : "false"));
+    const ghWorkerUrl = document.getElementById("ghWorkerUrl");
+    if (ghWorkerUrl) ghWorkerUrl.addEventListener("change", () => {
+      const v = (ghWorkerUrl.value || "").trim().replace(/\/+$/, "");
+      if (v) localStorage.setItem(KEYS.pushUrl, v);
+      renderGoogleState();
+    });
     els.pairDeviceBtn.addEventListener("click", copyPairingLink);
     els.pairQrBtn.addEventListener("click", showPairingQr);
     els.scanQrBtn.addEventListener("click", openScanner);

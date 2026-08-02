@@ -651,6 +651,11 @@
                 <li>Make sure your Worker URL is set above under Background reminders, then tap Connect.</li>
               </ol>
             </details>
+            <div class="field">
+              <label for="ghWorkerUrl">Worker URL</label>
+              <input type="url" id="ghWorkerUrl" placeholder="https://your-worker.workers.dev" autocomplete="off" />
+              <small class="hint">Your Cloudflare Worker (the same one used for background reminders).</small>
+            </div>
             <div class="row-actions">
               <button id="ghConnectBtn" class="btn-primary" type="button">🔗 Connect Google Health</button>
               <button id="ghDisconnectBtn" class="btn-secondary" type="button" hidden>Disconnect</button>
