@@ -35,6 +35,26 @@ console.log("fills blank notes from matching template");
   assert(n === 1, "reports 1 habit filled");
 }
 
+console.log("overwrite mode replaces existing notes");
+{
+  const st = T.normalizeState({ habits: [
+    { id: "a", name: sampleName, notes: "my old note" },     // matches → overwritten
+    { id: "b", name: "Totally Made Up Habit XYZ", notes: "keep me" }, // no match → untouched
+  ] });
+  T.setState(st); T.resetRenderCaches();
+  const n = T.fillNotesFromTemplates(true);
+  const habits = T.getState().habits;
+  assert(habits[0].notes === map[sampleName.toLowerCase()], "matching habit note overwritten with template note");
+  assert(habits[1].notes === "keep me", "non-matching habit left untouched even in overwrite mode");
+  assert(n === 1, "reports 1 updated");
+}
+{
+  // overwrite is a no-op when the note already matches
+  const st = T.normalizeState({ habits: [{ id: "a", name: sampleName, notes: map[sampleName.toLowerCase()] }] });
+  T.setState(st); T.resetRenderCaches();
+  assert(T.fillNotesFromTemplates(true) === 0, "no change when note already matches template");
+}
+
 console.log("case-insensitive name match");
 {
   const st = T.normalizeState({ habits: [{ id: "a", name: sampleName.toUpperCase(), notes: "" }] });

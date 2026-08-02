@@ -2941,13 +2941,16 @@
     }
     return map;
   }
-  function fillNotesFromTemplates() {
+  function fillNotesFromTemplates(overwrite) {
     const map = templateNoteMap();
     let n = 0;
     for (const h of state.habits) {
-      if (h.notes && h.notes.trim()) continue; // keep notes you've written
       const note = map[(h.name || "").trim().toLowerCase()];
-      if (note) { h.notes = note.slice(0, 500); h.updatedAt = Date.now(); n++; }
+      if (!note) continue;                                   // no matching template → leave alone
+      const cur = (h.notes || "").trim();
+      if (cur && !overwrite) continue;                       // keep your own note unless overwriting
+      if (cur === note) continue;                            // already up to date
+      h.notes = note.slice(0, 500); h.updatedAt = Date.now(); n++;
     }
     if (typeof document === "undefined") return n; // test sandbox: skip UI
     if (n) {
@@ -2955,14 +2958,19 @@
       if (currentView === "habits") renderHabits();
       if (currentView === "today") renderToday();
     }
+    const verb = overwrite ? "Updated" : "Added";
     const el = getEls().smartFillStatus;
     if (el) {
       el.hidden = false;
       el.className = "sync-status success";
-      el.textContent = n ? `Added notes to ${n} habit${n === 1 ? "" : "s"} from templates.` : "No matching template notes to fill.";
+      el.textContent = n ? `${verb} notes on ${n} habit${n === 1 ? "" : "s"} from templates.` : "Nothing to change — notes already match.";
     }
-    showToast(n ? `Added notes to ${n} habit${n === 1 ? "" : "s"}.` : "No blank notes matched a template.", "success");
+    showToast(n ? `${verb} notes on ${n} habit${n === 1 ? "" : "s"}.` : "No note changes needed.", "success");
     return n;
+  }
+  function replaceNotesFromTemplates() {
+    if (!confirm("Replace notes on habits that match a template — overwriting any note you've written for them? Habits with no matching template are left untouched.")) return;
+    fillNotesFromTemplates(true);
   }
 
   function addSelectedTemplates() {
@@ -9659,7 +9667,9 @@
     // Template picker
     els.browseTemplatesBtn.addEventListener("click", openTemplateModal);
     els.smartFillBtn.addEventListener("click", smartFillReminders);
-    if (els.fillNotesBtn) els.fillNotesBtn.addEventListener("click", fillNotesFromTemplates);
+    if (els.fillNotesBtn) els.fillNotesBtn.addEventListener("click", () => fillNotesFromTemplates(false));
+    const replaceNotesBtn = document.getElementById("replaceNotesBtn");
+    if (replaceNotesBtn) replaceNotesBtn.addEventListener("click", replaceNotesFromTemplates);
     els.templateCancelBtn.addEventListener("click", closeTemplateModal);
     els.templateCloseBtn.addEventListener("click", closeTemplateModal);
     els.templateSelectAll.addEventListener("click", templateSelectAll);
