@@ -18,6 +18,7 @@
     remindersEnabled: "ht_reminders_enabled",
     compact: "ht_compact",
     showDetails: "ht_show_details",
+    showTodayNotes: "ht_show_today_notes",
     fastingCollapsed: "ht_fasting_collapsed",
     hintSeen: "ht_hint_seen",
     units: "ht_units",
@@ -3309,6 +3310,7 @@
       compactToggle: $("#compactToggle"),
       timeFormatSelect: $("#timeFormatSelect"),
       showDetailsToggle: $("#showDetailsToggle"),
+      showTodayNotesToggle: $("#showTodayNotesToggle"),
       remindersToggle: $("#remindersToggle"),
       exportBtn: $("#exportBtn"),
       importBtn: $("#importBtn"),
@@ -4007,6 +4009,19 @@
       `<span class="leg"><span class="leg-num">${skipped}</span>Not done</span>`;
   }
 
+  // Compact, tap-to-expand note line for the Today view (opt-in via setting).
+  function buildTodayNoteLine(habit) {
+    if (localStorage.getItem(KEYS.showTodayNotes) !== "true") return null;
+    const note = (habit.notes || "").trim();
+    if (!note) return null;
+    const el = document.createElement("div");
+    el.className = "today-note clamp";
+    el.textContent = note;
+    el.title = "Tap to expand";
+    el.addEventListener("click", (e) => { e.stopPropagation(); el.classList.toggle("clamp"); });
+    return el;
+  }
+
   // A single dose row for a "times per day" habit (e.g. dose 2 of 2 at 8:00 PM).
   // Ticking fills this dose (and earlier ones); un-ticking clears it and later.
   function renderDoseItem(habit, date, slot) {
@@ -4042,6 +4057,8 @@
     dchip.textContent = `dose ${slot.i + 1} of ${slot.total}`;
     meta.appendChild(dchip);
     info.appendChild(meta);
+    const dNote = buildTodayNoteLine(habit);
+    if (dNote) info.appendChild(dNote);
     info.addEventListener("click", () => openHabitDetail(habit));
 
     const controls = document.createElement("div");
@@ -4154,6 +4171,8 @@
       meta.appendChild(s);
     }
     info.appendChild(meta);
+    const noteLine = buildTodayNoteLine(habit);
+    if (noteLine) info.appendChild(noteLine);
 
     // Expandable detail panel (hidden until the row is tapped, unless "Show details" is on)
     const showDetails = localStorage.getItem(KEYS.showDetails) === "true";
@@ -8836,6 +8855,7 @@
     els.compactToggle.checked = localStorage.getItem(KEYS.compact) === "true";
     els.timeFormatSelect.value = timeFmt();
     els.showDetailsToggle.checked = localStorage.getItem(KEYS.showDetails) === "true";
+    if (els.showTodayNotesToggle) els.showTodayNotesToggle.checked = localStorage.getItem(KEYS.showTodayNotes) === "true";
     renderTrash();
     els.unitsSelect.value = localStorage.getItem(KEYS.units) === "metric" ? "metric" : "imperial";
     els.deviceNameInput.value = localStorage.getItem(KEYS.deviceName) || "";
@@ -9388,6 +9408,10 @@
     });
     els.showDetailsToggle.addEventListener("change", () => {
       localStorage.setItem(KEYS.showDetails, els.showDetailsToggle.checked ? "true" : "false");
+      renderToday();
+    });
+    if (els.showTodayNotesToggle) els.showTodayNotesToggle.addEventListener("change", () => {
+      localStorage.setItem(KEYS.showTodayNotes, els.showTodayNotesToggle.checked ? "true" : "false");
       renderToday();
     });
     els.timeFormatSelect.addEventListener("change", () => {

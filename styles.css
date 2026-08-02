@@ -811,6 +811,23 @@ body.compact .habit-list { gap: 0.35rem; }
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* Compact opt-in note line on Today rows */
+.today-note {
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  margin-top: 3px;
+  cursor: pointer;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.today-note.clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: normal;
+}
 .modal textarea {
   width: 100%;
   padding: 0.7rem 0.9rem;
