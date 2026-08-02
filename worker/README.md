@@ -68,3 +68,36 @@ Optional check: visit `https://<your-worker>/health` — it should return
   the app's on-open catch-up stays exact.
 - New phone or reinstall → just toggle Background reminders on again.
 - To stop, toggle it off (removes your subscription) or delete the Worker.
+
+
+## (Optional) Google Health / Fitbit activity import
+
+The same Worker can proxy the **Google Health API** so Momentum can pull your
+Fitbit steps/workouts. The client *secret* lives here as a Worker secret and is
+never exposed to the browser. The app does the Google consent redirect (with
+PKCE) and sends the resulting code here to be exchanged.
+
+### Setup
+1. In [Google Cloud Console](https://console.cloud.google.com/): create a
+   project, enable the **Google Health API**, configure the OAuth consent
+   screen (External), add yourself as a **Test user**, and add the scope
+   `.../auth/googlehealth.activity_and_fitness.readonly`.
+2. Create an **OAuth client ID** → **Web application**. Add your Momentum URL
+   (e.g. `https://<you>.github.io/momentum/`) as an **Authorized redirect URI**.
+3. Store the credentials as Worker secrets, then redeploy:
+   ```bash
+   wrangler secret put GOOGLE_CLIENT_ID
+   wrangler secret put GOOGLE_CLIENT_SECRET
+   wrangler deploy
+   ```
+4. In Momentum → Settings, make sure the Worker URL is set (Background
+   reminders), then open **⌚ Google Health / Fitbit** and tap **Connect**.
+
+### Endpoints added
+- `GET  /google/config` → `{ clientId }` (so the app builds the consent URL)
+- `POST /google/token` → exchanges an auth `code` (+ PKCE verifier) for tokens
+- `POST /google/refresh` → refreshes an expired access token
+- `POST /google/health` → proxies a read-only GET to `health.googleapis.com`
+  (path is validated to the `v4/users/...` surface only)
+
+Tokens are stored per-device in the browser (like OneDrive), not on the Worker.

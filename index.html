@@ -639,6 +639,32 @@
           </div>
 
           <div class="card">
+            <div class="card-title">⌚ Google Health / Fitbit <span class="hint">(activity import)</span></div>
+            <p class="card-sub">Pull today's steps, calories, and workouts from your Fitbit data via the Google Health API — and optionally auto-complete a habit when you've been active. Read-only; runs through your own Worker so no secrets live in the app.</p>
+            <details class="setup-guide">
+              <summary>One-time setup (Google Cloud + Worker)</summary>
+              <ol>
+                <li>In <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">Google Cloud Console</a>, create a project and enable the <b>Google Health API</b>.</li>
+                <li>Configure the OAuth consent screen (External), add yourself as a <b>Test user</b>, and add the scope <code>.../auth/googlehealth.activity_and_fitness.readonly</code>.</li>
+                <li>Create an <b>OAuth client ID</b> of type <b>Web application</b>. Add this app's URL as an <b>Authorized redirect URI</b>: <code id="ghRedirectHint">—</code></li>
+                <li>In your Worker folder run: <code>wrangler secret put GOOGLE_CLIENT_ID</code> and <code>wrangler secret put GOOGLE_CLIENT_SECRET</code>, then <code>wrangler deploy</code>.</li>
+                <li>Make sure your Worker URL is set above under Background reminders, then tap Connect.</li>
+              </ol>
+            </details>
+            <div class="row-actions">
+              <button id="ghConnectBtn" class="btn-primary" type="button">🔗 Connect Google Health</button>
+              <button id="ghDisconnectBtn" class="btn-secondary" type="button" hidden>Disconnect</button>
+              <button id="ghPullBtn" class="btn-secondary" type="button">⬇️ Pull today's activity</button>
+            </div>
+            <div class="field">
+              <label for="ghHabitSelect">Auto-complete this habit when active today</label>
+              <select id="ghHabitSelect"><option value="">— Don't auto-complete —</option></select>
+            </div>
+            <div id="ghStateLine" class="sync-state-line" hidden></div>
+            <div id="ghStatus" class="sync-status" hidden></div>
+          </div>
+
+          <div class="card">
             <div class="card-title">📊 Your data</div>
             <div id="dataSummary" class="data-summary"></div>
             <div id="storageMeter" class="storage-meter"></div>

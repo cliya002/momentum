@@ -103,6 +103,60 @@ export default {
         });
         return json({ ok: r === true, result: r });
       }
+
+      // ---- Google Health API OAuth + proxy -------------------------------
+      // The client secret lives here (Worker secret), never in the browser.
+      // Set: `wrangler secret put GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
+      if (url.pathname === "/google/config") {
+        return json({ clientId: env.GOOGLE_CLIENT_ID || "" });
+      }
+      if (url.pathname === "/google/token" && request.method === "POST") {
+        const body = await readJsonBody(request);
+        if (!body || !body.code || !body.redirect_uri) return json({ error: "missing code/redirect_uri" }, 400);
+        if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return json({ error: "server not configured" }, 500);
+        const form = new URLSearchParams({
+          code: body.code,
+          client_id: env.GOOGLE_CLIENT_ID,
+          client_secret: env.GOOGLE_CLIENT_SECRET,
+          redirect_uri: body.redirect_uri,
+          grant_type: "authorization_code",
+        });
+        if (body.code_verifier) form.set("code_verifier", body.code_verifier);
+        const r = await fetch("https://oauth2.googleapis.com/token", {
+          method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form,
+        });
+        const data = await r.json();
+        return json(data, r.ok ? 200 : (r.status || 400));
+      }
+      if (url.pathname === "/google/refresh" && request.method === "POST") {
+        const body = await readJsonBody(request);
+        if (!body || !body.refresh_token) return json({ error: "missing refresh_token" }, 400);
+        if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return json({ error: "server not configured" }, 500);
+        const form = new URLSearchParams({
+          client_id: env.GOOGLE_CLIENT_ID,
+          client_secret: env.GOOGLE_CLIENT_SECRET,
+          refresh_token: body.refresh_token,
+          grant_type: "refresh_token",
+        });
+        const r = await fetch("https://oauth2.googleapis.com/token", {
+          method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form,
+        });
+        const data = await r.json();
+        return json(data, r.ok ? 200 : (r.status || 400));
+      }
+      if (url.pathname === "/google/health" && request.method === "POST") {
+        // Proxy a GET to the Health API (avoids browser CORS + hides nothing sensitive).
+        const body = await readJsonBody(request);
+        if (!body || !body.access_token || !body.path) return json({ error: "missing access_token/path" }, 400);
+        // Only allow the versioned Health API surface; reject anything else.
+        const safePath = String(body.path).replace(/^\/+/, "");
+        if (!/^v\d+\/users\/[^?]*$/.test(safePath)) return json({ error: "bad path" }, 400);
+        let target = "https://health.googleapis.com/" + safePath;
+        if (body.filter) target += "?filter=" + encodeURIComponent(body.filter);
+        const r = await fetch(target, { headers: { Authorization: "Bearer " + body.access_token, Accept: "application/json" } });
+        const data = await r.json().catch(() => ({}));
+        return json(data, r.ok ? 200 : (r.status || 400));
+      }
       return json({ error: "not found" }, 404);
     } catch (e) {
       return json({ error: String((e && e.message) || e) }, 500);

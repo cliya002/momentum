@@ -49,6 +49,14 @@
     odEnabled: "ht_od_enabled",
     odAuto: "ht_od_auto",
     odLastSync: "ht_od_last_sync",
+    // Google Health API (Fitbit data via Google). Token exchange/refresh + API
+    // calls go through the Worker (KEYS.pushUrl base) so the client secret stays server-side.
+    ghAccess: "ht_gh_access",
+    ghRefresh: "ht_gh_refresh",
+    ghExpiry: "ht_gh_expiry",
+    ghEnabled: "ht_gh_enabled",
+    ghLastSync: "ht_gh_last_sync",
+    ghHabitId: "ht_gh_habit_id",
   };
   const DEFAULT_CATEGORIES = ["Fitness","Nutrition","Sleep","Supplements","Custom"];
   // Fallback color/icon per default category (used until the user customizes).
@@ -2715,6 +2723,223 @@
         const last = Number(localStorage.getItem(KEYS.odLastSync) || 0);
         el.hidden = false;
         el.innerHTML = `📁 OneDrive connected · Last sync <b>${timeAgo(last)}</b> · Auto <b>${odAutoEnabled() ? "on" : "off"}</b>`;
+      }
+    }
+  }
+
+  /* ================================================================
+   * Google Health API (Fitbit data via Google)
+   * Browser does the consent redirect + PKCE; the Worker (KEYS.pushUrl base)
+   * does the client-secret token exchange/refresh and proxies Health API GETs.
+   * ================================================================ */
+  const GH_AUTHORIZE = "https://accounts.google.com/o/oauth2/v2/auth";
+  const GH_SCOPE = "https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly";
+  let ghInFlight = false;
+
+  function ghWorkerBase() { return (localStorage.getItem(KEYS.pushUrl) || "").trim().replace(/\/+$/, ""); }
+  function ghRedirectUri() { return location.origin + location.pathname; }
+  function ghConnected() { return localStorage.getItem(KEYS.ghEnabled) === "true" && !!localStorage.getItem(KEYS.ghRefresh); }
+
+  // Build the Google consent URL. Pure + tested.
+  function buildGoogleAuthUrl(clientId, redirectUri, challenge, state) {
+    const p = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: "code",
+      access_type: "offline",
+      prompt: "consent",
+      scope: GH_SCOPE,
+      code_challenge: challenge,
+      code_challenge_method: "S256",
+      state: state,
+    });
+    return GH_AUTHORIZE + "?" + p.toString();
+  }
+  // Solr-style filter for "on or after local midnight today". Pure + tested.
+  function googleTodayFilter(date) {
+    const d = date || new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    const civ = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T00:00:00`;
+    return `exercise.interval.civil_start_time >= "${civ}"`;
+  }
+  // Roll up the exercise dataPoints response into a simple summary. Pure + tested.
+  function mapExerciseDataPoints(json) {
+    const pts = (json && Array.isArray(json.dataPoints)) ? json.dataPoints : [];
+    let steps = 0, caloriesKcal = 0, activeMinutes = 0, distanceM = 0;
+    let last = null, lastTs = -1;
+    for (const p of pts) {
+      const ex = p && p.exercise;
+      if (!ex) continue;
+      const m = ex.metricsSummary || {};
+      steps += Number(m.steps) || 0;
+      caloriesKcal += Number(m.caloriesKcal) || 0;
+      activeMinutes += Number(m.activeZoneMinutes) || 0;
+      distanceM += (Number(m.distanceMillimiters) || 0) / 1000; // note: API's spelling
+      const startTime = ex.interval && ex.interval.startTime;
+      const ts = startTime ? Date.parse(startTime) : 0;
+      if (ts >= lastTs) { lastTs = ts; last = { type: ex.exerciseType || "", displayName: ex.displayName || "", startTime: startTime || "", steps: Number(m.steps) || 0 }; }
+    }
+    return { count: pts.length, steps, caloriesKcal, activeMinutes, distanceMeters: Math.round(distanceM), last };
+  }
+
+  async function connectGoogleHealth() {
+    const base = ghWorkerBase();
+    if (!base) { showGhStatus("Set your push/Worker URL first (in Background reminders).", "warn"); return; }
+    if (!window.isSecureContext || !window.crypto || !crypto.subtle) { showGhStatus("Secure sign-in needs HTTPS.", "warn"); return; }
+    try {
+      showGhStatus("Getting ready…", "loading");
+      const cfg = await fetch(base + "/google/config").then((r) => r.json()).catch(() => ({}));
+      const clientId = (cfg && cfg.clientId) || "";
+      if (!clientId) { showGhStatus("Worker has no Google client ID configured. See setup below.", "warn"); return; }
+      const verifier = odRandom(48);
+      const challenge = await odChallenge(verifier);
+      const st = "gh_" + odRandom(10);
+      localStorage.setItem("ht_gh_verifier", verifier);
+      localStorage.setItem("ht_gh_state", st);
+      showGhStatus("Redirecting to Google…", "loading");
+      window.location.assign(buildGoogleAuthUrl(clientId, ghRedirectUri(), challenge, st));
+    } catch (e) {
+      showGhStatus("Couldn't start sign-in: " + (e.message || e), "error");
+    }
+  }
+
+  function storeGhTokens(data) {
+    if (data.access_token) localStorage.setItem(KEYS.ghAccess, data.access_token);
+    if (data.refresh_token) localStorage.setItem(KEYS.ghRefresh, data.refresh_token);
+    const exp = Date.now() + ((Number(data.expires_in) || 3600) - 90) * 1000;
+    localStorage.setItem(KEYS.ghExpiry, String(exp));
+  }
+
+  async function handleGoogleRedirect() {
+    const u = new URL(location.href);
+    const code = u.searchParams.get("code");
+    const st = u.searchParams.get("state");
+    if (!code || !st || st.indexOf("gh_") !== 0) return false; // not our Google flow
+    const expect = localStorage.getItem("ht_gh_state");
+    const verifier = localStorage.getItem("ht_gh_verifier");
+    if (!verifier || !expect || st !== expect) return false;
+    try {
+      const res = await fetch(ghWorkerBase() + "/google/token", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, code_verifier: verifier, redirect_uri: ghRedirectUri() }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.access_token) throw new Error(data.error_description || data.error || "token exchange failed");
+      storeGhTokens(data);
+      localStorage.setItem(KEYS.ghEnabled, "true");
+      localStorage.removeItem("ht_gh_verifier");
+      localStorage.removeItem("ht_gh_state");
+      history.replaceState({}, "", ghRedirectUri());
+      showGhStatus("✓ Google Health connected.", "success");
+      renderGoogleState();
+      pullGoogleActivity({ silent: false });
+      return true;
+    } catch (e) {
+      history.replaceState({}, "", ghRedirectUri());
+      showGhStatus("Google connect failed: " + (e.message || e), "error");
+      return false;
+    }
+  }
+
+  async function ghAccessToken() {
+    const at = localStorage.getItem(KEYS.ghAccess);
+    const exp = Number(localStorage.getItem(KEYS.ghExpiry) || 0);
+    if (at && Date.now() < exp) return at;
+    const rt = localStorage.getItem(KEYS.ghRefresh);
+    if (!rt) return null;
+    try {
+      const res = await fetch(ghWorkerBase() + "/google/refresh", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: rt }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.access_token) return null;
+      storeGhTokens(data);
+      return data.access_token;
+    } catch (e) { return null; }
+  }
+
+  async function pullGoogleActivity(opts = {}) {
+    const silent = !!opts.silent;
+    if (!ghConnected()) return silent ? null : showGhStatus("Connect Google Health first.", "warn");
+    if (!navigator.onLine) return silent ? null : showGhStatus("You're offline.", "warn");
+    if (ghInFlight) return;
+    ghInFlight = true;
+    if (!silent) showGhStatus("⬇️ Fetching today's activity…", "loading");
+    try {
+      const at = await ghAccessToken();
+      if (!at) { showGhStatus("Sign in to Google again.", "warn"); return; }
+      const res = await fetch(ghWorkerBase() + "/google/health", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ access_token: at, path: "v4/users/me/dataTypes/exercise/dataPoints", filter: googleTodayFilter() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error((data && (data.error && data.error.message || data.error)) || ("HTTP " + res.status));
+      const sum = mapExerciseDataPoints(data);
+      localStorage.setItem(KEYS.ghLastSync, String(Date.now()));
+      // Optionally mark a chosen habit done when there was activity today.
+      const habitId = localStorage.getItem(KEYS.ghHabitId) || "";
+      let markedMsg = "";
+      if (habitId && sum.count > 0) {
+        const h = state.habits.find((x) => x.id === habitId);
+        if (h && !isCompleted(h, new Date())) {
+          setCompletionValue(h.id, new Date(), h.type === "count" ? (h.target || 1) : 1);
+          markedMsg = ` · ✓ ${h.icon || ""} ${h.name}`.trimEnd();
+          maybeCelebrate(h, new Date());
+          renderToday();
+        }
+      }
+      recordSyncDetail && recordSyncDetail("Google Health pull", `${sum.count} workout${sum.count === 1 ? "" : "s"}`);
+      renderGoogleState();
+      const bits = [];
+      if (sum.steps) bits.push(`${sum.steps.toLocaleString()} steps`);
+      if (sum.caloriesKcal) bits.push(`${sum.caloriesKcal} kcal`);
+      if (sum.count) bits.push(`${sum.count} workout${sum.count === 1 ? "" : "s"}`);
+      showGhStatus(`✓ ${bits.length ? bits.join(" · ") : "No activity logged today yet."}${markedMsg}`, "success");
+    } catch (e) {
+      if (!silent) showGhStatus("Google Health pull failed: " + (e.message || e), "error");
+    } finally {
+      ghInFlight = false;
+    }
+  }
+
+  function disconnectGoogleHealth() {
+    [KEYS.ghAccess, KEYS.ghRefresh, KEYS.ghExpiry, KEYS.ghEnabled, KEYS.ghLastSync].forEach((k) => localStorage.removeItem(k));
+    showGhStatus("Disconnected from Google Health.", "success");
+    renderGoogleState();
+  }
+
+  function showGhStatus(msg, kind) {
+    const el = document.getElementById("ghStatus");
+    if (!el) return;
+    el.hidden = false;
+    el.className = "sync-status" + (kind ? " " + kind : "");
+    el.textContent = msg;
+  }
+  function renderGoogleState() {
+    const connected = ghConnected();
+    const connectBtn = document.getElementById("ghConnectBtn");
+    const disconnectBtn = document.getElementById("ghDisconnectBtn");
+    const pullBtn = document.getElementById("ghPullBtn");
+    const sel = document.getElementById("ghHabitSelect");
+    if (connectBtn) connectBtn.hidden = connected;
+    if (disconnectBtn) disconnectBtn.hidden = !connected;
+    if (pullBtn) pullBtn.disabled = !connected;
+    if (sel) {
+      sel.disabled = !connected;
+      const cur = localStorage.getItem(KEYS.ghHabitId) || "";
+      const opts = ['<option value="">— Don\'t auto-complete —</option>'].concat(
+        state.habits.filter((h) => !h.archived).map((h) => `<option value="${escapeHtml(h.id)}"${h.id === cur ? " selected" : ""}>${escapeHtml((h.icon || "•") + " " + h.name)}</option>`)
+      );
+      sel.innerHTML = opts.join("");
+    }
+    const line = document.getElementById("ghStateLine");
+    if (line) {
+      if (!connected) line.hidden = true;
+      else {
+        const last = Number(localStorage.getItem(KEYS.ghLastSync) || 0);
+        line.hidden = false;
+        line.innerHTML = `⌚ Google Health connected · Last pull <b>${timeAgo(last)}</b>`;
       }
     }
   }
@@ -9689,6 +9914,9 @@
     renderDeviceList();
     renderCategoryManager();
     renderVacationSettings();
+    const ghHint = document.getElementById("ghRedirectHint");
+    if (ghHint) ghHint.textContent = ghRedirectUri();
+    renderGoogleState();
     const odHint = document.getElementById("odRedirectHint");
     if (odHint) odHint.textContent = odRedirectUri();
     renderOneDriveState();
@@ -10432,6 +10660,15 @@
       renderOneDriveState();
       if (odAutoToggle.checked) oneDrivePush({ silent: true });
     });
+    // Google Health / Fitbit
+    const ghConnectBtn = document.getElementById("ghConnectBtn");
+    if (ghConnectBtn) ghConnectBtn.addEventListener("click", connectGoogleHealth);
+    const ghDisconnectBtn = document.getElementById("ghDisconnectBtn");
+    if (ghDisconnectBtn) ghDisconnectBtn.addEventListener("click", disconnectGoogleHealth);
+    const ghPullBtn = document.getElementById("ghPullBtn");
+    if (ghPullBtn) ghPullBtn.addEventListener("click", () => pullGoogleActivity({ silent: false }));
+    const ghHabitSelect = document.getElementById("ghHabitSelect");
+    if (ghHabitSelect) ghHabitSelect.addEventListener("change", () => localStorage.setItem(KEYS.ghHabitId, ghHabitSelect.value || ""));
     els.pairDeviceBtn.addEventListener("click", copyPairingLink);
     els.pairQrBtn.addEventListener("click", showPairingQr);
     els.scanQrBtn.addEventListener("click", openScanner);
@@ -10589,6 +10826,8 @@
     if (isAutoSyncEnabled()) startAutoSync();
     // OneDrive: finish an OAuth redirect if we're returning from sign-in,
     // otherwise pull the latest on open when auto-sync is on.
+    // Google Health: finish an OAuth redirect if we're returning from Google.
+    handleGoogleRedirect().catch(() => {});
     handleOneDriveRedirect().then((handled) => {
       if (!handled && odAutoEnabled()) oneDrivePull({ silent: true });
     }).catch(() => {});
@@ -10747,6 +10986,7 @@
       logActivity, moveHabitToCategory, prunePhotosOlderThan,
       shade, hexToRgb,
       translate, availableLangs, b64url,
+      buildGoogleAuthUrl, googleTodayFilter, mapExerciseDataPoints,
       getState: () => state, setState: (s) => { state = s; },
     };
   }
