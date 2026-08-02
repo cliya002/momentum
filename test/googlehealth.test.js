@@ -86,6 +86,12 @@ console.log("latestWeightKg (tolerant + safe)");
   assert(T.latestWeightKg({ dataPoints: [{ weight: { magnitudeKilograms: 77.7 } }] }) === 77.7, "reads magnitudeKilograms");
   assert(T.latestWeightKg({ dataPoints: [{ weight: { value: { kilograms: 73.5 } } }] }) === 73.5, "reads nested value.kilograms");
   assert(T.latestWeightKg({ dataPoints: [{ weight: 84.1 }] }) === 84.1, "reads a plain numeric weight");
+  // Exact real API shape: weightGrams + nested sampleTime.physicalTime.
+  const real = { dataPoints: [
+    { name: "a", dataSource: {}, weight: { sampleTime: { physicalTime: "2026-08-01T18:00:00Z" }, weightGrams: 90000 } },
+    { name: "b", dataSource: {}, weight: { sampleTime: { physicalTime: "2026-08-02T18:16:27Z" }, weightGrams: 108835 } }, // newer
+  ] };
+  assert(T.latestWeightKg(real) === 108.8, "reads weightGrams (108835g -> 108.8kg) and picks newest by physicalTime");
 }
 
 console.log("parseDurationSeconds");

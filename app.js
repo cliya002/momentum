@@ -2882,41 +2882,53 @@
       const w = p.weight != null ? p.weight : (p.value != null ? p.value : p);
       const kg = extractKg(w);
       if (kg == null) continue;
-      const t = (p.sampleTime || (p.weight && p.weight.interval && p.weight.interval.startTime)
-        || p.startTime || (p.interval && p.interval.startTime) || "");
-      const ts = t ? Date.parse(t) : 0;
+      const ts = weightSampleMs(p);
       if (ts >= bestTs) { bestTs = ts; bestKg = kg; }
     }
     return bestKg;
   }
+  // Timestamp (ms) of a weight sample. The API nests it as
+  // sampleTime.physicalTime; also accept a plain string or interval start.
+  function weightSampleMs(p) {
+    const w = (p && p.weight) || {};
+    const cands = [p && p.sampleTime, w.sampleTime, p && p.startTime,
+      (w.interval && w.interval.startTime), (p && p.interval && p.interval.startTime)];
+    for (const c of cands) {
+      if (!c) continue;
+      if (typeof c === "string") { const t = Date.parse(c); if (t) return t; }
+      else if (typeof c === "object" && c.physicalTime) { const t = Date.parse(c.physicalTime); if (t) return t; }
+    }
+    return 0;
+  }
   // A plausible human weight in kg (rounded 1dp), else null.
   function plausibleKg(n) { return (Number.isFinite(n) && n > 2 && n < 500) ? Math.round(n * 10) / 10 : null; }
   // Pull a weight in kg out of an unknown value shape. Handles a plain number,
-  // {kilograms|kg|value|magnitude…}, a {value, unit} mass (KILOGRAMS/GRAMS/
-  // POUNDS), and one level of nesting. Returns kg or null.
+  // gram/kilogram/pound field names or a {value, unit} mass, and one level of
+  // nesting. Unit is inferred from the field name AND any unit field. kg | null.
   function extractKg(w) {
     if (w == null) return null;
     if (typeof w === "number") return plausibleKg(w);
     if (typeof w !== "object") return plausibleKg(Number(w));
     const unit = String(w.unit || w.units || w.unitOfMeasure || "").toUpperCase();
-    const conv = (n) => {
+    const byName = (name, n) => {
       if (!Number.isFinite(n)) return null;
-      if (/POUND|\bLB/.test(unit)) return plausibleKg(n * 0.453592);
-      if (/GRAM|\bG\b/.test(unit) && !/KILO/.test(unit)) return plausibleKg(n / 1000);
-      return plausibleKg(n);
+      const hay = (String(name) + " " + unit).toUpperCase();
+      if (/POUND|\bLB/.test(hay)) return plausibleKg(n * 0.453592);
+      if (/GRAM/.test(hay) && !/KILO/.test(hay)) return plausibleKg(n / 1000); // grams, not kilograms
+      return plausibleKg(n); // treat as kg
     };
     const fields = ["kilograms", "kilogram", "kg", "magnitudeKilograms", "weightKilograms",
-      "value", "magnitude", "quantity", "amount", "weight"];
+      "weightGrams", "grams", "gram", "value", "magnitude", "quantity", "amount", "weight"];
     for (const f of fields) {
       if (w[f] == null) continue;
       if (typeof w[f] === "object") { const nested = extractKg(w[f]); if (nested != null) return nested; continue; }
-      const kg = /kilo|kg/i.test(f) ? plausibleKg(Number(w[f])) : conv(Number(w[f]));
+      const kg = byName(f, Number(w[f]));
       if (kg != null) return kg;
     }
-    // Last resort: any finite number in a plausible kg range.
+    // Last resort: any finite number, converting by its field name.
     for (const k of Object.keys(w)) {
       if (typeof w[k] === "object") continue;
-      const kg = conv(Number(w[k]));
+      const kg = byName(k, Number(w[k]));
       if (kg != null) return kg;
     }
     return null;
