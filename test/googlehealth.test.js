@@ -139,6 +139,27 @@ console.log("recentSleepHours (client-side windowing)");
   const parent = { sleep: { interval: { startTime: iso(-6 * 3600 * 1000), endTime: iso(-3 * 3600 * 1000) } } };
   const withStages = T.recentSleepHours([parent, stage1, stage2], 40);
   assert(withStages === 3, "parent session + child stages still 3h, not 6h (got " + withStages + ")");
+
+  // Two nights inside the 40h collection window: report ONLY last night, not
+  // the sum (this is the 10.6h bug — 4.25h last night + ~6.3h the night before).
+  const lastNight = { sleep: { interval: { startTime: iso(-5.5 * 3600 * 1000), endTime: iso(-1.25 * 3600 * 1000) } } }; // 4.25h
+  const priorNight = { sleep: { interval: { startTime: iso(-36 * 3600 * 1000), endTime: iso(-29.65 * 3600 * 1000) } } }; // 6.35h, >20h ago
+  const twoNights = T.recentSleepHours([lastNight, priorNight], 40);
+  assert(twoNights >= 4.2 && twoNights <= 4.4, "two nights in window -> reports last night ~4.25h (got " + twoNights + ")");
+  assert(twoNights < 6, "does NOT sum two nights into ~10.6h");
+
+  // A short afternoon nap plus last night's main sleep -> report the main sleep,
+  // not the more-recent nap.
+  const mainSleep = { sleep: { interval: { startTime: iso(-14 * 3600 * 1000), endTime: iso(-7 * 3600 * 1000) } } }; // 7h overnight
+  const nap = { sleep: { interval: { startTime: iso(-3 * 3600 * 1000), endTime: iso(-2.25 * 3600 * 1000) } } }; // 45m nap, more recent
+  const withNap = T.recentSleepHours([mainSleep, nap], 40);
+  assert(withNap === 7, "picks the longer overnight block over a recent nap (got " + withNap + ")");
+
+  // A mid-night awakening (< 90 min gap) is bridged into one night.
+  const before = { sleep: { interval: { startTime: iso(-8 * 3600 * 1000), endTime: iso(-5 * 3600 * 1000) } } }; // 3h
+  const after = { sleep: { interval: { startTime: iso(-4.5 * 3600 * 1000), endTime: iso(-2 * 3600 * 1000) } } }; // 2.5h, 30m gap
+  const bridged = T.recentSleepHours([before, after], 40);
+  assert(bridged === 6, "30-min awakening bridged -> 8h-2h span = 6h (got " + bridged + ")");
 }
 
 console.log("ghScopeHint");

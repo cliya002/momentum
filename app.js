@@ -2920,13 +2920,22 @@
     if (p.startTime) return Date.parse(p.startTime) || 0;
     return 0;
   }
-  // Total sleep hours for sessions that ended within the last `hoursBack` hours.
-  // Instead of summing every dataPoint's duration (which double-counts when the
-  // same night is reported by multiple sources — phone + watch + Fitbit — or
-  // split into stage segments), we MERGE the time intervals and count each
-  // covered minute once. Overlapping duplicates collapse; contiguous stages
-  // still add up to the real span. Duration-only points (no timestamps) can't
-  // be placed on a timeline, so they're added as-is (rare fallback).
+  const SLEEP_BRIDGE_MS = 90 * 60 * 1000;   // join segments separated by a short awakening
+  const SLEEP_NIGHT_WINDOW_MS = 20 * 3600 * 1000; // "last night" = ended within ~20h
+  // Hours slept LAST NIGHT from the recent sleep dataPoints.
+  //
+  // We must not simply sum every dataPoint's duration: the same night is often
+  // reported by several sources (phone + watch + Fitbit) and split into stage
+  // segments (light/deep/REM), and the wide collection window can even span two
+  // nights. So we:
+  //   1. Turn each in-window session into a [start,end] interval.
+  //   2. Merge overlapping/near-adjacent intervals (bridging awakenings < 90m)
+  //      into contiguous sleep blocks — this collapses duplicate sources and
+  //      joins stage segments while keeping separate nights apart.
+  //   3. Return the LONGEST block that ended within the last ~20h (last night's
+  //      main sleep), ignoring the prior night and short naps. If nothing ended
+  //      in that window (tapped long after waking), fall back to the most recent
+  //      block. Duration-only points (no timestamps) are a rare fallback.
   function recentSleepHours(dataPoints, hoursBack) {
     const cutoff = Date.now() - (hoursBack || 40) * 3600 * 1000;
     const intervals = [];
@@ -2934,23 +2943,28 @@
     for (const p of (dataPoints || [])) {
       if (!p) continue;
       const end = sleepSessionEndMs(p);
-      if (end && end < cutoff) continue; // older than the window
+      if (end && end < cutoff) continue; // older than the collection window
       const start = sleepSessionStartMs(p);
       if (start && end && end > start) intervals.push([start, end]);
       else looseSec += sleepSessionSeconds(p); // no usable timeline → add duration
     }
-    let mergedSec = 0;
-    if (intervals.length) {
-      intervals.sort((a, b) => a[0] - b[0]);
-      let curStart = intervals[0][0], curEnd = intervals[0][1];
-      for (let i = 1; i < intervals.length; i++) {
-        const iv = intervals[i];
-        if (iv[0] <= curEnd) { if (iv[1] > curEnd) curEnd = iv[1]; } // overlap → extend
-        else { mergedSec += (curEnd - curStart) / 1000; curStart = iv[0]; curEnd = iv[1]; }
-      }
-      mergedSec += (curEnd - curStart) / 1000;
+    if (!intervals.length) return Math.round((looseSec / 3600) * 10) / 10;
+    intervals.sort((a, b) => a[0] - b[0]);
+    const blocks = [];
+    let curStart = intervals[0][0], curEnd = intervals[0][1];
+    for (let i = 1; i < intervals.length; i++) {
+      const iv = intervals[i];
+      if (iv[0] <= curEnd + SLEEP_BRIDGE_MS) { if (iv[1] > curEnd) curEnd = iv[1]; } // same block
+      else { blocks.push([curStart, curEnd]); curStart = iv[0]; curEnd = iv[1]; }
     }
-    return Math.round(((mergedSec + looseSec) / 3600) * 10) / 10;
+    blocks.push([curStart, curEnd]);
+    const nightCut = Date.now() - SLEEP_NIGHT_WINDOW_MS;
+    let best = null;
+    for (const b of blocks) { // longest block that ended within the last ~20h
+      if (b[1] >= nightCut && (!best || (b[1] - b[0]) > (best[1] - best[0]))) best = b;
+    }
+    if (!best) best = blocks.reduce((m, b) => (b[1] > m[1] ? b : m), blocks[0]); // else most recent
+    return Math.round(((best[1] - best[0]) / 3600000) * 10) / 10;
   }
   function isSleepHabit(habit) { return /\bsleep\b/i.test((habit && habit.name) || ""); }
   // A habit that maps to a logged workout (generic or a specific activity).
