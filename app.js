@@ -2808,9 +2808,14 @@
     const orig = btn ? btn.textContent : "";
     if (btn) { btn.disabled = true; btn.textContent = "⏳ Pulling…"; }
     try {
-      const kg = latestWeightKg(await ghApiGet("v4/users/me/dataTypes/weight/dataPoints", 'weight.sample_time >= "' + civilDaysAgo(60) + '"'));
+      const kg = await ghWeightKg();
       if (kg == null) {
-        showGhBanner("⚖️ No weight found in Google Health for the last 60 days. Weigh in on your scale or Fitbit app, then try again.");
+        const hint = ghScopeHint(ghWeightErr);
+        showGhBanner(hint
+          ? `⚖️ ${hint}`
+          : ghWeightErr
+            ? `⚖️ Couldn't read weight: ${ghWeightErr}`
+            : "⚖️ No weight found in Google Health for the last 90 days. Weigh in on your scale or Fitbit app, then try again.");
         return;
       }
       const disp = round1(wDisp(round1(kg * KG_TO_LB)));
@@ -3349,6 +3354,33 @@
     }
     return null;
   }
+  let ghWeightErr = "";
+  // Most recent weight in kg. The filter member for weight is rejected the same
+  // way sleep's is, so try a couple of variants then fall back to an unfiltered
+  // list and let latestWeightKg pick the newest sample. Returns kg or null.
+  async function ghWeightKg() {
+    ghWeightErr = "";
+    const path = "v4/users/me/dataTypes/weight/dataPoints";
+    const utc = isoHoursAgo(24 * 90);
+    const candidates = [
+      `weight.sample_time >= "${utc}"`,
+      `weight.start_time >= "${utc}"`,
+      `weight.interval.start_time >= "${utc}"`,
+      null,
+    ];
+    for (const f of candidates) {
+      try {
+        const raw = await ghAllPages(path, f, 5);
+        return latestWeightKg(raw);
+      } catch (e) {
+        const msg = String((e && e.message) || e);
+        ghWeightErr = msg;
+        if (/INVALID_DATA_POINT_FILTER|filter/i.test(msg)) continue; // bad filter → try next
+        return null; // other error (e.g. scope) → stop
+      }
+    }
+    return null;
+  }
   async function ghWorkoutSessions() {
     try { return mapWorkoutSessions(await ghAllPages("v4/users/me/dataTypes/exercise/dataPoints", googleTodayFilter())); }
     catch (e) { return []; }
@@ -3614,7 +3646,7 @@
       let weightMsg = "";
       if (localStorage.getItem(KEYS.ghImportWeight) === "true") {
         try {
-          const kg = latestWeightKg(await ghGet("v4/users/me/dataTypes/weight/dataPoints", 'weight.sample_time >= "' + civilDaysAgo(30) + '"'));
+          const kg = await ghWeightKg();
           if (kg != null) weightMsg = importWeightKg(kg);
         } catch (e) {}
       }
