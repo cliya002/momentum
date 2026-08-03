@@ -161,6 +161,13 @@ console.log("groupActiveEnergyByDay (active energy per day)");
   assert(total === 950, "sums active kcal (300+200+450=950), skips non-active (" + total + ")");
   assert(by["2026-08-03"] === 450, "civilStartTime.date fallback works");
   assert(Object.keys(T.groupActiveEnergyByDay([])).length === 0, "empty → {}");
+
+  // Source reconciliation: two sources on the same day → take the LARGEST, not the sum.
+  const multi = [
+    { dataSource: { device: { manufacturer: "Apple" } }, activeEnergyBurned: { interval: { startTime: "2026-08-05T10:00:00Z" }, kcal: 600 } },
+    { dataSource: { device: { manufacturer: "Fitbit" } }, activeEnergyBurned: { interval: { startTime: "2026-08-05T10:00:00Z" }, kcal: 520 } },
+  ];
+  assert(T.groupActiveEnergyByDay(multi)["2026-08-05"] === 600, "two sources same day → largest (600), not summed (1120)");
 }
 
 console.log("calorieAudit (accuracy diagnostics)");

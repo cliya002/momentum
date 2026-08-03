@@ -3820,10 +3820,13 @@
     }
     return out;
   }
-  // Group active-energy-burned dataPoints into { dateKey: totalKcal }. Pure + tested.
+  // Group active-energy-burned dataPoints into { dateKey: kcal }. Reconciles
+  // across data sources by taking the LARGEST single source per day (phone +
+  // watch + Fitbit overlap), rather than summing them, to avoid double-counting
+  // — the same fix used for steps. Pure + tested.
   function groupActiveEnergyByDay(dataPoints) {
-    const out = {};
     const pad = (n) => String(n).padStart(2, "0");
+    const byDaySource = {}; // dk -> { sourceKey -> kcal }
     for (const p of (dataPoints || [])) {
       const a = p && p.activeEnergyBurned;
       if (!a) continue;
@@ -3836,7 +3839,14 @@
       }
       if (!dk) continue;
       const kcal = Number(a.kcal) || 0;
-      out[dk] = Math.round((out[dk] || 0) + kcal);
+      const src = stepsSourceKey(p);
+      if (!byDaySource[dk]) byDaySource[dk] = {};
+      byDaySource[dk][src] = (byDaySource[dk][src] || 0) + kcal;
+    }
+    const out = {};
+    for (const dk of Object.keys(byDaySource)) {
+      const totals = Object.values(byDaySource[dk]);
+      out[dk] = Math.round(totals.length ? Math.max.apply(null, totals) : 0);
     }
     return out;
   }
