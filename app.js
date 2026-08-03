@@ -3810,7 +3810,7 @@
   async function ghTotalCaloriesByDay() {
     const civ = (d) => ({ date: { year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate() } });
     const today = new Date();
-    const body = { range: { start: civ(addDays(today, -10)), end: civ(addDays(today, 1)) }, windowSizeDays: 1 };
+    const body = { range: { start: civ(addDays(today, -15)), end: civ(addDays(today, 1)) }, windowSizeDays: 1 };
     const data = await ghApiPost("v4/users/me/dataTypes/total-calories/dataPoints:dailyRollUp", body);
     const pts = (data && data.rollupDataPoints) || [];
     const pad = (n) => String(n).padStart(2, "0");
@@ -11222,7 +11222,7 @@
     if (btn) { btn.disabled = true; btn.textContent = "⏳ Pulling…"; }
     try {
       const byDay = await ghTotalCaloriesByDay();
-      const activeByDay = await ghActiveEnergyByDay(10); // to split resting vs active
+      const activeByDay = await ghActiveEnergyByDay(15); // to split resting vs active (matches burn window)
       const c = loadCalorie();
       c.totalByDay = Object.assign({}, c.totalByDay, byDay);
       if (activeByDay) c.activeByDay = Object.assign({}, c.activeByDay, activeByDay);
@@ -11241,13 +11241,17 @@
   // Google's measured daily burn, averaged over the last `n` COMPLETE days
   // (today is excluded because it's still accumulating and would understate the
   // true daily total). Falls back to today only if that's all we have.
+  // Rolling window (complete days) used to average Google's measured daily burn.
+  // Matches the pull range (~11 days) so the "avg of N days" label reflects the
+  // data actually pulled, and gives a steadier TDEE baseline than a single week.
+  const MEASURED_BURN_DAYS = 14;
   // Returns { kcal, days, from, to, partial } or null.
   function latestGoogleTotal(c, n) {
     const byDay = (c || loadCalorie()).totalByDay || {};
     const todayKeyStr = dateKey(new Date());
     const complete = Object.keys(byDay).filter((k) => k < todayKeyStr).sort();
     if (complete.length) {
-      const use = complete.slice(-(n || 7));
+      const use = complete.slice(-(n || MEASURED_BURN_DAYS));
       const sum = use.reduce((a, k) => a + (Number(byDay[k]) || 0), 0);
       return { kcal: Math.round(sum / use.length), days: use.length, from: use[0], to: use[use.length - 1], partial: false };
     }
@@ -11284,8 +11288,8 @@
     el.hidden = false;
     let html =
       `<div class="cal-cmp-row"><span>📊 Google measured burn (${escapeHtml(when)})</span><span><b>${googleTotal} kcal</b></span></div>`;
-    // Split the measured burn into resting (maintenance) vs active.
-    const activeAvg = avgByDayComplete(c.activeByDay, 7);
+    // Split the measured burn into resting (maintenance) vs active — same window.
+    const activeAvg = avgByDayComplete(c.activeByDay, MEASURED_BURN_DAYS);
     if (activeAvg != null && activeAvg > 0 && activeAvg < googleTotal) {
       const resting = googleTotal - activeAvg;
       html += `<div class="cal-cmp-row cal-cmp-sub"><span>&nbsp;&nbsp;🛌 Resting (maintenance)</span><span>${resting} kcal</span></div>` +
@@ -13141,7 +13145,7 @@
       metricNumber, dailyPointMs, recoveryScore, seriesBaseline, recoveryTrend,
       isRecoveryHabit, isRhrHabit, isHrvHabit, isSpo2Habit, buildAllCsv, finalizeMissedStepGoals, stepHabitKind,
       calorieForecast, estimateMaintenanceKcal, mifflinBmr, groupExerciseKcalByDay, groupActiveEnergyByDay, bmiFrom, calorieAudit, goalInsight,
-      computeRestImpact,
+      computeRestImpact, latestGoogleTotal, avgByDayComplete,
       getState: () => state, setState: (s) => { state = s; },
     };
   }
