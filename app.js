@@ -5162,6 +5162,8 @@
       pAvgWeekly: $("#pAvgWeekly"),
       pWaistChange: $("#pWaistChange"),
       pAvgEnergy: $("#pAvgEnergy"),
+      pBmi: $("#pBmi"),
+      pBmiMeta: $("#pBmiMeta"),
       trendChart: $("#trendChart"),
       trendEmpty: $("#trendEmpty"),
       trendRange: $("#trendRange"),
@@ -10721,6 +10723,18 @@
   }
   function measurementsWithWeight() { return measurementList().filter((e) => e.weight !== null); }
 
+  // BMI from weight (lb) and height (cm). Returns { bmi, category } or null.
+  // Pure + tested. General wellness only — not a diagnosis.
+  function bmiFrom(weightLb, heightCm) {
+    if (!weightLb || !heightCm || heightCm < 60 || heightCm > 260) return null;
+    const kg = weightLb * 0.453592;
+    const m = heightCm / 100;
+    const bmi = Math.round((kg / (m * m)) * 10) / 10;
+    if (!Number.isFinite(bmi) || bmi <= 0 || bmi > 120) return null;
+    const category = bmi < 18.5 ? "Underweight" : bmi < 25 ? "Normal" : bmi < 30 ? "Overweight" : "Obese";
+    return { bmi, category };
+  }
+
   /* ---- Calorie balance & weight-loss forecast ---- */
   const KCAL_PER_LB = 3500;    // ≈ energy in 1 lb of body fat
   const CAL_HORIZONS = [
@@ -11113,6 +11127,14 @@
     else {
       els.pAvgEnergy.textContent = String(round1(energies.reduce((s, v) => s + v, 0) / energies.length));
       els.pAvgEnergy.classList.remove("up", "down");
+    }
+
+    // BMI — from the latest weight + height entered in the calorie profile.
+    if (els.pBmi) {
+      const heightCm = (loadCalorie().profile || {}).heightCm || 0;
+      const b = wl.length ? bmiFrom(wl[wl.length - 1].weight, heightCm) : null;
+      els.pBmi.textContent = b ? String(b.bmi) : "—";
+      if (els.pBmiMeta) els.pBmiMeta.textContent = b ? b.category : (wl.length ? "add height below" : "");
     }
 
     // Mini-deltas: latest vs previous entry
@@ -12754,7 +12776,7 @@
       isWorkoutHabit, isSleepHabit, isTempHabit, latestSkinTempDeltaC, fmtSkinTemp,
       metricNumber, dailyPointMs, recoveryScore, seriesBaseline, recoveryTrend,
       isRecoveryHabit, isRhrHabit, isHrvHabit, isSpo2Habit, buildAllCsv,
-      calorieForecast, estimateMaintenanceKcal, mifflinBmr, groupExerciseKcalByDay,
+      calorieForecast, estimateMaintenanceKcal, mifflinBmr, groupExerciseKcalByDay, bmiFrom,
       getState: () => state, setState: (s) => { state = s; },
     };
   }

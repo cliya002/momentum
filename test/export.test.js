@@ -122,5 +122,19 @@ console.log("groupExerciseKcalByDay (per-day exercise calories)");
   assert(Object.keys(T.groupExerciseKcalByDay([])).length === 0, "empty → {}");
 }
 
+console.log("bmiFrom (BMI + category)");
+{
+  // 180 lb, 175 cm → 81.6 kg / 1.75² = ~26.7 (Overweight).
+  const b = T.bmiFrom(180, 175);
+  assert(Math.abs(b.bmi - 26.7) < 0.2, "180lb/175cm ≈ 26.7 (" + b.bmi + ")");
+  assert(b.category === "Overweight", "26.7 → Overweight");
+  assert(T.bmiFrom(130, 175).category === "Normal", "130lb/175cm → Normal");
+  assert(T.bmiFrom(95, 175).category === "Underweight", "95lb/175cm → Underweight");
+  assert(T.bmiFrom(230, 170).category === "Obese", "230lb/170cm → Obese");
+  assert(T.bmiFrom(180, 0) === null, "no height → null");
+  assert(T.bmiFrom(0, 175) === null, "no weight → null");
+  assert(T.bmiFrom(180, 400) === null, "implausible height → null");
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
