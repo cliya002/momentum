@@ -3820,6 +3820,34 @@
     }
     return out;
   }
+  // Group active-energy-burned dataPoints into { dateKey: totalKcal }. Pure + tested.
+  function groupActiveEnergyByDay(dataPoints) {
+    const out = {};
+    const pad = (n) => String(n).padStart(2, "0");
+    for (const p of (dataPoints || [])) {
+      const a = p && p.activeEnergyBurned;
+      if (!a) continue;
+      const iv = a.interval || {};
+      let dk = null;
+      if (iv.startTime) { const t = Date.parse(iv.startTime); if (t) dk = dateKey(new Date(t)); }
+      if (!dk && iv.civilStartTime && iv.civilStartTime.date) {
+        const d = iv.civilStartTime.date;
+        if (d.year) dk = `${d.year}-${pad(d.month || 1)}-${pad(d.day || 1)}`;
+      }
+      if (!dk) continue;
+      const kcal = Number(a.kcal) || 0;
+      out[dk] = Math.round((out[dk] || 0) + kcal);
+    }
+    return out;
+  }
+  // Fetch active energy burned per day for the last `days` days.
+  async function ghActiveEnergyByDay(days) {
+    try {
+      const filter = `active_energy_burned.interval.civil_start_time >= "${civilDaysAgo(days || 10)}"`;
+      const raw = await ghAllPages("v4/users/me/dataTypes/active-energy-burned/dataPoints", filter);
+      return groupActiveEnergyByDay(raw.dataPoints || []);
+    } catch (e) { return null; }
+  }
   // Fetch exercise calories per day for the last `days` days.
   async function ghExerciseByDay(days) {
     try {
@@ -11130,8 +11158,10 @@
     if (btn) { btn.disabled = true; btn.textContent = "⏳ Pulling…"; }
     try {
       const byDay = await ghTotalCaloriesByDay();
+      const activeByDay = await ghActiveEnergyByDay(10); // to split resting vs active
       const c = loadCalorie();
       c.totalByDay = Object.assign({}, c.totalByDay, byDay);
+      if (activeByDay) c.activeByDay = Object.assign({}, c.activeByDay, activeByDay);
       c.updatedAt = Date.now();
       saveCalorie(c);
       renderCalorieForecast();
@@ -11160,6 +11190,16 @@
     if (byDay[todayKeyStr] != null) return { kcal: byDay[todayKeyStr], days: 0, from: todayKeyStr, to: todayKeyStr, partial: true };
     return null;
   }
+  // Average of the last `n` COMPLETE days (excludes today) in a {dateKey:kcal}
+  // map. Returns a rounded number or null.
+  function avgByDayComplete(byDay, n) {
+    const todayKeyStr = dateKey(new Date());
+    const complete = Object.keys(byDay || {}).filter((k) => k < todayKeyStr).sort();
+    if (!complete.length) return null;
+    const use = complete.slice(-(n || 7));
+    const sum = use.reduce((a, k) => a + (Number(byDay[k]) || 0), 0);
+    return Math.round(sum / use.length);
+  }
   // Compare Google's Total Calories (TDEE) with our maintenance+exercise estimate,
   // and warn + offer a one-tap fix when they diverge a lot.
   function renderTotalCompare() {
@@ -11179,7 +11219,15 @@
     const bigGap = estimate > 0 && Math.abs(diff) > 0.2 * googleTotal;
     el.hidden = false;
     let html =
-      `<div class="cal-cmp-row"><span>📊 Google measured burn (${escapeHtml(when)})</span><span><b>${googleTotal} kcal</b></span></div>` +
+      `<div class="cal-cmp-row"><span>📊 Google measured burn (${escapeHtml(when)})</span><span><b>${googleTotal} kcal</b></span></div>`;
+    // Split the measured burn into resting (maintenance) vs active.
+    const activeAvg = avgByDayComplete(c.activeByDay, 7);
+    if (activeAvg != null && activeAvg > 0 && activeAvg < googleTotal) {
+      const resting = googleTotal - activeAvg;
+      html += `<div class="cal-cmp-row cal-cmp-sub"><span>&nbsp;&nbsp;🛌 Resting (maintenance)</span><span>${resting} kcal</span></div>` +
+        `<div class="cal-cmp-row cal-cmp-sub"><span>&nbsp;&nbsp;🔥 Active (steps + workouts)</span><span>${activeAvg} kcal</span></div>`;
+    }
+    html +=
       `<div class="cal-cmp-row"><span>Your estimate (maintenance + exercise)</span><span>${estimate} kcal</span></div>` +
       `<div class="cal-cmp-diff">${diff === 0 ? "Matches your estimate" : (diff > 0 ? "Google is " + diff + " kcal higher" : "Google is " + Math.abs(diff) + " kcal lower")}</div>`;
     if (bigGap) {
@@ -12970,7 +13018,7 @@
       isWorkoutHabit, isSleepHabit, isTempHabit, latestSkinTempDeltaC, fmtSkinTemp,
       metricNumber, dailyPointMs, recoveryScore, seriesBaseline, recoveryTrend,
       isRecoveryHabit, isRhrHabit, isHrvHabit, isSpo2Habit, buildAllCsv,
-      calorieForecast, estimateMaintenanceKcal, mifflinBmr, groupExerciseKcalByDay, bmiFrom, calorieAudit, goalInsight,
+      calorieForecast, estimateMaintenanceKcal, mifflinBmr, groupExerciseKcalByDay, groupActiveEnergyByDay, bmiFrom, calorieAudit, goalInsight,
       getState: () => state, setState: (s) => { state = s; },
     };
   }

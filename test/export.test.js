@@ -148,6 +148,21 @@ console.log("groupExerciseKcalByDay (per-day exercise calories)");
   assert(Object.keys(T.groupExerciseKcalByDay([])).length === 0, "empty → {}");
 }
 
+console.log("groupActiveEnergyByDay (active energy per day)");
+{
+  const dps = [
+    { activeEnergyBurned: { interval: { startTime: "2026-08-01T13:00:00Z" }, kcal: 300 } },
+    { activeEnergyBurned: { interval: { startTime: "2026-08-01T18:00:00Z" }, kcal: 200 } },
+    { activeEnergyBurned: { interval: { civilStartTime: { date: { year: 2026, month: 8, day: 3 } } }, kcal: 450 } },
+    { notActive: true },
+  ];
+  const by = T.groupActiveEnergyByDay(dps);
+  const total = Object.values(by).reduce((a, b) => a + b, 0);
+  assert(total === 950, "sums active kcal (300+200+450=950), skips non-active (" + total + ")");
+  assert(by["2026-08-03"] === 450, "civilStartTime.date fallback works");
+  assert(Object.keys(T.groupActiveEnergyByDay([])).length === 0, "empty → {}");
+}
+
 console.log("calorieAudit (accuracy diagnostics)");
 {
   const has = (r, sub) => r.issues.some((i) => i.msg.toLowerCase().includes(sub));
