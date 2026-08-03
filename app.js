@@ -3444,15 +3444,15 @@
         const raw = await ghAllPages("v4/users/me/dataTypes/sleep/dataPoints", f, 5);
         const dps = raw.dataPoints || [];
         const hrs = recentSleepHours(dps, 40);
-        // Always capture a compact diagnostic of exactly what the parser saw, so
-        // a wrong (non-zero) value can be pinned without guessing the shape.
-        try {
-          const fmt = (ms) => ms ? new Date(ms).toISOString().slice(5, 16).replace("T", " ") : "?";
-          const rows = dps.map((p) => `${sleepSourceKey(p)} ${fmt(sleepSessionStartMs(p))}→${fmt(sleepSessionEndMs(p))} ${Math.round(sleepSessionSeconds(p) / 60)}m`);
-          const newest = dps.slice().sort((a, b) => sleepSessionEndMs(b) - sleepSessionEndMs(a))[0];
-          ghSleepDbg = ` · =${hrs}h · n=${dps.length} · ` + rows.slice(0, 10).join(" | ") +
-            (newest ? " · raw: " + JSON.stringify(newest).slice(0, 900) : "");
-        } catch (e) { /* diagnostics are best-effort */ }
+        // Light diagnostic (only surfaced in the no-data / error banner): a
+        // compact per-session breakdown of what the parser saw.
+        if (hrs === 0 && dps.length) {
+          try {
+            const fmt = (ms) => ms ? new Date(ms).toISOString().slice(5, 16).replace("T", " ") : "?";
+            const rows = dps.slice(0, 6).map((p) => `${fmt(sleepSessionStartMs(p))}→${fmt(sleepSessionEndMs(p))} ${Math.round(sleepSessionSeconds(p) / 60)}m`);
+            ghSleepDbg = " · n=" + dps.length + " · " + rows.join(" | ");
+          } catch (e) { ghSleepDbg = " · sleep keys: " + JSON.stringify(Object.keys(dps[0] || {})); }
+        }
         return hrs;
       } catch (e) {
         const msg = String((e && e.message) || e);
@@ -3779,8 +3779,6 @@
           ? `😴 Slept ${hrs}h — checked ✓`
           : `😴 Slept ${hrs}h — under ${SLEEP_MET_HRS}h, marked not done ✕`,
         done ? "success" : "warn");
-      // Diagnostic: if the number looks wrong, screenshot this and send it.
-      showGhBanner(`😴 Sleep diagnostic${ghSleepDbg}`, 30000);
       localStorage.setItem(KEYS.ghLastSync, String(Date.now()));
       renderToday();
     } catch (e) {
