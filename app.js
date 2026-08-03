@@ -9030,17 +9030,39 @@
     save();
     renderMoodStrip();
   }
+  // Rest day is a shared daily flag stored on the measurement entry, so tagging
+  // it from Today and from Progress stay in sync (single source of truth).
+  function isRestDay(dk) { const m = state.measurements && state.measurements[dk]; return !!(m && m.restDay); }
+  function toggleRestDay(dk) {
+    const key = dk || todayKey();
+    const m = Object.assign({}, state.measurements[key]);
+    const next = !m.restDay;
+    m.restDay = next;
+    m.date = m.date || key;
+    m.updatedAt = Date.now();
+    // Drop an entry that now has no data at all.
+    const hasAny = m.weight != null || m.waist != null || m.energy != null ||
+      m.strengthTrend || m.notes || m.restDay || (m.custom && Object.keys(m.custom).length > 0);
+    if (hasAny) state.measurements[key] = m; else delete state.measurements[key];
+    save();
+    renderMoodStrip();
+    if (typeof renderProgress === "function" && currentView === "progress") renderProgress();
+  }
   function renderMoodStrip() {
     const el = getEls().moodStrip;
     if (!el) return;
     if (state.habits.length === 0) { el.innerHTML = ""; return; }
     const cur = state.moods && state.moods[todayKey()] ? state.moods[todayKey()].mood : 0;
+    const rest = isRestDay(todayKey());
     el.innerHTML =
       `<span class="mood-q">${cur ? "Energy today" : "How's your energy?"}</span>` +
       `<span class="mood-opts">` +
       MOODS.map((m) => `<button type="button" class="mood-btn${cur === m.v ? " on" : ""}" data-mood="${m.v}" title="${m.label}" aria-label="${m.label}">${m.icon}</button>`).join("") +
-      `</span>`;
+      `</span>` +
+      `<button type="button" id="restDayChip" class="rest-chip${rest ? " on" : ""}" aria-pressed="${rest ? "true" : "false"}" title="Tag today as a recovery / no-workout day">😴 Rest day</button>`;
     el.querySelectorAll(".mood-btn").forEach((b) => b.addEventListener("click", () => setMood(Number(b.dataset.mood))));
+    const restBtn = el.querySelector("#restDayChip");
+    if (restBtn) restBtn.addEventListener("click", () => toggleRestDay(todayKey()));
   }
 
   // Daily mood vs daily completion rate — for the insights feed.

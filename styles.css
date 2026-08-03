@@ -2155,6 +2155,14 @@ body.hc .btn-secondary { border-color: var(--border); }
 }
 .mood-btn:hover { transform: scale(1.1); }
 .mood-btn.on { filter: none; opacity: 1; transform: scale(1.15); background: var(--primary-soft); }
+.rest-chip {
+  font-size: 0.8rem; font-weight: 600; cursor: pointer;
+  padding: 0.3rem 0.6rem; border-radius: 999px;
+  background: transparent; color: var(--text-dim);
+  border: 1px solid var(--border);
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.rest-chip.on { background: rgba(168,85,247,0.16); color: #a855f7; border-color: #a855f7; }
 
 /* Keystone habit of the week */
 .keystone-card {
