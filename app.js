@@ -10957,6 +10957,13 @@
       if (baseEl && notFocused(baseEl)) baseEl.value = g.kcal;
       if (exEl && notFocused(exEl)) exEl.value = 0;
     }
+    // In Google-measured mode, exercise is already included → disable the field
+    // so it's clear it isn't (and shouldn't be) added again.
+    if (exEl) {
+      exEl.disabled = usingGoogle;
+      exEl.placeholder = usingGoogle ? "included in Google burn" : "0";
+      exEl.title = usingGoogle ? "Included in Google's measured burn — not added again" : "";
+    }
     const f = calorieForecast({
       weightLb,
       caloriesIn: inEl ? Number(inEl.value) : c.caloriesIn,
@@ -11094,16 +11101,19 @@
       c.exerciseByDay = Object.assign({}, c.exerciseByDay, byDay); // save per-day history
       c.exerciseSessions = sessions;
       const avg = avgExerciseKcal(c.exerciseByDay, 14);
-      c.exerciseBurn = avg; // forecast uses the recent daily average
+      // In "Google measured burn" mode, workouts are already included in the
+      // total — so we DON'T add them to the forecast (would double-count). We
+      // still store the sessions/history for the list + today's-burn readout.
+      if (!c.useGoogle) c.exerciseBurn = avg;
       c.updatedAt = Date.now();
       saveCalorie(c);
-      const exEl = document.getElementById("calExercise"); if (exEl) exEl.value = avg;
+      if (!c.useGoogle) { const exEl = document.getElementById("calExercise"); if (exEl) exEl.value = avg; }
       renderCalorieForecast();
       const nDays = Object.keys(byDay).length;
       const today = byDay[dateKey(new Date())] || 0;
-      showToast(nDays > 0
-        ? `⚡ Pulled ${nDays} day${nDays === 1 ? "" : "s"} of exercise · today ${today} kcal · avg ${avg}/day`
-        : "⚡ No exercise calories found in the last 30 days.", nDays > 0 ? "success" : "warn");
+      if (nDays === 0) showToast("⚡ No exercise calories found in the last 30 days.", "warn");
+      else if (c.useGoogle) showToast(`⚡ ${nDays} days pulled · today ${today} kcal. Already included in Google's measured burn — shown below for reference.`, "info", 6000);
+      else showToast(`⚡ Pulled ${nDays} day${nDays === 1 ? "" : "s"} of exercise · today ${today} kcal · avg ${avg}/day`, "success");
     } catch (e) {
       showToast("Exercise pull failed: " + (e.message || e), "error");
     } finally {
