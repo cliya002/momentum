@@ -1115,6 +1115,7 @@
         energy: numOrNull(m.energy),
         strengthTrend: ["Up","Same","Down"].includes(m.strengthTrend) ? m.strengthTrend : "",
         notes: m.notes || "",
+        restDay: !!m.restDay,
         custom,
         updatedAt: Number(m.updatedAt) || now,
       };
@@ -5153,6 +5154,7 @@
       mWaist: $("#mWaist"),
       mEnergy: $("#mEnergy"),
       mStrength: $("#mStrength"),
+      mRestDay: $("#mRestDay"),
       mNotes: $("#mNotes"),
       mSaved: $("#mSaved"),
       clearMeasurementBtn: $("#clearMeasurementBtn"),
@@ -9977,13 +9979,13 @@
 
     lines.push("");
     lines.push("MEASUREMENTS");
-    const mHeader = ["Date", "Weight(lb)", "Waist(in)", "Energy", "Strength", "Notes"];
+    const mHeader = ["Date", "Weight(lb)", "Waist(in)", "Energy", "Strength", "Rest day", "Notes"];
     const customCols = state.customMetrics.map((c) => c.name);
     lines.push([...mHeader, ...customCols].map(csvEscape).join(","));
     for (const wk of Object.keys(state.measurements).sort()) {
       const m = state.measurements[wk];
       const custom = state.customMetrics.map((c) => (m.custom && m.custom[c.id] != null ? m.custom[c.id] : ""));
-      lines.push([wk, m.weight ?? "", m.waist ?? "", m.energy ?? "", m.strengthTrend || "", m.notes || "", ...custom].map(csvEscape).join(","));
+      lines.push([wk, m.weight ?? "", m.waist ?? "", m.energy ?? "", m.strengthTrend || "", m.restDay ? "yes" : "", m.notes || "", ...custom].map(csvEscape).join(","));
     }
 
     // Mood & journal per day (union of days that have either).
@@ -10484,6 +10486,7 @@
     els.mWaist.value = m && m.waist != null ? round1(lDisp(m.waist)) : "";
     els.mEnergy.value = m && m.energy != null ? m.energy : "";
     els.mStrength.value = m && m.strengthTrend ? m.strengthTrend : "";
+    if (els.mRestDay) els.mRestDay.checked = !!(m && m.restDay);
     els.mNotes.value = m && m.notes ? m.notes : "";
     els.mSaved.hidden = true;
 
@@ -11569,6 +11572,7 @@
       if (m.waist != null) parts.push(`<b>${round1(lDisp(m.waist))}</b> ${lUnit()}`);
       if (m.energy != null) parts.push(`Energy <b>${m.energy}</b>`);
       if (m.strengthTrend) parts.push(`Strength <b>${escapeHtml(m.strengthTrend)}</b>`);
+      if (m.restDay) parts.push(`😴 <b>Rest day</b>`);
       if (m.custom) {
         for (const cm of state.customMetrics) {
           if (m.custom[cm.id] != null) parts.push(`${escapeHtml(cm.name)} <b>${round1(m.custom[cm.id])}</b>${cm.unit ? " " + escapeHtml(cm.unit) : ""}`);
@@ -11653,12 +11657,13 @@
       waist,    // canonical in
       energy: numOrNull(els.mEnergy.value),
       strengthTrend: els.mStrength.value,
+      restDay: !!(els.mRestDay && els.mRestDay.checked),
       notes: els.mNotes.value.trim(),
       custom,
       updatedAt: Date.now(),
     };
     const hasAny = data.weight !== null || data.waist !== null || data.energy !== null ||
-      data.strengthTrend || data.notes || Object.keys(custom).length > 0;
+      data.strengthTrend || data.notes || data.restDay || Object.keys(custom).length > 0;
     if (!hasAny) delete state.measurements[wk];
     else state.measurements[wk] = data;
     save();
@@ -11679,6 +11684,7 @@
     if (!state.measurements[wk]) {
       els.mWeight.value = els.mWaist.value = els.mEnergy.value = els.mNotes.value = "";
       els.mStrength.value = "";
+      if (els.mRestDay) els.mRestDay.checked = false;
       return;
     }
     if (!confirm("Clear this entry?")) return;
