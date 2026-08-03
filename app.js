@@ -3040,6 +3040,17 @@
   }
   const SLEEP_BRIDGE_MS = 90 * 60 * 1000;   // join segments separated by a short awakening
   const SLEEP_NIGHT_WINDOW_MS = 20 * 3600 * 1000; // "last night" = ended within ~20h
+  // A stable key identifying which device/app reported a sleep session, so the
+  // same night from multiple sources (phone + watch + Fitbit) isn't summed.
+  function sleepSourceKey(p) {
+    const s = (p && (p.sleep || p.value)) || p || {};
+    const ds = (p && p.dataSource) || s.dataSource || {};
+    const dev = ds.device || {};
+    const app = ds.application || {};
+    const key = [ds.platform || "", ds.streamName || ds.streamId || "", app.packageName || "",
+      dev.manufacturer || "", dev.model || dev.type || ""].join("|");
+    return key.replace(/\|/g, "") ? key : "single";
+  }
   // Hours slept LAST NIGHT from the recent sleep dataPoints.
   //
   // We must not simply sum every dataPoint's duration: the same night is often
@@ -3056,33 +3067,47 @@
   //      block. Duration-only points (no timestamps) are a rare fallback.
   function recentSleepHours(dataPoints, hoursBack) {
     const cutoff = Date.now() - (hoursBack || 40) * 3600 * 1000;
-    const intervals = [];
+    const pts = [];
     let looseSec = 0;
     for (const p of (dataPoints || [])) {
       if (!p) continue;
       const end = sleepSessionEndMs(p);
       if (end && end < cutoff) continue; // older than the collection window
       const start = sleepSessionStartMs(p);
-      if (start && end && end > start) intervals.push([start, end]);
-      else looseSec += sleepSessionSeconds(p); // no usable timeline → add duration
+      // sec = time actually ASLEEP (activeDuration/duration), NOT time in bed;
+      // fall back to the interval span only when no duration is reported.
+      const sec = sleepSessionSeconds(p) || (start && end && end > start ? (end - start) / 1000 : 0);
+      if (start && end && end > start) pts.push({ start, end, sec, src: sleepSourceKey(p) });
+      else looseSec += sec; // no usable timeline → add duration
     }
-    if (!intervals.length) return Math.round((looseSec / 3600) * 10) / 10;
-    intervals.sort((a, b) => a[0] - b[0]);
+    if (!pts.length) return Math.round((looseSec / 3600) * 10) / 10;
+    pts.sort((a, b) => a.start - b.start);
+    // Merge overlapping / near-adjacent intervals into contiguous sleep blocks
+    // (collapses duplicate sources + stage segments; bridges short awakenings).
     const blocks = [];
-    let curStart = intervals[0][0], curEnd = intervals[0][1];
-    for (let i = 1; i < intervals.length; i++) {
-      const iv = intervals[i];
-      if (iv[0] <= curEnd + SLEEP_BRIDGE_MS) { if (iv[1] > curEnd) curEnd = iv[1]; } // same block
-      else { blocks.push([curStart, curEnd]); curStart = iv[0]; curEnd = iv[1]; }
+    let cur = { start: pts[0].start, end: pts[0].end, pts: [pts[0]] };
+    for (let i = 1; i < pts.length; i++) {
+      const p = pts[i];
+      if (p.start <= cur.end + SLEEP_BRIDGE_MS) { if (p.end > cur.end) cur.end = p.end; cur.pts.push(p); }
+      else { blocks.push(cur); cur = { start: p.start, end: p.end, pts: [p] }; }
     }
-    blocks.push([curStart, curEnd]);
+    blocks.push(cur);
+    // Last night's block: longest span that ended within ~20h, else most recent.
     const nightCut = Date.now() - SLEEP_NIGHT_WINDOW_MS;
     let best = null;
-    for (const b of blocks) { // longest block that ended within the last ~20h
-      if (b[1] >= nightCut && (!best || (b[1] - b[0]) > (best[1] - best[0]))) best = b;
+    for (const b of blocks) {
+      if (b.end >= nightCut && (!best || (b.end - b.start) > (best.end - best.start))) best = b;
     }
-    if (!best) best = blocks.reduce((m, b) => (b[1] > m[1] ? b : m), blocks[0]); // else most recent
-    return Math.round(((best[1] - best[0]) / 3600000) * 10) / 10;
+    if (!best) best = blocks.reduce((m, b) => (b.end > m.end ? b : m), blocks[0]);
+    // Hours ASLEEP: sum each source's reported durations, then take the LARGEST
+    // source so the same night from multiple devices isn't double-counted.
+    const bySrc = {};
+    for (const p of best.pts) bySrc[p.src] = (bySrc[p.src] || 0) + p.sec;
+    let sec = Math.max(...Object.values(bySrc));
+    // Never report more than the time actually in bed for that block.
+    const span = (best.end - best.start) / 1000;
+    if (sec > span) sec = span;
+    return Math.round((sec / 3600) * 10) / 10;
   }
   function isSleepHabit(habit) { return /\bsleep\b/i.test((habit && habit.name) || ""); }
   // A habit that tracks skin/body temperature (Fitbit's nightly skin-temp value).
@@ -12868,7 +12893,7 @@
       translate, availableLangs, b64url,
       buildGoogleAuthUrl, googleTodayFilter, mapExerciseDataPoints, sumStepsDataPoints, latestWeightKg,
       mapSleepHours, parseDurationSeconds, mapWorkoutSessions, workoutHabitMatch,
-      recentSleepHours, sleepSessionSeconds, sleepSessionEndMs, sleepSessionStartMs, ghScopeHint,
+      recentSleepHours, sleepSessionSeconds, sleepSessionEndMs, sleepSessionStartMs, sleepSourceKey, ghScopeHint,
       isWorkoutHabit, isSleepHabit, isTempHabit, latestSkinTempDeltaC, fmtSkinTemp,
       buildAllCsv, finalizeMissedStepGoals, stepHabitKind,
       calorieForecast, estimateMaintenanceKcal, mifflinBmr, groupExerciseKcalByDay, groupActiveEnergyByDay, bmiFrom, calorieAudit, goalInsight,

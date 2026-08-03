@@ -168,11 +168,32 @@ console.log("recentSleepHours (client-side windowing)");
   const withNap = T.recentSleepHours([mainSleep, nap], 40);
   assert(withNap === 7, "picks the longer overnight block over a recent nap (got " + withNap + ")");
 
-  // A mid-night awakening (< 90 min gap) is bridged into one night.
-  const before = { sleep: { interval: { startTime: iso(-8 * 3600 * 1000), endTime: iso(-5 * 3600 * 1000) } } }; // 3h
-  const after = { sleep: { interval: { startTime: iso(-4.5 * 3600 * 1000), endTime: iso(-2 * 3600 * 1000) } } }; // 2.5h, 30m gap
+  // A mid-night awakening (< 90 min gap) is bridged into one night, but the
+  // 30-min AWAKE gap is not counted as sleep — hours asleep = 3h + 2.5h = 5.5h.
+  const before = { sleep: { interval: { startTime: iso(-8 * 3600 * 1000), endTime: iso(-5 * 3600 * 1000) } } }; // 3h asleep
+  const after = { sleep: { interval: { startTime: iso(-4.5 * 3600 * 1000), endTime: iso(-2 * 3600 * 1000) } } }; // 2.5h asleep, 30m gap
   const bridged = T.recentSleepHours([before, after], 40);
-  assert(bridged === 6, "30-min awakening bridged -> 8h-2h span = 6h (got " + bridged + ")");
+  assert(bridged === 5.5, "30-min awakening bridged but not counted -> 3h + 2.5h = 5.5h asleep (got " + bridged + ")");
+
+  // THE CORE FIX: a session reports time IN BED (10.6h interval) but only
+  // 4h14m actually ASLEEP via activeDuration. We must report the asleep time.
+  const inBed = { dataSource: { platform: "FITBIT" },
+    sleep: { activeDuration: "15240s", interval: { startTime: iso(-11 * 3600 * 1000), endTime: iso(-0.4 * 3600 * 1000) } } };
+  const asleep = T.recentSleepHours([inBed], 40);
+  assert(asleep >= 4.2 && asleep <= 4.3, "reports 4h14m asleep, NOT the 10.6h in-bed span (got " + asleep + ")");
+
+  // Same night from two DIFFERENT sources, each with its own activeDuration →
+  // take the larger source, don't sum (would be double-counting).
+  const watch = { dataSource: { platform: "HEALTH_KIT", device: { manufacturer: "Apple" } },
+    sleep: { activeDuration: "15000s", interval: { startTime: iso(-11 * 3600 * 1000), endTime: iso(-0.5 * 3600 * 1000) } } };
+  const fitbit = { dataSource: { platform: "FITBIT" },
+    sleep: { activeDuration: "15240s", interval: { startTime: iso(-11 * 3600 * 1000), endTime: iso(-0.4 * 3600 * 1000) } } };
+  const twoSrc = T.recentSleepHours([watch, fitbit], 40);
+  assert(twoSrc >= 4.2 && twoSrc <= 4.3, "two sources of same night → larger source ~4.23h, not summed (got " + twoSrc + ")");
+
+  // sleepSourceKey distinguishes sources but collapses source-less points.
+  assert(T.sleepSourceKey({ dataSource: { platform: "FITBIT" } }) !== T.sleepSourceKey({ dataSource: { platform: "HEALTH_KIT" } }), "different platforms → different keys");
+  assert(T.sleepSourceKey({}) === "single", "no source info → 'single'");
 }
 
 console.log("ghScopeHint");
