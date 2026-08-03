@@ -11764,9 +11764,19 @@
    * Settings
    * ================================================================ */
 
+  // Is the app running as an installed PWA (Home Screen / standalone)?
+  function isInstalledStandalone() {
+    try {
+      return (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
+        window.navigator.standalone === true;
+    } catch (e) { return false; }
+  }
   function hydrateSettings() {
     const els = getEls();
     if (!els.syncTokenInput) return;
+    // The install guide is only useful before install — hide it once installed.
+    const installCard = document.getElementById("installHelpCard");
+    if (installCard) installCard.hidden = isInstalledStandalone();
     els.syncTokenInput.value = localStorage.getItem(KEYS.syncToken) || "";
     els.syncGistIdInput.value = localStorage.getItem(KEYS.syncGistId) || "";
     els.autoSyncToggle.checked = isAutoSyncEnabled();
