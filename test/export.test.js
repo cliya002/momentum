@@ -142,6 +142,10 @@ console.log("calorieAudit (accuracy diagnostics)");
   // Using Google → clean recommendation.
   const aG = T.calorieAudit({ weightLb: 200, caloriesIn: 2000, baseBurn: 2400, exerciseBurn: 0, usingGoogle: true, googleAvg: 2400 });
   assert(aG.recommendation.toLowerCase().includes("most accurate") || aG.recommendation.includes("✓"), "using Google → most accurate");
+  // Big deficit WHILE using Google's measured burn → blame intake, not maintenance.
+  const aBig = T.calorieAudit({ weightLb: 240, caloriesIn: 1400, baseBurn: 3842, exerciseBurn: 0, usingGoogle: true, googleAvg: 3842 });
+  assert(has(aBig, "intake looks very low"), "big deficit + Google → points at intake, not maintenance");
+  assert(!has(aBig, "maintenance/height"), "does NOT blame maintenance/height when using measured burn");
   // Very low intake warning.
   const aLow = T.calorieAudit({ weightLb: 160, caloriesIn: 900, baseBurn: 2200, exerciseBurn: 0, heightCm: 170 });
   assert(has(aLow, "very low"), "flags very low intake");

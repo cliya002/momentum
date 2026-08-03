@@ -10773,8 +10773,15 @@
     const deficit = (usingGoogle ? base : base + exer) - inK;
     if (inK > 0) {
       const lbWk = Math.abs((deficit / 3500) * 7);
-      if (Math.abs(deficit) > 1500) add("warn", `A ${Math.abs(Math.round(deficit))} kcal/day gap is unrealistic to sustain — check your numbers.`);
-      else if (deficit > 0 && (lbWk > 2 || (lbWk / w) * 100 > 1)) add("warn", "Projected loss is aggressive — ~0.5–1% of bodyweight/week is more sustainable.");
+      if (Math.abs(deficit) > 1500) {
+        // With a measured burn, a big gap points at intake (too low / underlogged),
+        // not the maintenance number (which is trusted).
+        add("warn", usingGoogle
+          ? `A ${Math.abs(Math.round(deficit))} kcal/day gap is very large — your intake looks very low (or underlogged) vs your measured burn. Sustainable loss is ~0.5–1%/week.`
+          : `A ${Math.abs(Math.round(deficit))} kcal/day gap is unrealistic to sustain — check your inputs (likely maintenance/height).`);
+      } else if (deficit > 0 && (lbWk > 2 || (lbWk / w) * 100 > 1)) {
+        add("warn", "Projected loss is aggressive — ~0.5–1% of bodyweight/week is more sustainable.");
+      }
     }
     if (googleAvg != null && !usingGoogle) {
       const est = base + exer;
@@ -10928,7 +10935,9 @@
     const lbPerWeek = Math.abs((f.deficit / KCAL_PER_LB) * 7);
     const pctPerWeek = weightLb > 0 ? (lbPerWeek / weightLb) * 100 : 0;
     let caution = "";
-    if (Math.abs(f.deficit) > 1500) caution = ` · ⚠️ ${Math.abs(Math.round(f.deficit))} kcal/day is unrealistic — check your inputs (likely maintenance/height)`;
+    if (Math.abs(f.deficit) > 1500) caution = usingGoogle
+      ? ` · ⚠️ very large — intake looks very low vs your measured burn`
+      : ` · ⚠️ ${Math.abs(Math.round(f.deficit))} kcal/day is unrealistic — check your inputs (likely maintenance/height)`;
     else if (losing && (lbPerWeek > 2 || pctPerWeek > 1)) caution = " · ⚠️ aggressive — sustainable loss is ~0.5–1%/week";
     balEl.innerHTML = `<span class="${cls}">${Math.abs(Math.round(f.deficit))} kcal/day ${word}</span>` +
       `<span class="cal-sub">${losing ? "Losing" : "Gaining"} about ${Math.abs(f.perWeekDisp)} ${f.unit}/week to start · ${method}${caution}</span>`;
