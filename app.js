@@ -3009,6 +3009,21 @@
   function sleepSessionSeconds(p) {
     if (!p) return 0;
     const s = p.sleep || p.value || p;
+    // Fitbit "STAGES" sessions carry no duration field — sum the non-AWAKE
+    // stages so we count time ASLEEP, not time in bed.
+    const stages = (s && s.stages) || p.stages;
+    if (Array.isArray(stages) && stages.length) {
+      let stageSec = 0;
+      for (const st of stages) {
+        const type = String((st && (st.type || st.stage)) || "").toUpperCase();
+        if (/AWAKE|WAKE|RESTLESS/.test(type)) continue; // awake time isn't sleep
+        const a = st.startTime ? Date.parse(st.startTime) : 0;
+        const b = st.endTime ? Date.parse(st.endTime) : 0;
+        if (a && b && b > a) stageSec += (b - a) / 1000;
+        else stageSec += parseDurationSeconds(st.duration || st.activeDuration);
+      }
+      if (stageSec > 0) return stageSec;
+    }
     let sec = parseDurationSeconds(s.activeDuration) || parseDurationSeconds(s.duration) || parseDurationSeconds(p.activeDuration);
     if (!sec) {
       const iv = s.interval || p.interval || {};
@@ -3038,7 +3053,10 @@
     if (p.startTime) return Date.parse(p.startTime) || 0;
     return 0;
   }
-  const SLEEP_BRIDGE_MS = 90 * 60 * 1000;   // join segments separated by a short awakening
+  // Join sleep sessions into one "night" when the awake gap between them is
+  // short enough — 3.5h covers a fragmented night (wake up, back to sleep)
+  // while still keeping a genuine afternoon nap (hours later) separate.
+  const SLEEP_BRIDGE_MS = 3.5 * 3600 * 1000;
   const SLEEP_NIGHT_WINDOW_MS = 20 * 3600 * 1000; // "last night" = ended within ~20h
   // A stable key identifying which device/app reported a sleep session, so the
   // same night from multiple sources (phone + watch + Fitbit) isn't summed.
@@ -3092,22 +3110,26 @@
       else { blocks.push(cur); cur = { start: p.start, end: p.end, pts: [p] }; }
     }
     blocks.push(cur);
-    // Last night's block: longest span that ended within ~20h, else most recent.
+    // Hours ASLEEP in a block: sum each source's durations (so distinct sleep
+    // periods within the night add up), then take the LARGEST source so the
+    // same night reported by multiple devices isn't double-counted. Never more
+    // than the in-bed span of the block.
+    const blockAsleepSec = (b) => {
+      const bySrc = {};
+      for (const p of b.pts) bySrc[p.src] = (bySrc[p.src] || 0) + p.sec;
+      const sec = Math.max(...Object.values(bySrc));
+      return Math.min(sec, (b.end - b.start) / 1000);
+    };
+    // Last night's block: the most sleep that ended within ~20h, else most recent.
     const nightCut = Date.now() - SLEEP_NIGHT_WINDOW_MS;
-    let best = null;
+    let best = null, bestSec = -1;
     for (const b of blocks) {
-      if (b.end >= nightCut && (!best || (b.end - b.start) > (best.end - best.start))) best = b;
+      if (b.end < nightCut) continue;
+      const sec = blockAsleepSec(b);
+      if (sec > bestSec) { best = b; bestSec = sec; }
     }
-    if (!best) best = blocks.reduce((m, b) => (b.end > m.end ? b : m), blocks[0]);
-    // Hours ASLEEP: sum each source's reported durations, then take the LARGEST
-    // source so the same night from multiple devices isn't double-counted.
-    const bySrc = {};
-    for (const p of best.pts) bySrc[p.src] = (bySrc[p.src] || 0) + p.sec;
-    let sec = Math.max(...Object.values(bySrc));
-    // Never report more than the time actually in bed for that block.
-    const span = (best.end - best.start) / 1000;
-    if (sec > span) sec = span;
-    return Math.round((sec / 3600) * 10) / 10;
+    if (!best) { best = blocks.reduce((m, b) => (b.end > m.end ? b : m), blocks[0]); bestSec = blockAsleepSec(best); }
+    return Math.round((bestSec / 3600) * 10) / 10;
   }
   function isSleepHabit(habit) { return /\bsleep\b/i.test((habit && habit.name) || ""); }
   // A habit that tracks skin/body temperature (Fitbit's nightly skin-temp value).

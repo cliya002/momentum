@@ -194,6 +194,30 @@ console.log("recentSleepHours (client-side windowing)");
   // sleepSourceKey distinguishes sources but collapses source-less points.
   assert(T.sleepSourceKey({ dataSource: { platform: "FITBIT" } }) !== T.sleepSourceKey({ dataSource: { platform: "HEALTH_KIT" } }), "different platforms → different keys");
   assert(T.sleepSourceKey({}) === "single", "no source info → 'single'");
+
+  // Fitbit STAGES session (no duration field): count non-AWAKE stages, not the
+  // in-bed span. 5h in bed with 1h total awake → 4h asleep.
+  const stagesSession = { dataSource: { platform: "FITBIT" }, sleep: { type: "STAGES",
+    interval: { startTime: iso(-6 * 3600 * 1000), endTime: iso(-1 * 3600 * 1000) }, // 5h in bed
+    stages: [
+      { type: "AWAKE", startTime: iso(-6 * 3600 * 1000), endTime: iso(-5.5 * 3600 * 1000) },   // 30m awake
+      { type: "LIGHT", startTime: iso(-5.5 * 3600 * 1000), endTime: iso(-3 * 3600 * 1000) },    // 2.5h
+      { type: "DEEP",  startTime: iso(-3 * 3600 * 1000), endTime: iso(-1.5 * 3600 * 1000) },    // 1.5h
+      { type: "AWAKE", startTime: iso(-1.5 * 3600 * 1000), endTime: iso(-1 * 3600 * 1000) },    // 30m awake
+    ] } };
+  assert(T.sleepSessionSeconds(stagesSession) === 4 * 3600, "sums non-AWAKE stages = 4h (excludes 1h awake)");
+  assert(T.recentSleepHours([stagesSession], 40) === 4, "STAGES session → 4h asleep, not the 5h in-bed span");
+
+  // Fragmented night (the real bug): two sessions 3.4h apart — woke up, then
+  // back to sleep — belong to the same night and must SUM, not report one.
+  const s1 = { dataSource: { platform: "FITBIT" }, sleep: { type: "STAGES",
+    interval: { startTime: iso(-11 * 3600 * 1000), endTime: iso(-7 * 3600 * 1000) },
+    stages: [{ type: "LIGHT", startTime: iso(-11 * 3600 * 1000), endTime: iso(-7 * 3600 * 1000) }] } }; // 4h asleep
+  const s2 = { dataSource: { platform: "FITBIT" }, sleep: { type: "STAGES",
+    interval: { startTime: iso(-3.6 * 3600 * 1000), endTime: iso(-0.6 * 3600 * 1000) },
+    stages: [{ type: "LIGHT", startTime: iso(-3.6 * 3600 * 1000), endTime: iso(-0.6 * 3600 * 1000) }] } }; // 3h asleep
+  const frag = T.recentSleepHours([s1, s2], 40);
+  assert(frag === 7, "fragmented night (3.4h gap) sums both sessions → 7h (got " + frag + ")");
 }
 
 console.log("ghScopeHint");
