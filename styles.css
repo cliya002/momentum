@@ -1402,6 +1402,7 @@ body.compact .habit-list { gap: 0.35rem; }
 }
 .history-btn:hover { background: var(--card-soft); color: var(--text); }
 .history-btn.del:hover { color: var(--danger); }
+.history-btn.on { color: #a855f7; font-weight: 600; }
 .trend-chart svg { width: 100%; height: 100%; }
 
 .measurement-history { display: flex; flex-direction: column; }

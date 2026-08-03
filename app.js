@@ -11352,12 +11352,14 @@
     // Returns [{weekKey, value}] sorted by weekKey. Progress = body metrics only.
     const list = measurementList();
     const conv = metric === "weight" ? wDisp : metric === "waist" ? lDisp : (x) => x;
+    const heightCm = (loadCalorie().profile || {}).heightCm || 0;
     return list
       .map((e) => {
         let v = null;
         if (metric === "weight") v = e.weight;
         else if (metric === "waist") v = e.waist;
         else if (metric === "energy") v = e.energy;
+        else if (metric === "bmi") { const b = bmiFrom(e.weight, heightCm); v = b ? b.bmi : null; return v == null ? null : { weekKey: e.weekKey, value: v }; }
         else if (metric.startsWith("cm:")) v = e.custom ? e.custom[metric.slice(3)] : null;
         return v == null ? null : { weekKey: e.weekKey, value: conv(v) };
       })
@@ -11372,6 +11374,7 @@
       { v: "waist", label: `Waist (${lUnit()})` },
       { v: "energy", label: "Energy" },
     ];
+    if (((loadCalorie().profile || {}).heightCm || 0) > 0) opts.push({ v: "bmi", label: "BMI" });
     for (const cm of state.customMetrics) opts.push({ v: "cm:" + cm.id, label: cm.name + (cm.unit ? ` (${cm.unit})` : "") });
     // Preserve selection if still valid
     if (!opts.some((o) => o.v === trendMetric)) trendMetric = "weight";
@@ -11640,6 +11643,11 @@
       right.appendChild(delta);
       const actions = document.createElement("div");
       actions.className = "history-actions";
+      const restBtn = document.createElement("button");
+      restBtn.className = "history-btn" + (m.restDay ? " on" : "");
+      restBtn.textContent = m.restDay ? "😴 Rest ✓" : "😴 Rest";
+      restBtn.title = "Tag this day as a rest / recovery day";
+      restBtn.addEventListener("click", () => toggleRestDay(m.weekKey));
       const editBtn = document.createElement("button");
       editBtn.className = "history-btn";
       editBtn.textContent = "Edit";
@@ -11658,6 +11666,7 @@
         save();
         renderProgress();
       });
+      actions.appendChild(restBtn);
       actions.appendChild(editBtn);
       actions.appendChild(delBtn);
       right.appendChild(actions);
