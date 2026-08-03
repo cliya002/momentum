@@ -11552,18 +11552,28 @@
 
     const w = 320, h = 160, padX = 24, padY = 20;
     const weights = recent.map((r) => r.value);
-    // Include the goal value in the scale so the goal line is visible.
     const goalVal = (trendMetric === "weight" && state.goal) ? wDisp(state.goal.targetWeight) : null;
-    const scaleVals = goalVal !== null ? [...weights, goalVal] : weights;
-    const min = Math.min(...scaleVals);
-    const max = Math.max(...scaleVals);
+    // Scale the Y-axis to the DATA range only, so the goal (which may be far
+    // away) never squishes the actual line into a flat sliver.
+    let dMin = Math.min(...weights);
+    let dMax = Math.max(...weights);
+    const dSpan = Math.max(0.5, dMax - dMin);
+    // Only fold the goal into the scale when it sits near the data; otherwise
+    // it stays off-chart and is shown as a text annotation instead.
+    const goalInView = goalVal !== null &&
+      goalVal >= dMin - dSpan * 0.5 && goalVal <= dMax + dSpan * 0.5;
+    if (goalInView) { dMin = Math.min(dMin, goalVal); dMax = Math.max(dMax, goalVal); }
+    // Pad ~8% top & bottom so points aren't glued to the chart edges.
+    const yPad = Math.max(0.25, (dMax - dMin) * 0.08);
+    const min = dMin - yPad;
+    const max = dMax + yPad;
     const range = Math.max(0.5, max - min);
     const stepX = (w - padX * 2) / Math.max(1, recent.length - 1);
     const yFor = (v) => padY + ((max - v) / range) * (h - padY * 2);
     const points = recent.map((r, i) => ({ x: padX + i * stepX, y: yFor(r.value), value: r.value, weekKey: r.weekKey }));
     const SVGNS = "http://www.w3.org/2000/svg";
     const showAvgLegend = recent.length >= 3;
-    const showGoalLegend = goalVal !== null;
+    const showGoalLegend = goalInView;
 
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
@@ -11625,12 +11635,12 @@
     minLabel.setAttribute("x", 4); minLabel.setAttribute("y", h - padY + 4);
     minLabel.setAttribute("fill", "currentColor"); minLabel.setAttribute("opacity", "0.55");
     minLabel.setAttribute("font-size", "10");
-    minLabel.textContent = round1(min);
+    minLabel.textContent = round1(dMin);
     const maxLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
     maxLabel.setAttribute("x", 4); maxLabel.setAttribute("y", padY);
     maxLabel.setAttribute("fill", "currentColor"); maxLabel.setAttribute("opacity", "0.55");
     maxLabel.setAttribute("font-size", "10");
-    maxLabel.textContent = round1(max);
+    maxLabel.textContent = round1(dMax);
     svg.appendChild(minLabel); svg.appendChild(maxLabel);
 
     // ---- Rolling 3-point average line (dashed teal) ----
@@ -11652,7 +11662,7 @@
     }
 
     // ---- Goal line + projection (weight only) ----
-    if (goalVal !== null) {
+    if (goalInView) {
       const gy = yFor(goalVal);
       const gLine = document.createElementNS(SVGNS, "line");
       gLine.setAttribute("x1", padX); gLine.setAttribute("x2", w - padX);
@@ -11661,7 +11671,9 @@
       gLine.setAttribute("stroke-width", "1.5");
       gLine.setAttribute("stroke-dasharray", "4 3");
       svg.appendChild(gLine);
-      // Projection: dashed line from last point toward the goal, based on avg weekly change
+      // Projection: dashed line from last point toward the goal, based on avg weekly change.
+      // Only draw when the trend actually reaches the goal within the chart width,
+      // so we never leave a near-vertical stub at the last point.
       const wl = measurementsWithWeight();
       if (wl.length >= 2) {
         const weeks = wl.length - 1;
@@ -11669,18 +11681,29 @@
         const lastPt = points[points.length - 1];
         if (avgWk !== 0 && Math.sign(avgWk) === Math.sign(goalVal - lastPt.value)) {
           const weeksLeft = Math.abs((goalVal - lastPt.value) / avgWk);
-          // Extend the x a little to indicate future direction
-          const projX = Math.min(w - padX, lastPt.x + Math.min(weeksLeft, 6) * stepX);
-          const proj = document.createElementNS(SVGNS, "path");
-          proj.setAttribute("d", `M ${lastPt.x} ${lastPt.y} L ${projX} ${gy}`);
-          proj.setAttribute("stroke", "#f59e0b");
-          proj.setAttribute("stroke-width", "2");
-          proj.setAttribute("stroke-dasharray", "2 3");
-          proj.setAttribute("fill", "none");
-          proj.setAttribute("opacity", "0.8");
-          svg.appendChild(proj);
+          const projX = lastPt.x + Math.min(weeksLeft, 6) * stepX;
+          // Skip if the goal would be reached essentially at the last point (avoids a vertical stub).
+          if (projX - lastPt.x > stepX * 0.4) {
+            const proj = document.createElementNS(SVGNS, "path");
+            proj.setAttribute("d", `M ${lastPt.x} ${lastPt.y} L ${Math.min(w - padX, projX)} ${gy}`);
+            proj.setAttribute("stroke", "#f59e0b");
+            proj.setAttribute("stroke-width", "2");
+            proj.setAttribute("stroke-dasharray", "2 3");
+            proj.setAttribute("fill", "none");
+            proj.setAttribute("opacity", "0.8");
+            svg.appendChild(proj);
+          }
         }
       }
+    } else if (goalVal !== null) {
+      // Goal is off the current data scale — annotate it as text instead of a line.
+      const ann = document.createElementNS(SVGNS, "text");
+      ann.setAttribute("x", w - padX); ann.setAttribute("y", padY - 8);
+      ann.setAttribute("text-anchor", "end");
+      ann.setAttribute("fill", "#f59e0b"); ann.setAttribute("opacity", "0.9");
+      ann.setAttribute("font-size", "10");
+      ann.textContent = `Goal ${round1(goalVal)} ${wUnit()}`;
+      svg.appendChild(ann);
     }
 
     els.trendChart.appendChild(svg);
