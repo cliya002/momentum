@@ -11124,6 +11124,13 @@
     for (let i = 0; i < days; i++) sum += Number((byDay || {})[dateKey(addDays(new Date(), -i))]) || 0;
     return Math.round(sum / days);
   }
+  // The daily exercise burn the forecast should use, per the chosen basis:
+  //   "today" → today's logged exercise kcal; otherwise the 14-day average.
+  function effectiveExerciseBurn(c) {
+    const byDay = (c || {}).exerciseByDay || {};
+    if (c && c.exerciseBasis === "today") return Number(byDay[dateKey(new Date())]) || 0;
+    return avgExerciseKcal(byDay, 14);
+  }
   // Title-case an exercise type like "stair_climbing_machine" → "Stair Climbing Machine".
   function prettyExerciseType(t) {
     return String(t || "").replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase()).trim();
@@ -11138,7 +11145,30 @@
       const hasHistory = c.exerciseByDay && Object.keys(c.exerciseByDay).length > 0;
       if (hasHistory) {
         todayEl.hidden = false;
-        todayEl.innerHTML = `<span class="cal-today-val">🔥 ${todayBurn} kcal</span><span class="cal-today-label">burned in today's exercise</span>`;
+        const avg14 = avgExerciseKcal(c.exerciseByDay, 14);
+        const usingToday = c.exerciseBasis === "today";
+        let ctrl;
+        if (c.useGoogle) {
+          ctrl = `<div class="cal-today-basis">Already included in Google's measured burn.</div>`;
+        } else {
+          ctrl = `<div class="cal-today-basis">Forecast burn: <b>${usingToday ? `today's ${todayBurn}` : `14-day avg ${avg14}`} kcal/day</b> · ` +
+            `<button type="button" id="calBasisToggle" class="linklike">${usingToday ? "use 14-day average" : "project from today's burn"}</button></div>`;
+        }
+        todayEl.innerHTML = `<span class="cal-today-val">🔥 ${todayBurn} kcal</span><span class="cal-today-label">burned in today's exercise</span>${ctrl}`;
+        const tog = document.getElementById("calBasisToggle");
+        if (tog) tog.addEventListener("click", () => {
+          const cc = loadCalorie();
+          cc.exerciseBasis = cc.exerciseBasis === "today" ? "avg" : "today";
+          cc.exerciseBurn = effectiveExerciseBurn(cc);
+          cc.updatedAt = Date.now();
+          saveCalorie(cc);
+          const exEl2 = document.getElementById("calExercise");
+          if (exEl2) exEl2.value = cc.exerciseBurn;
+          renderCalorieForecast();
+          showToast(cc.exerciseBasis === "today"
+            ? `Projecting from today's exercise burn (${cc.exerciseBurn} kcal/day).`
+            : `Using your 14-day average burn (${cc.exerciseBurn} kcal/day).`, "success");
+        });
       } else {
         todayEl.hidden = true;
       }
@@ -11199,10 +11229,11 @@
       // In "Google measured burn" mode, workouts are already included in the
       // total — so we DON'T add them to the forecast (would double-count). We
       // still store the sessions/history for the list + today's-burn readout.
-      if (!c.useGoogle) c.exerciseBurn = avg;
+      // Otherwise the forecast burn follows the chosen basis (today vs 14-day avg).
+      if (!c.useGoogle) c.exerciseBurn = effectiveExerciseBurn(c);
       c.updatedAt = Date.now();
       saveCalorie(c);
-      if (!c.useGoogle) { const exEl = document.getElementById("calExercise"); if (exEl) exEl.value = avg; }
+      if (!c.useGoogle) { const exEl = document.getElementById("calExercise"); if (exEl) exEl.value = c.exerciseBurn; }
       renderCalorieForecast();
       const nDays = Object.keys(byDay).length;
       const today = byDay[dateKey(new Date())] || 0;
@@ -13164,7 +13195,7 @@
       metricNumber, dailyPointMs, recoveryScore, seriesBaseline, recoveryTrend,
       isRecoveryHabit, isRhrHabit, isHrvHabit, isSpo2Habit, buildAllCsv, finalizeMissedStepGoals, stepHabitKind,
       calorieForecast, estimateMaintenanceKcal, mifflinBmr, groupExerciseKcalByDay, groupActiveEnergyByDay, bmiFrom, calorieAudit, goalInsight,
-      computeRestImpact, latestGoogleTotal, avgByDayComplete,
+      computeRestImpact, latestGoogleTotal, avgByDayComplete, avgExerciseKcal, effectiveExerciseBurn,
       getState: () => state, setState: (s) => { state = s; },
     };
   }
