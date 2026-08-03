@@ -61,6 +61,7 @@
     collapseToday: "ht_collapse_today",
     recovery: "ht_recovery", // recovery snapshots by day (device-local, not synced)
     calorie: "ht_calorie",   // calorie balance inputs (device-local)
+    lastFinalize: "ht_last_finalize", // last day missed step-goals were finalized
   };
   const DEFAULT_CATEGORIES = ["Fitness","Nutrition","Sleep","Supplements","Custom"];
   // Fallback color/icon per default category (used until the user customizes).
@@ -3277,6 +3278,33 @@
     if (habit.type === "count" && /step/i.test(n)) return "allday";
     return null;
   }
+  // At day rollover, mark step-goal habits (Morning/Evening walk, step goals)
+  // as NOT DONE for any past day that ended without meeting the target — so an
+  // unmet goal shows as a miss instead of lingering as "pending". Skips today,
+  // days before the habit existed, rest days (frozen), and days already
+  // done/marked. Runs at most once per day. Device-local flag.
+  function finalizeMissedStepGoals() {
+    const todayK = dateKey(new Date());
+    if (localStorage.getItem(KEYS.lastFinalize) === todayK) return;
+    const stepHabits = (state.habits || []).filter((h) => !h.archived && stepHabitKind(h));
+    let changed = false;
+    for (const h of stepHabits) {
+      const createdK = h.createdAt ? dateKey(new Date(h.createdAt)) : null;
+      for (let i = 1; i <= 14; i++) {           // yesterday back to 14 days
+        const d = addDays(new Date(), -i);
+        const dk = dateKey(d);
+        if (createdK && dk < createdK) continue; // before the habit existed
+        if (!isHabitActiveOn(h, d)) continue;    // not scheduled that day
+        if (isFrozen(h.id, d)) continue;         // rest/vacation/freeze → neutral
+        if (isCompleted(h, d)) continue;         // met the goal
+        if (isSkipped(h, d)) continue;           // already marked not done
+        setCompletionValue(h.id, d, SKIPPED);    // unmet → not done
+        changed = true;
+      }
+    }
+    localStorage.setItem(KEYS.lastFinalize, todayK);
+    if (changed) resetRenderCaches();
+  }
   // Build the steps filter for a window: morning = midnight–noon, evening =
   // noon–end of day, allday = whole day.
   function stepsFilterFor(kind) {
@@ -5645,6 +5673,7 @@
 
   function renderToday() {
     const els = getEls();
+    finalizeMissedStepGoals(); // mark yesterday's unmet step goals as not done
     resetRenderCaches();
     els.todayGroups.innerHTML = "";
     const today = new Date();
@@ -13021,7 +13050,7 @@
       recentSleepHours, sleepSessionSeconds, sleepSessionEndMs, sleepSessionStartMs, ghScopeHint,
       isWorkoutHabit, isSleepHabit, isTempHabit, latestSkinTempDeltaC, fmtSkinTemp,
       metricNumber, dailyPointMs, recoveryScore, seriesBaseline, recoveryTrend,
-      isRecoveryHabit, isRhrHabit, isHrvHabit, isSpo2Habit, buildAllCsv,
+      isRecoveryHabit, isRhrHabit, isHrvHabit, isSpo2Habit, buildAllCsv, finalizeMissedStepGoals, stepHabitKind,
       calorieForecast, estimateMaintenanceKcal, mifflinBmr, groupExerciseKcalByDay, groupActiveEnergyByDay, bmiFrom, calorieAudit, goalInsight,
       getState: () => state, setState: (s) => { state = s; },
     };

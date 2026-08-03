@@ -202,6 +202,30 @@ console.log("calorieAudit (accuracy diagnostics)");
   assert(aOk.issues.some((i) => i.level === "ok"), "clean inputs → OK");
 }
 
+console.log("finalizeMissedStepGoals (unmet step goals → not done)");
+{
+  const store = { _: {}, getItem(k) { return this._[k] || null; }, setItem(k, v) { this._[k] = String(v); }, removeItem(k) { delete this._[k]; } };
+  global.localStorage = store;
+  const st = T.defaultState();
+  st.habits = [
+    { id: "w", name: "20,000 steps", category: "Fitness", type: "count", target: 20000, archived: false, createdAt: "2020-01-01T00:00:00Z" },
+    { id: "s", name: "Vitamin D", category: "Supplements", type: "count", target: 1, archived: false, createdAt: "2020-01-01T00:00:00Z" },
+    { id: "m", name: "Morning walk", category: "Fitness", type: "count", target: 10000, archived: false, createdAt: "2020-01-01T00:00:00Z" },
+  ];
+  const y = T.dateKey(T.addDays(new Date(), -1));
+  st.completions[y] = { w: 6000, m: 12000 };  // steps missed (6000<20000), morning walk met (12000>=10000)
+  T.setState(st);
+  T.finalizeMissedStepGoals();
+  const comps = T.getState().completions[y] || {};
+  assert(comps.w === -1, "unmet step goal yesterday → marked not done (-1) (" + comps.w + ")");
+  assert(comps.m === 12000, "a met step goal is left as-is (still done)");
+  assert(comps.s !== -1, "non-step habit (supplement) is not auto-marked");
+  const tk = T.dateKey(new Date());
+  const todayC = T.getState().completions[tk] || {};
+  assert(todayC.w !== -1, "today is never finalized (still in progress)");
+  delete global.localStorage;
+}
+
 console.log("goalInsight (goal-tracking sentence)");
 {
   // Losing toward a lower goal, good pace → ETA sentence with 'to go'.
