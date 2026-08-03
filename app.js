@@ -59,7 +59,6 @@
     ghHabitId: "ht_gh_habit_id",
     ghImportWeight: "ht_gh_import_weight",
     collapseToday: "ht_collapse_today",
-    recovery: "ht_recovery", // recovery snapshots by day (device-local, not synced)
     calorie: "ht_calorie",   // calorie balance inputs (device-local)
     lastFinalize: "ht_last_finalize", // last day missed step-goals were finalized
   };
@@ -3088,11 +3087,6 @@
   function isSleepHabit(habit) { return /\bsleep\b/i.test((habit && habit.name) || ""); }
   // A habit that tracks skin/body temperature (Fitbit's nightly skin-temp value).
   function isTempHabit(habit) { return /temperature|skin temp|body temp|\btemp\b/i.test((habit && habit.name) || ""); }
-  // Habits that map to recovery metrics (filled/checked on a Recovery sync).
-  function isRecoveryHabit(habit) { return /\brecovery\b|readiness/i.test((habit && habit.name) || ""); }
-  function isRhrHabit(habit) { return /resting\s*(heart\s*rate|hr)|\brhr\b/i.test((habit && habit.name) || ""); }
-  function isHrvHabit(habit) { return /\bhrv\b|heart\s*rate\s*variability/i.test((habit && habit.name) || ""); }
-  function isSpo2Habit(habit) { return /\bspo2\b|oxygen\s*saturation|blood\s*oxygen/i.test((habit && habit.name) || ""); }
   // A habit that maps to a logged workout (generic or a specific activity).
   function isWorkoutHabit(habit) {
     return /\b(workout|exercise|gym|training|cardio|treadmill|run(ning)?|jog|walk|hike|hiking|bike|biking|cycl\w*|spin|swim\w*|elliptical|row(ing)?|yoga|pilates|weights?|strength|hiit|aerobic|stair\w*|stepmill|stepper)\b/i.test((habit && habit.name) || "");
@@ -3444,321 +3438,6 @@
     }
     return null;
   }
-  // ---- Recovery metrics (device-local snapshot; GH data is per-account) ----
-  // Deep-scan a daily dataPoint for the first plausible numeric value in a
-  // range, skipping time/name/source keys. Robust to unknown field names since
-  // each metric is pulled from its own data-type endpoint (so the range is
-  // enough to identify the value). Pure + tested.
-  function metricNumber(p, lo, hi) {
-    let best = null;
-    // Skip time/name/source metadata and min/max bounds so we take the average.
-    const skip = /time|date|name|source|version|\bid\b|zone|offset|bound|lower|upper/i;
-    const walk = (o, depth) => {
-      if (best != null || !o || typeof o !== "object" || depth > 4) return;
-      for (const k of Object.keys(o)) {
-        if (skip.test(k)) continue;
-        const raw = o[k];
-        if (raw && typeof raw === "object") { walk(raw, depth + 1); continue; }
-        // Accept numbers and numeric strings (e.g. beatsPerMinute: "75").
-        const n = typeof raw === "number" ? raw
-          : (typeof raw === "string" && raw.trim() !== "" ? Number(raw) : NaN);
-        if (Number.isFinite(n) && n >= lo && n <= hi) { best = Math.round(n * 10) / 10; return; }
-      }
-    };
-    walk(p, 0);
-    return best;
-  }
-  // Timestamp (ms) of a daily dataPoint. Handles a plain string, a nested
-  // {physicalTime}, and the daily-rollup shape where the type-specific object
-  // holds date: {year, month, day}.
-  function dailyPointMs(p) {
-    if (!p || typeof p !== "object") return 0;
-    const fromTime = (c) => {
-      if (!c) return 0;
-      if (typeof c === "string") return Date.parse(c) || 0;
-      if (typeof c === "object" && c.physicalTime) return Date.parse(c.physicalTime) || 0;
-      return 0;
-    };
-    let t = fromTime(p.sampleTime) || fromTime(p.startTime) || fromTime(p.endTime) || fromTime(p.interval && p.interval.startTime);
-    if (t) return t;
-    for (const k of Object.keys(p)) {
-      const v = p[k];
-      if (v && typeof v === "object") {
-        const d = v.date;
-        if (d && typeof d === "object" && d.year) return new Date(d.year, (d.month || 1) - 1, d.day || 1).getTime();
-        const nested = fromTime(v.sampleTime);
-        if (nested) return nested;
-      }
-    }
-    return 0;
-  }
-  let recoveryDbg = {};
-  // Fetch a daily metric as a time series of {dateKey, value, ts}, sorted oldest
-  // → newest. Tries filter variants, falls back to unfiltered. Captures the
-  // newest raw dataPoint under `dbgKey` for diagnosing field shapes.
-  async function ghDailySeries(dataType, member, lo, hi, dbgKey) {
-    const path = `v4/users/me/dataTypes/${dataType}/dataPoints`;
-    const utc = isoHoursAgo(24 * 45);
-    const cands = [`${member}.start_time >= "${utc}"`, `${member}.sample_time >= "${utc}"`, null];
-    for (const f of cands) {
-      try {
-        const raw = await ghAllPages(path, f, 5);
-        const dps = raw.dataPoints || [];
-        const out = [];
-        let newest = null, newestTs = -1;
-        for (const p of dps) {
-          const ts = dailyPointMs(p);
-          if (ts >= newestTs) { newestTs = ts; newest = p; }
-          const v = metricNumber(p, lo, hi);
-          if (v == null || !ts) continue;
-          out.push({ ts, dateKey: dateKey(new Date(ts)), value: v });
-        }
-        out.sort((a, b) => a.ts - b.ts);
-        if (dbgKey) recoveryDbg[dbgKey] = { count: dps.length, value: out.length ? out[out.length - 1].value : null, newest: newest || dps[0] || null };
-        return out;
-      } catch (e) {
-        const msg = String((e && e.message) || e);
-        if (dbgKey) recoveryDbg[dbgKey] = { error: msg };
-        if (/INVALID_DATA_POINT_FILTER|filter/i.test(msg)) continue; // bad filter → try next
-        return []; // other error (e.g. scope) → stop
-      }
-    }
-    return [];
-  }
-  function ghRestingHrSeries() { return ghDailySeries("daily-resting-heart-rate", "daily_resting_heart_rate", 30, 120, "restingHr"); }
-  function ghHrvSeries()       { return ghDailySeries("daily-heart-rate-variability", "daily_heart_rate_variability", 3, 300, "hrvMs"); }
-  function ghSpo2Series()      { return ghDailySeries("daily-oxygen-saturation", "daily_oxygen_saturation", 70, 100, "spo2"); }
-  function ghRespRateSeries()  { return ghDailySeries("daily-respiratory-rate", "daily_respiratory_rate", 4, 45, "respRate"); }
-
-  // Personal rolling baseline: mean of the last `days` readings EXCLUDING the
-  // most recent (today), which is what recovery is scored against — WHOOP-style.
-  // Needs at least 3 prior readings, else null (we then fall back to absolutes).
-  function seriesBaseline(series, days) {
-    if (!series || series.length < 4) return null;
-    const prior = series.slice(0, -1).slice(-(days || 30)).map((s) => s.value);
-    if (prior.length < 3) return null;
-    return prior.reduce((a, b) => a + b, 0) / prior.length;
-  }
-
-  // Recovery score per day for the last `n` days, each scored against its own
-  // trailing baseline (the ~30 days before it) — so the trend is self-consistent.
-  function recoveryTrend(n) {
-    const r = loadRecovery();
-    const days = Object.keys(r.days || {}).sort(); // ascending dateKeys
-    const seriesOf = (key) => days.map((d) => ({ dateKey: d, value: r.days[d] && r.days[d][key] })).filter((x) => x.value != null);
-    const hrvS = seriesOf("hrvMs"), rhrS = seriesOf("restingHr"), respS = seriesOf("respRate");
-    const priorMean = (series, before) => {
-      const prior = series.filter((s) => s.dateKey < before).slice(-30).map((s) => s.value);
-      return prior.length >= 3 ? prior.reduce((a, b) => a + b, 0) / prior.length : null;
-    };
-    const out = [];
-    for (const d of days.slice(-(n || 7))) {
-      const m = r.days[d];
-      if (!m) continue;
-      const base = { hrvMs: priorMean(hrvS, d), restingHr: priorMean(rhrS, d), respRate: priorMean(respS, d) };
-      const rs = recoveryScore(m, base);
-      if (rs) out.push({ dateKey: d, score: rs.score, tier: rs.tier });
-    }
-    return out;
-  }
-  // WHOOP/Bevel-style recovery score (0-100). Each metric is scored against your
-  // personal baseline when available (deviation matters more than the absolute
-  // number); otherwise a sensible absolute fallback is used. HRV dominates, then
-  // resting HR and sleep, with breathing/SpO2/skin-temp as minor contributors.
-  // Zones: ≥67 green, 34-66 yellow, <34 red. Transparent — not medical advice.
-  function recoveryScore(today, base) {
-    if (!today) return null;
-    base = base || {};
-    const clamp = (n) => Math.max(0, Math.min(100, n));
-    const items = []; // [subScore, weight]
-    // HRV — higher than baseline = better recovered.
-    if (today.hrvMs != null) {
-      const sc = base.hrvMs
-        ? clamp(60 + ((today.hrvMs / base.hrvMs) - 1) * 250)   // at baseline→60, +16%→100, −24%→0
-        : clamp(((today.hrvMs - 20) / 60) * 100);
-      items.push([sc, 0.40]);
-    }
-    // Resting HR — lower than baseline = better.
-    if (today.restingHr != null) {
-      const sc = base.restingHr
-        ? clamp(60 + (1 - (today.restingHr / base.restingHr)) * 400) // at baseline→60, −10%→100, +10%→20
-        : clamp(((80 - today.restingHr) / 40) * 100);
-      items.push([sc, 0.25]);
-    }
-    // Sleep — performance vs an ~8h need.
-    if (today.sleepHrs != null) items.push([clamp((today.sleepHrs / 8) * 100), 0.20]);
-    // Respiratory rate — stability; deviation from baseline (else ideal ~14) is bad.
-    if (today.respRate != null) {
-      const sc = base.respRate
-        ? clamp(100 - Math.abs((today.respRate / base.respRate) - 1) * 400)
-        : clamp(100 - Math.abs(today.respRate - 14) * 8);
-      items.push([sc, 0.08]);
-    }
-    // SpO2 — absolute; ≥97% is great, <93% concerning.
-    if (today.spo2 != null) items.push([clamp(((today.spo2 - 92) / 5) * 100), 0.04]);
-    // Skin temperature — closer to baseline (0 deviation) is better.
-    if (today.skinTempC != null) items.push([clamp(100 - Math.abs(today.skinTempC) * 40), 0.03]);
-    if (!items.length) return null;
-    const wsum = items.reduce((a, [, w]) => a + w, 0);
-    const score = Math.round(items.reduce((a, [s, w]) => a + s * w, 0) / wsum);
-    const tier = score >= 67 ? "good" : score >= 34 ? "mid" : "low";
-    const label = tier === "good" ? "Recovered — ready to train"
-      : tier === "mid" ? "Moderate — train with care" : "Low — prioritise rest";
-    return { score, label, tier };
-  }
-  function loadRecovery() { try { return JSON.parse(localStorage.getItem(KEYS.recovery)) || { days: {} }; } catch (e) { return { days: {} }; } }
-  function saveRecovery(r) { localStorage.setItem(KEYS.recovery, JSON.stringify(r)); }
-  // Push recovery values into matching habits. A "Recovery"/"Readiness" habit
-  // gets the 0-100 score (count) or is checked on a green day (yes/no); RHR/HRV/
-  // SpO2 count habits get today's value. Returns short status messages.
-  const RECOVERY_GREEN = 67;
-  function applyRecoveryToHabits(cur, rs) {
-    const today = new Date();
-    const msgs = [];
-    if (!cur) return msgs;
-    const active = state.habits.filter((h) => !h.archived && isHabitActiveOn(h, today));
-    const fill = (h, val) => {
-      if (h.type === "count") {
-        const was = isCompleted(h, today);
-        setCompletionValue(h.id, today, val);
-        if (!was && isCompleted(h, today)) maybeCelebrate(h, today);
-      } else if (!isCompleted(h, today)) { setCompletionValue(h.id, today, 1); maybeCelebrate(h, today); }
-    };
-    for (const h of active) {
-      if (isRecoveryHabit(h) && rs) {
-        if (h.type === "count") {
-          const was = isCompleted(h, today);
-          setCompletionValue(h.id, today, rs.score);
-          if (!was && isCompleted(h, today)) maybeCelebrate(h, today);
-        } else if (rs.score >= RECOVERY_GREEN && !isCompleted(h, today)) {
-          setCompletionValue(h.id, today, 1); maybeCelebrate(h, today);
-        }
-        msgs.push(`🫀 ${h.name} ${rs.score}`);
-      } else if (isRhrHabit(h) && cur.restingHr != null) { fill(h, cur.restingHr); msgs.push(`💓 ${h.name} ${cur.restingHr}`); }
-      else if (isHrvHabit(h) && cur.hrvMs != null) { fill(h, cur.hrvMs); msgs.push(`❤️ ${h.name} ${cur.hrvMs}`); }
-      else if (isSpo2Habit(h) && cur.spo2 != null) { fill(h, cur.spo2); msgs.push(`🫁 ${h.name} ${cur.spo2}`); }
-    }
-    return msgs;
-  }
-  async function syncRecovery() {
-    if (!ghConnected()) { showToast("Connect Google Health in Settings first.", "warn"); return; }
-    if (!navigator.onLine) { showToast("You're offline.", "warn"); return; }
-    if (ghInFlight) return;
-    ghInFlight = true;
-    const btn = document.getElementById("recoverySyncBtn");
-    if (btn) { btn.disabled = true; btn.textContent = "⏳ Syncing…"; }
-    recoveryDbg = {};
-    try {
-      const [hrvS, rhrS, spo2S, respS] = await Promise.all([
-        ghHrvSeries(), ghRestingHrSeries(), ghSpo2Series(), ghRespRateSeries(),
-      ]);
-      const [sleepHrs, skinTempC] = await Promise.all([ghSleepHours(), ghSkinTempC()]);
-      const last = (a) => (a.length ? a[a.length - 1].value : null);
-      const current = {
-        hrvMs: last(hrvS), restingHr: last(rhrS), spo2: last(spo2S), respRate: last(respS),
-        sleepHrs: sleepHrs > 0 ? sleepHrs : null, skinTempC: skinTempC,
-        baseHrv: seriesBaseline(hrvS), baseRhr: seriesBaseline(rhrS), baseResp: seriesBaseline(respS),
-        updatedAt: Date.now(),
-      };
-      const any = ["hrvMs", "restingHr", "spo2", "respRate", "sleepHrs", "skinTempC"].some((k) => current[k] != null);
-      const r = loadRecovery();
-      // Persist each metric's history (for baseline + future trends).
-      const put = (series, key) => { for (const s of series) r.days[s.dateKey] = Object.assign({}, r.days[s.dateKey], { [key]: s.value }); };
-      put(hrvS, "hrvMs"); put(rhrS, "restingHr"); put(spo2S, "spo2"); put(respS, "respRate");
-      const tk = dateKey(new Date());
-      r.days[tk] = Object.assign({}, r.days[tk], { sleepHrs: current.sleepHrs, skinTempC: current.skinTempC });
-      r.current = current; r.updatedAt = Date.now();
-      saveRecovery(r);
-      renderRecovery();
-      if (!any) { showGhBanner("🫀 No recovery data found yet. Recovery metrics are measured overnight — sync your watch or Fitbit app, then try again."); return; }
-      // Push values into any connected habits (Recovery / RHR / HRV / SpO2).
-      const rs = recoveryScore(current, { hrvMs: current.baseHrv, restingHr: current.baseRhr, respRate: current.baseResp });
-      const habitMsgs = applyRecoveryToHabits(current, rs);
-      if (habitMsgs.length) renderToday();
-      showToast(habitMsgs.length ? `🫀 Recovery synced · updated ${habitMsgs.length} habit${habitMsgs.length === 1 ? "" : "s"}` : "🫀 Recovery synced", "success");
-    } catch (e) {
-      showToast("Recovery sync failed: " + (e.message || e), "error");
-    } finally {
-      ghInFlight = false;
-      if (btn) { btn.disabled = false; btn.textContent = "🔄 Sync"; }
-    }
-  }
-  function renderRecovery() {
-    const notice = document.getElementById("recoveryConnectNotice");
-    const btn = document.getElementById("recoverySyncBtn");
-    const connected = ghConnected();
-    if (notice) notice.hidden = connected;
-    if (btn) btn.hidden = !connected;
-    const s = loadRecovery().current || null;
-    const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
-    const dash = "—";
-    set("recHrv", s && s.hrvMs != null ? `${s.hrvMs} ms` : dash);
-    set("recRhr", s && s.restingHr != null ? `${s.restingHr} bpm` : dash);
-    set("recSpo2", s && s.spo2 != null ? `${s.spo2}%` : dash);
-    set("recResp", s && s.respRate != null ? `${s.respRate}` : dash);
-    set("recSleep", s && s.sleepHrs != null ? `${s.sleepHrs} h` : dash);
-    set("recTemp", s && s.skinTempC != null ? fmtSkinTemp(s.skinTempC) : dash);
-    // Baseline context in the metric metas (WHOOP-style deviation).
-    const pctStr = (t, b) => { const p = Math.round(((t / b) - 1) * 100); return (p > 0 ? "▲+" : p < 0 ? "▼" : "±") + Math.abs(p) + "%"; };
-    set("recHrvMeta", s && s.hrvMs != null && s.baseHrv ? `base ${Math.round(s.baseHrv)}ms · ${pctStr(s.hrvMs, s.baseHrv)}` : "overnight avg");
-    set("recRhrMeta", s && s.restingHr != null && s.baseRhr ? `base ${Math.round(s.baseRhr)} · ${pctStr(s.restingHr, s.baseRhr)}` : "beats / min");
-    set("recRespMeta", s && s.respRate != null && s.baseResp ? `base ${Math.round(s.baseResp)} · ${pctStr(s.respRate, s.baseResp)}` : "breaths / min");
-    const scoreEl = document.getElementById("recoveryScore");
-    const labelEl = document.getElementById("recoveryLabel");
-    const updEl = document.getElementById("recoveryUpdated");
-    if (scoreEl) scoreEl.classList.remove("good", "mid", "low");
-    const rs = recoveryScore(s, s ? { hrvMs: s.baseHrv, restingHr: s.baseRhr, respRate: s.baseResp } : null);
-    if (rs) {
-      if (scoreEl) { scoreEl.textContent = String(rs.score); scoreEl.classList.add(rs.tier); }
-      if (labelEl) labelEl.textContent = rs.label;
-    } else {
-      if (scoreEl) scoreEl.textContent = "—";
-      if (labelEl) labelEl.textContent = connected ? "Tap Sync to read your latest recovery metrics." : "Connect Google Health in Settings to see recovery.";
-    }
-    if (updEl) updEl.textContent = s && s.updatedAt ? "Updated " + new Date(s.updatedAt).toLocaleDateString() : "";
-    // Debug: raw newest dataPoint per daily metric (populated on the last Sync).
-    const dwrap = document.getElementById("recoveryDebugWrap");
-    const dpre = document.getElementById("recoveryDebug");
-    const hasDbg = recoveryDbg && Object.keys(recoveryDbg).length > 0;
-    if (dwrap) dwrap.hidden = !hasDbg;
-    if (dpre && hasDbg) {
-      let out = "";
-      for (const k of Object.keys(recoveryDbg)) out += k + ": " + JSON.stringify(recoveryDbg[k]).slice(0, 500) + "\n\n";
-      dpre.textContent = out.trim();
-    }
-    renderRecoveryTrend();
-  }
-  function renderRecoveryTrend() {
-    const wrap = document.getElementById("recoveryTrend");
-    const card = document.getElementById("recoveryTrendCard");
-    if (!wrap) return;
-    const data = recoveryTrend(7);
-    if (data.length < 2) { if (card) card.hidden = true; return; } // need a couple of days
-    if (card) card.hidden = false;
-    wrap.innerHTML = "";
-    for (const d of data) {
-      const bar = document.createElement("div");
-      bar.className = "rtrend-bar";
-      const score = document.createElement("div");
-      score.className = "rtrend-score";
-      score.textContent = String(d.score);
-      const fillwrap = document.createElement("div");
-      fillwrap.className = "rtrend-fillwrap";
-      const fill = document.createElement("div");
-      fill.className = "rtrend-fill " + d.tier;
-      fill.style.height = Math.max(4, d.score) + "%";
-      fill.title = `${d.dateKey}: ${d.score}`;
-      fillwrap.appendChild(fill);
-      const day = document.createElement("div");
-      day.className = "rtrend-day";
-      day.textContent = parseDateKey(d.dateKey).toLocaleDateString(undefined, { weekday: "short" });
-      bar.appendChild(score);
-      bar.appendChild(fillwrap);
-      bar.appendChild(day);
-      wrap.appendChild(bar);
-    }
-  }
-
   let ghWeightErr = "", ghWeightDbg = "";
   // Most recent weight in kg. The filter member for weight is rejected the same
   // way sleep's is, so try a couple of variants then fall back to an unfiltered
@@ -5079,7 +4758,6 @@
         today: $("#page-today"),
         habits: $("#page-habits"),
         progress: $("#page-progress"),
-        recovery: $("#page-recovery"),
         report: $("#page-report"),
         schedule: $("#page-schedule"),
         settings: $("#page-settings"),
@@ -5345,7 +5023,6 @@
     if (view === "today") { scrollToNowPending = true; renderToday(); }
     else if (view === "habits") renderHabits();
     else if (view === "progress") { progressDateKey = dateKey(new Date()); renderProgress(); }
-    else if (view === "recovery") renderRecovery();
     else if (view === "report") { weekOffset = 0; renderReport(); }
     else if (view === "schedule") renderSchedule();
     else if (view === "settings") hydrateSettings();
@@ -12805,8 +12482,6 @@
     $("#goalClearBtn").addEventListener("click", clearGoal);
     const pullWeightBtn = $("#pullWeightBtn");
     if (pullWeightBtn) pullWeightBtn.addEventListener("click", pullWeightForProgress);
-    const recoverySyncBtn = $("#recoverySyncBtn");
-    if (recoverySyncBtn) recoverySyncBtn.addEventListener("click", syncRecovery);
     const calPullBtn = $("#calPullBtn");
     if (calPullBtn) calPullBtn.addEventListener("click", pullExerciseCalories);
     const calTotalPullBtn = $("#calTotalPullBtn");
@@ -13195,8 +12870,7 @@
       mapSleepHours, parseDurationSeconds, mapWorkoutSessions, workoutHabitMatch,
       recentSleepHours, sleepSessionSeconds, sleepSessionEndMs, sleepSessionStartMs, ghScopeHint,
       isWorkoutHabit, isSleepHabit, isTempHabit, latestSkinTempDeltaC, fmtSkinTemp,
-      metricNumber, dailyPointMs, recoveryScore, seriesBaseline, recoveryTrend,
-      isRecoveryHabit, isRhrHabit, isHrvHabit, isSpo2Habit, buildAllCsv, finalizeMissedStepGoals, stepHabitKind,
+      buildAllCsv, finalizeMissedStepGoals, stepHabitKind,
       calorieForecast, estimateMaintenanceKcal, mifflinBmr, groupExerciseKcalByDay, groupActiveEnergyByDay, bmiFrom, calorieAudit, goalInsight,
       computeRestImpact, latestGoogleTotal, avgByDayComplete, avgExerciseKcal, effectiveExerciseBurn,
       measurementList, measurementsWithWeight, weeksElapsed,

@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=4.92.7" />
+  <link rel="stylesheet" href="styles.css?v=4.93.0" />
 </head>
 <body>
 
@@ -55,9 +55,6 @@
           </button>
           <button class="nav-item" data-tab="progress">
             <span class="nav-icon">📈</span> <span data-i18n="nav.progress">Progress</span>
-          </button>
-          <button class="nav-item" data-tab="recovery">
-            <span class="nav-icon">🫀</span> <span>Recovery</span>
           </button>
           <button class="nav-item" data-tab="report">
             <span class="nav-icon">📊</span> <span data-i18n="nav.report">Report</span>
@@ -446,77 +443,6 @@
               <p class="empty-inline">No entries yet.</p>
             </div>
           </div>
-        </div>
-
-        <!-- ============ Recovery ============ -->
-        <div class="page" id="page-recovery">
-          <div class="page-header">
-            <div>
-              <h1>Recovery</h1>
-              <p class="subtitle">Overnight recovery signals from Google Health</p>
-            </div>
-            <div class="page-actions">
-              <button id="recoverySyncBtn" class="icon-btn today-sync-gh" hidden>🔄 Sync</button>
-            </div>
-          </div>
-
-          <div id="recoveryConnectNotice" class="card" hidden>
-            <div class="card-title">⌚ Connect Google Health</div>
-            <p class="card-sub">Recovery pulls HRV, resting heart rate, SpO₂, breathing rate, sleep and skin temperature from Google Health / Fitbit. Connect it in Settings → Google Health, then tap Sync.</p>
-          </div>
-
-          <div class="card recovery-score-card">
-            <div class="card-title">Recovery score <span id="recoveryUpdated" class="pill" style="margin-left:auto"></span></div>
-            <div class="recovery-score-wrap">
-              <div id="recoveryScore" class="recovery-score">—</div>
-              <div id="recoveryLabel" class="recovery-label">Tap Sync to read your latest recovery metrics.</div>
-            </div>
-            <p class="card-sub">A simple guide based on the metrics below — not medical advice. Higher HRV and lower resting heart rate generally mean better recovery.</p>
-          </div>
-
-          <div class="stat-grid recovery-grid">
-            <div class="stat-card">
-              <div class="stat-label">❤️ HRV</div>
-              <div class="stat-value" id="recHrv">—</div>
-              <div class="stat-meta" id="recHrvMeta">overnight avg</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">💓 Resting HR</div>
-              <div class="stat-value" id="recRhr">—</div>
-              <div class="stat-meta" id="recRhrMeta">beats / min</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">🫁 SpO₂</div>
-              <div class="stat-value" id="recSpo2">—</div>
-              <div class="stat-meta">blood oxygen</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">🌬️ Breathing</div>
-              <div class="stat-value" id="recResp">—</div>
-              <div class="stat-meta" id="recRespMeta">breaths / min</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">😴 Sleep</div>
-              <div class="stat-value" id="recSleep">—</div>
-              <div class="stat-meta">last night</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">🌡️ Skin temp</div>
-              <div class="stat-value" id="recTemp">—</div>
-              <div class="stat-meta">vs baseline</div>
-            </div>
-          </div>
-
-          <div id="recoveryTrendCard" class="card" hidden style="margin-top:0.75rem">
-            <div class="card-title">7-day trend</div>
-            <div id="recoveryTrend" class="recovery-trend"></div>
-          </div>
-
-          <details id="recoveryDebugWrap" class="card" hidden style="margin-top:0.75rem">
-            <summary style="cursor:pointer;font-weight:600">🐞 Debug (raw Google Health data)</summary>
-            <p class="card-sub">If a metric looks wrong, copy this and send it so the parser can be pinned to the real fields.</p>
-            <pre id="recoveryDebug" style="white-space:pre-wrap;word-break:break-word;font-size:0.72rem;max-height:320px;overflow:auto"></pre>
-          </details>
         </div>
 
         <!-- ============ Report ============ -->
@@ -1133,7 +1059,6 @@
       <button class="nav-item bottom-tab active" data-tab="today"><span class="nav-icon">☀️</span><span class="bt-label">Today</span></button>
       <button class="nav-item bottom-tab" data-tab="habits"><span class="nav-icon">🎯</span><span class="bt-label">Habits</span></button>
       <button class="nav-item bottom-tab" data-tab="progress"><span class="nav-icon">📈</span><span class="bt-label">Progress</span></button>
-      <button class="nav-item bottom-tab" data-tab="recovery"><span class="nav-icon">🫀</span><span class="bt-label">Recovery</span></button>
       <button class="nav-item bottom-tab" data-tab="report"><span class="nav-icon">📊</span><span class="bt-label">Report</span></button>
       <button class="nav-item bottom-tab" data-tab="schedule"><span class="nav-icon">💼</span><span class="bt-label">Work</span></button>
       <button class="nav-item bottom-tab" data-tab="settings"><span class="nav-icon">⚙️</span><span class="bt-label">Settings</span></button>

@@ -2538,15 +2538,6 @@ body.hc .btn-secondary { border-color: var(--border); }
   border-color: var(--border);
 }
 .daypart-done-strip.daypart-collapsed.is-now { border-color: var(--primary); }
-/* Recovery tab */
-.recovery-score-card .recovery-score-wrap { display: flex; align-items: center; gap: 1rem; margin: 0.25rem 0 0.5rem; }
-.recovery-score { font-size: 2.6rem; font-weight: 800; line-height: 1; min-width: 3.5rem; }
-.recovery-score.good { color: #22c55e; }
-.recovery-score.mid { color: #f59e0b; }
-.recovery-score.low { color: #ef4444; }
-.recovery-label { font-weight: 600; color: var(--text); }
-.recovery-grid { margin-top: 0.75rem; }
-.recovery-grid .stat-value { font-size: 1.35rem; }
 /* Calorie balance & forecast */
 .cal-today { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; margin: 0.25rem 0 0.5rem; padding: 10px 12px; border-radius: 10px; background: rgba(239, 68, 68, 0.1); }
 .cal-today .cal-today-val { font-size: 1.5rem; font-weight: 800; color: #ef4444; }
@@ -2594,16 +2585,6 @@ body.hc .btn-secondary { border-color: var(--border); }
 .cal-audit-item.ok { color: #22c55e; }
 .cal-audit-item.info { color: var(--text-dim); }
 .cal-audit-rec { margin-top: 0.5rem; font-size: 0.82rem; font-weight: 600; }
-
-.recovery-trend { display: flex; align-items: stretch; gap: 6px; height: 140px; }
-.rtrend-bar { flex: 1; display: flex; flex-direction: column; align-items: center; min-width: 0; }
-.rtrend-score { font-size: 0.72rem; font-weight: 700; margin-bottom: 3px; }
-.rtrend-fillwrap { flex: 1; width: 100%; display: flex; align-items: flex-end; }
-.rtrend-fill { width: 100%; border-radius: 6px 6px 0 0; min-height: 4px; transition: height 0.3s ease; }
-.rtrend-fill.good { background: #22c55e; }
-.rtrend-fill.mid { background: #f59e0b; }
-.rtrend-fill.low { background: #ef4444; }
-.rtrend-day { font-size: 0.65rem; color: var(--text-dim); margin-top: 4px; }
 
 .pull-steps-mini { font-size: 1rem; line-height: 1; }
 /* In-progress state while pulling from Google Health */
