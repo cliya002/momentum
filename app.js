@@ -10515,7 +10515,7 @@
     els.mWeight.value = m && m.weight != null ? round1(wDisp(m.weight)) : "";
     els.mWaist.value = m && m.waist != null ? round1(lDisp(m.waist)) : "";
     els.mEnergy.value = m && m.energy != null ? m.energy : "";
-    els.mStrength.value = m && m.strengthTrend ? m.strengthTrend : "";
+    if (els.mStrength) els.mStrength.value = m && m.strengthTrend ? m.strengthTrend : "";
     if (els.mRestDay) els.mRestDay.checked = !!(m && m.restDay);
     els.mNotes.value = m && m.notes ? m.notes : "";
     els.mSaved.hidden = true;
@@ -11693,8 +11693,8 @@
       weight,   // canonical lb
       waist,    // canonical in
       energy: numOrNull(els.mEnergy.value),
-      strengthTrend: els.mStrength.value,
-      restDay: !!(els.mRestDay && els.mRestDay.checked),
+      strengthTrend: els.mStrength ? els.mStrength.value : (prev.strengthTrend || ""),
+      restDay: els.mRestDay ? !!els.mRestDay.checked : !!prev.restDay,
       notes: els.mNotes.value.trim(),
       custom,
       updatedAt: Date.now(),
@@ -11720,7 +11720,7 @@
     const wk = progressDateKey || dateKey(new Date());
     if (!state.measurements[wk]) {
       els.mWeight.value = els.mWaist.value = els.mEnergy.value = els.mNotes.value = "";
-      els.mStrength.value = "";
+      if (els.mStrength) els.mStrength.value = "";
       if (els.mRestDay) els.mRestDay.checked = false;
       return;
     }
