@@ -10889,9 +10889,15 @@
     };
   }
   // Build the profile object (heightCm/age/sex/activity) from the store.
+  // Activity is a NEAT-only factor (excludes workouts, which are added via
+  // Exercise burn). Legacy standard TDEE factors are remapped down so they
+  // don't double-count exercise.
+  const NEAT_REMAP = { 1.375: 1.3, 1.55: 1.4, 1.725: 1.5 };
   function calorieProfile(c) {
     const p = (c && c.profile) || {};
-    return { heightCm: Number(p.heightCm) || 0, age: Number(p.age) || 0, sex: p.sex || "", activity: Number(p.activity) || 1.2 };
+    let act = Number(p.activity) || 1.2;
+    if (NEAT_REMAP[act]) act = NEAT_REMAP[act];
+    return { heightCm: Number(p.heightCm) || 0, age: Number(p.age) || 0, sex: p.sex || "", activity: act };
   }
   function renderCalorieForecast() {
     const balEl = document.getElementById("calBalance");

@@ -100,6 +100,32 @@ console.log("calorieForecast (dynamic simulation + Mifflin)");
   assert(Math.round(T.mifflinBmr(100, 180, 30, "male")) === 1980, "mifflinBmr(100kg,180cm,30,male)=1980");
 }
 
+console.log("calorieForecast (energy-balance + NEAT correctness)");
+{
+  // Proportional (no profile): startMaintenance == baseBurn, deficit + rate exact.
+  const f = T.calorieForecast({ weightLb: 200, caloriesIn: 2100, baseBurn: 2800, exerciseBurn: 0, metric: false });
+  assert(f.startMaintenance === 2800, "startMaintenance equals the given base (2800)");
+  assert(f.deficit === 700, "deficit = base − intake = 700");
+  assert(Math.abs(f.perWeekDisp - 1.4) < 0.01, "per-week = 700/3500*7 = 1.4 lb (" + f.perWeekDisp + ")");
+  // Energy balance: 7-day loss is close to but slightly under the linear 1.4 lb
+  // (maintenance falls as weight drops), and always positive.
+  const wk1 = f.horizons.find((h) => h.days === 7);
+  assert(wk1.changeDisp > 1.35 && wk1.changeDisp <= 1.4, "7-day loss ≈ 1.4 lb, dynamic (" + wk1.changeDisp + ")");
+
+  // Profile mode: maintenance is BMR×NEAT and exercise is ADDED on top (no
+  // double-count). 200 lb ≈ 90.72 kg; BMR = 10*90.72+6.25*180−5*30+5 = 1887.2;
+  // ×1.3 NEAT ≈ 2453; +400 exercise − 2000 intake → deficit ≈ 853.
+  const p = T.calorieForecast({ weightLb: 200, caloriesIn: 2000, exerciseBurn: 400, metric: false,
+    profile: { heightCm: 180, age: 30, sex: "male", activity: 1.3 } });
+  assert(Math.abs(p.startMaintenance - 2453) < 3, "NEAT maintenance ≈ 2453, excludes workouts (" + p.startMaintenance + ")");
+  assert(Math.abs(p.deficit - 853) < 4, "deficit = NEAT maintenance + exercise − intake ≈ 853 (" + p.deficit + ")");
+  // Same profile without the exercise → deficit is ~400 lower (proves exercise
+  // is additive, not baked into the activity factor).
+  const pNoEx = T.calorieForecast({ weightLb: 200, caloriesIn: 2000, exerciseBurn: 0,
+    profile: { heightCm: 180, age: 30, sex: "male", activity: 1.3 } });
+  assert(Math.abs((p.deficit - pNoEx.deficit) - 400) < 2, "adding 400 exercise raises the deficit by ~400 (no double-count)");
+}
+
 console.log("groupExerciseKcalByDay (per-day exercise calories)");
 {
   const dps = [
