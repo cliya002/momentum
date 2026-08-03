@@ -10837,9 +10837,12 @@
   }
 
   function measurementList() {
+    // Loose `!= null` catches both null and undefined — a rest-day-only entry
+    // (created before normalization) has undefined numeric fields and must not
+    // be treated as a real weight/waist/energy measurement.
     return Object.entries(state.measurements)
       .map(([k, v]) => ({ ...v, weekKey: k }))
-      .filter((e) => e.weight !== null || e.waist !== null || e.energy !== null || e.strengthTrend || e.notes || (e.custom && Object.keys(e.custom).length))
+      .filter((e) => e.weight != null || e.waist != null || e.energy != null || e.strengthTrend || e.notes || (e.custom && Object.keys(e.custom).length))
       .sort((a, b) => a.weekKey.localeCompare(b.weekKey));
   }
   // Actual calendar weeks between two "YYYY-MM-DD" week keys (Mondays). Used so
@@ -10853,7 +10856,7 @@
     const days = (new Date(pb[0], pb[1] - 1, pb[2]) - new Date(pa[0], pa[1] - 1, pa[2])) / 86400000;
     return days > 0 ? days / 7 : 0;
   }
-  function measurementsWithWeight() { return measurementList().filter((e) => e.weight !== null); }
+  function measurementsWithWeight() { return measurementList().filter((e) => e.weight != null); }
 
   // BMI from weight (lb) and height (cm). Returns { bmi, category } or null.
   // Pure + tested. General wellness only — not a diagnosis.
@@ -11421,7 +11424,7 @@
       setDeltaCard(els.pAvgWeekly, wDisp(wkE > 0 ? change / wkE : 0), wUnit());
     }
 
-    const waistList = all.filter((e) => e.waist !== null);
+    const waistList = all.filter((e) => e.waist != null);
     if (waistList.length === 0) {
       els.pWaistChange.textContent = "—";
     } else {
@@ -13196,6 +13199,7 @@
       isRecoveryHabit, isRhrHabit, isHrvHabit, isSpo2Habit, buildAllCsv, finalizeMissedStepGoals, stepHabitKind,
       calorieForecast, estimateMaintenanceKcal, mifflinBmr, groupExerciseKcalByDay, groupActiveEnergyByDay, bmiFrom, calorieAudit, goalInsight,
       computeRestImpact, latestGoogleTotal, avgByDayComplete, avgExerciseKcal, effectiveExerciseBurn,
+      measurementList, measurementsWithWeight, weeksElapsed,
       getState: () => state, setState: (s) => { state = s; },
     };
   }
