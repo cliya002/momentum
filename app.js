@@ -3810,7 +3810,10 @@
   async function ghTotalCaloriesByDay() {
     const civ = (d) => ({ date: { year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate() } });
     const today = new Date();
-    const body = { range: { start: civ(addDays(today, -15)), end: civ(addDays(today, 1)) }, windowSizeDays: 1 };
+    // Note: the dailyRollUp API rejects overly wide ranges ("Invalid argument"),
+    // so keep this window modest (~11 days). The measured-burn average simply
+    // uses whatever complete days are available up to MEASURED_BURN_DAYS.
+    const body = { range: { start: civ(addDays(today, -10)), end: civ(addDays(today, 1)) }, windowSizeDays: 1 };
     const data = await ghApiPost("v4/users/me/dataTypes/total-calories/dataPoints:dailyRollUp", body);
     const pts = (data && data.rollupDataPoints) || [];
     const pad = (n) => String(n).padStart(2, "0");
