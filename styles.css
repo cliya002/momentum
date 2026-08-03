@@ -1006,6 +1006,17 @@ body.compact .habit-list { gap: 0.35rem; }
   text-align: center;
 }
 .empty-inline { color: var(--text-dim); font-size: 0.9rem; margin: 0.5rem 0; text-align: center; }
+.rest-impact {
+  margin: -0.5rem 0 1.25rem;
+  padding: 0.7rem 0.9rem;
+  background: color-mix(in srgb, var(--amber) 12%, var(--card));
+  border-left: 4px solid var(--amber);
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--text);
+}
+.rest-impact b { color: var(--amber); }
 
 /* ================ Stats ================ */
 .stat-grid {

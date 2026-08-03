@@ -9123,6 +9123,31 @@
     renderMoodStrip();
     if (typeof renderProgress === "function" && currentView === "progress") renderProgress();
   }
+
+  // Pure, testable core: summarize what rest days did over a window.
+  // entries: [{ isRest:bool, protected:int, energy:number|null, afterRest:bool }]
+  //   protected = # of fitness/workout check-ins that were streak-protected that rest day
+  //   afterRest = true if this (non-rest) day immediately follows a rest day
+  function computeRestImpact(entries) {
+    entries = Array.isArray(entries) ? entries : [];
+    let restCount = 0, protectedCheckins = 0;
+    const afterVals = [], otherVals = [];
+    for (const e of entries) {
+      if (e.isRest) { restCount++; protectedCheckins += (e.protected || 0); continue; }
+      if (e.energy == null) continue;
+      (e.afterRest ? afterVals : otherVals).push(e.energy);
+    }
+    const avg = (a) => a.length ? a.reduce((s, v) => s + v, 0) / a.length : null;
+    const energyAfterRest = avg(afterVals);
+    const energyOther = avg(otherVals);
+    const energyDelta = (energyAfterRest != null && energyOther != null)
+      ? energyAfterRest - energyOther : null;
+    return {
+      restCount, protectedCheckins, energyAfterRest, energyOther, energyDelta,
+      afterCount: afterVals.length, otherCount: otherVals.length,
+    };
+  }
+
   function renderMoodStrip() {
     const el = getEls().moodStrip;
     if (!el) return;
@@ -11365,11 +11390,52 @@
       if (els.pBmiMeta) els.pBmiMeta.textContent = b ? b.category : (wl.length ? "add height below" : "");
     }
 
-    // Rest days in the last 30 days.
+    // Rest days in the last 30 days + their impact (streak protection & recovery).
     if (els.pRestDays) {
-      let rest = 0;
-      for (let i = 0; i < 30; i++) if (isRestDay(dateKey(addDays(new Date(), -i)))) rest++;
-      els.pRestDays.textContent = String(rest);
+      const today = new Date();
+      const entries = [];
+      for (let i = 29; i >= 0; i--) {
+        const d = addDays(today, -i);
+        const dk = dateKey(d);
+        const rest = isRestDay(dk);
+        let protectedCount = 0;
+        if (rest) {
+          for (const h of state.habits) {
+            if (h.archived) continue;
+            const isFit = h.category === "Fitness" || isWorkoutHabit(h);
+            if (!isFit) continue;
+            // A fitness/workout check-in that was scheduled but not completed on a
+            // rest day would normally hurt the streak — the rest tag protected it.
+            if (isHabitActiveOn(h, d) && !isCompleted(h, d)) protectedCount++;
+          }
+        }
+        const m = state.measurements && state.measurements[dk];
+        const energy = m && m.energy != null ? m.energy : null;
+        entries.push({ isRest: rest, protected: protectedCount, energy, afterRest: isRestDay(dateKey(addDays(d, -1))) });
+      }
+      const imp = computeRestImpact(entries);
+      els.pRestDays.textContent = String(imp.restCount);
+
+      const impEl = $("#pRestImpact");
+      if (impEl) {
+        if (imp.restCount === 0) {
+          impEl.hidden = true;
+          impEl.innerHTML = "";
+        } else {
+          impEl.hidden = false;
+          const parts = [];
+          if (imp.protectedCheckins > 0) {
+            parts.push(`kept <b>${imp.protectedCheckins}</b> workout check-in${imp.protectedCheckins === 1 ? "" : "s"} streak-safe`);
+          } else {
+            parts.push(`kept your fitness streaks safe`);
+          }
+          if (imp.energyDelta != null && imp.afterCount >= 2) {
+            const sign = imp.energyDelta >= 0 ? "+" : "−";
+            parts.push(`energy the day after rest averaged <b>${round1(imp.energyAfterRest)}</b> vs <b>${round1(imp.energyOther)}</b> otherwise (${sign}${round1(Math.abs(imp.energyDelta))})`);
+          }
+          impEl.innerHTML = `😴 <b>${imp.restCount}</b> rest day${imp.restCount === 1 ? "" : "s"} in the last 30 days — ` + parts.join("; ") + ".";
+        }
+      }
     }
 
     // Mini-deltas: latest vs previous entry
@@ -13075,6 +13141,7 @@
       metricNumber, dailyPointMs, recoveryScore, seriesBaseline, recoveryTrend,
       isRecoveryHabit, isRhrHabit, isHrvHabit, isSpo2Habit, buildAllCsv, finalizeMissedStepGoals, stepHabitKind,
       calorieForecast, estimateMaintenanceKcal, mifflinBmr, groupExerciseKcalByDay, groupActiveEnergyByDay, bmiFrom, calorieAudit, goalInsight,
+      computeRestImpact,
       getState: () => state, setState: (s) => { state = s; },
     };
   }
