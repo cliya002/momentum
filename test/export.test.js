@@ -154,6 +154,28 @@ console.log("calorieAudit (accuracy diagnostics)");
   assert(aOk.issues.some((i) => i.level === "ok"), "clean inputs → OK");
 }
 
+console.log("rest day → freezes fitness/workout habits only");
+{
+  const st = T.defaultState();
+  st.habits = [
+    { id: "f1", name: "Gym workout", category: "Fitness", type: "check", target: 1, archived: false },
+    { id: "s1", name: "Vitamin D", category: "Supplements", type: "count", target: 1, archived: false },
+  ];
+  const today = new Date();
+  const tk = T.dateKey(today);
+  st.measurements[tk] = { date: tk, restDay: true, updatedAt: 1 };
+  T.setState(st);
+  assert(T.isFrozen("f1", today) === true, "rest day freezes the Fitness habit (streak-safe)");
+  assert(T.isFrozen("s1", today) === false, "rest day does NOT freeze a supplement habit");
+  assert(T.countsForAdherence(st.habits[0], today) === false, "fitness habit excluded from adherence on a rest day");
+  assert(T.countsForAdherence(st.habits[1], today) === true, "supplement still counts on a rest day");
+  // Not a rest day → fitness habit counts normally.
+  const st2 = T.defaultState();
+  st2.habits = st.habits;
+  T.setState(st2);
+  assert(T.isFrozen("f1", today) === false, "no rest tag → fitness habit not frozen");
+}
+
 console.log("bmiFrom (BMI + category)");
 {
   // 180 lb, 175 cm → 81.6 kg / 1.75² = ~26.7 (Overweight).

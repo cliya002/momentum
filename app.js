@@ -1787,7 +1787,14 @@
     const dk = dateKey(date);
     const f = state.freezes || {};
     if (inVacation(date)) return true; // vacation days are neutral for streaks/adherence
-    return !!(f.days && f.days[dk]) || !!(f.habitDays && f.habitDays[habitId + "|" + dk]);
+    if ((f.days && f.days[dk]) || (f.habitDays && f.habitDays[habitId + "|" + dk])) return true;
+    // A tagged rest day is neutral for fitness/workout habits (streak-safe,
+    // excluded from adherence) — so a planned rest day doesn't hurt them.
+    if (isRestDay(dk)) {
+      const h = state.habits.find((x) => x.id === habitId);
+      if (h && (h.category === "Fitness" || isWorkoutHabit(h))) return true;
+    }
+    return false;
   }
   function setFreeze(habitId, date, on) {
     if (!state.freezes) state.freezes = { updatedAt: 0, days: {}, habitDays: {} };
@@ -5166,6 +5173,7 @@
       pAvgEnergy: $("#pAvgEnergy"),
       pBmi: $("#pBmi"),
       pBmiMeta: $("#pBmiMeta"),
+      pRestDays: $("#pRestDays"),
       trendChart: $("#trendChart"),
       trendEmpty: $("#trendEmpty"),
       trendRange: $("#trendRange"),
@@ -11240,6 +11248,13 @@
       const b = wl.length ? bmiFrom(wl[wl.length - 1].weight, heightCm) : null;
       els.pBmi.textContent = b ? String(b.bmi) : "—";
       if (els.pBmiMeta) els.pBmiMeta.textContent = b ? b.category : (wl.length ? "add height below" : "");
+    }
+
+    // Rest days in the last 30 days.
+    if (els.pRestDays) {
+      let rest = 0;
+      for (let i = 0; i < 30; i++) if (isRestDay(dateKey(addDays(new Date(), -i)))) rest++;
+      els.pRestDays.textContent = String(rest);
     }
 
     // Mini-deltas: latest vs previous entry
