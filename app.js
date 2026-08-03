@@ -10748,6 +10748,51 @@
   function estimateMaintenanceKcal(weightLb) { return weightLb ? Math.round(weightLb * 14) : null; }
   // Mifflin-St Jeor basal metabolic rate (kcal/day).
   function mifflinBmr(kg, cm, age, sex) { return 10 * kg + 6.25 * cm - 5 * age + (sex === "female" ? -161 : 5); }
+  // Diagnose the calorie inputs and return a list of issues + a recommendation
+  // for the most accurate setup. Pure + tested. Not medical advice.
+  function calorieAudit(o) {
+    o = o || {};
+    const issues = [];
+    const add = (level, msg) => issues.push({ level, msg });
+    const w = o.weightLb;
+    if (!w) { return { issues: [{ level: "info", msg: "Log your weight above to enable the forecast." }], recommendation: "Log a weigh-in to start." }; }
+    const inK = Number(o.caloriesIn) || 0;
+    const base = Number(o.baseBurn) || 0;
+    const exer = Number(o.exerciseBurn) || 0;
+    const usingGoogle = !!o.usingGoogle;
+    const googleAvg = (o.googleAvg != null && o.googleAvg > 0) ? o.googleAvg : null;
+    const heightCm = o.heightCm || 0;
+    if (inK === 0) add("info", "Enter your daily calorie intake to see a forecast.");
+    else if (inK < 1200) add("warn", "Intake under 1200 kcal/day is very low — not advisable without professional guidance.");
+    if (!usingGoogle) {
+      if (base > w * 20) add("warn", `Maintenance (${Math.round(base)}) looks too high for your weight — check height/age/sex.`);
+      else if (base > 0 && base < w * 9) add("warn", `Maintenance (${Math.round(base)}) looks too low — check your inputs.`);
+      if (!heightCm) add("info", "Add height, age & sex (Personalise) for a proper Mifflin-St Jeor estimate.");
+      else if (heightCm < 120 || heightCm > 220) add("warn", "Height looks off — make sure it's entered in the unit shown.");
+    }
+    const deficit = (usingGoogle ? base : base + exer) - inK;
+    if (inK > 0) {
+      const lbWk = Math.abs((deficit / 3500) * 7);
+      if (Math.abs(deficit) > 1500) add("warn", `A ${Math.abs(Math.round(deficit))} kcal/day gap is unrealistic to sustain — check your numbers.`);
+      else if (deficit > 0 && (lbWk > 2 || (lbWk / w) * 100 > 1)) add("warn", "Projected loss is aggressive — ~0.5–1% of bodyweight/week is more sustainable.");
+    }
+    if (googleAvg != null && !usingGoogle) {
+      const est = base + exer;
+      if (est > 0 && Math.abs(est - googleAvg) > 0.2 * googleAvg) {
+        add("warn", `Your estimate (${Math.round(est)}) is ${Math.round((Math.abs(est - googleAvg) / googleAvg) * 100)}% off Google's measured burn (${Math.round(googleAvg)}).`);
+      }
+    } else if (googleAvg == null && !o.googlePartialOnly) {
+      add("info", "Tap 'Compare Google total burn' to check against your measured burn.");
+    }
+    if (o.googlePartialOnly) add("info", "Only today's partial burn is available — pull again after a full day for an accurate measured number.");
+    let recommendation;
+    if (usingGoogle) recommendation = "✓ Using Google's measured burn — the most accurate source.";
+    else if (googleAvg != null) recommendation = "Most accurate: tap 'Use Google's measured burn'.";
+    else if (o.googlePartialOnly) recommendation = "Pull 'Compare Google total burn' again after a full day.";
+    else recommendation = googleAvg == null ? "Pull 'Compare Google total burn' for a measured baseline." : "Fill in Personalise for a better estimate.";
+    if (!issues.length) add("ok", "No issues found — your inputs look reasonable.");
+    return { issues, recommendation };
+  }
   // Pure energy-balance forecast with a DAY-BY-DAY simulation, so maintenance
   // (and therefore the deficit) tracks weight as it changes — the projection
   // curves and slows, instead of a naive straight line. Maintenance comes from
@@ -10838,6 +10883,13 @@
       if (notFocused(baseEl)) baseEl.value = c.baseBurn != null ? c.baseBurn : "";
       balEl.innerHTML = '<span class="cal-sub">Log your weight above to see a forecast.</span>';
       fcEl.innerHTML = "";
+      const auditEl0 = document.getElementById("calAudit");
+      if (auditEl0) {
+        const a0 = calorieAudit({ weightLb: null });
+        auditEl0.hidden = false;
+        auditEl0.innerHTML = '<div class="cal-audit-title">🔎 Accuracy check</div>' +
+          a0.issues.map((it) => `<div class="cal-audit-item ${it.level}"><span>ℹ️</span><span>${escapeHtml(it.msg)}</span></div>`).join("");
+      }
       renderExerciseList();
       return;
     }
@@ -10889,6 +10941,25 @@
         <div class="cal-fc-proj">${h.projectedDisp} ${f.unit}</div>
       </div>`;
     }).join("");
+    // Accuracy check panel.
+    const auditEl = document.getElementById("calAudit");
+    if (auditEl) {
+      const audit = calorieAudit({
+        weightLb,
+        caloriesIn: inEl ? Number(inEl.value) : c.caloriesIn,
+        baseBurn,
+        exerciseBurn,
+        usingGoogle,
+        googleAvg: g && !g.partial ? g.kcal : null,
+        googlePartialOnly: !!(g && g.partial),
+        heightCm: prof.heightCm,
+      });
+      const icon = (lv) => (lv === "warn" ? "⚠️" : lv === "ok" ? "✓" : "ℹ️");
+      auditEl.hidden = false;
+      auditEl.innerHTML = '<div class="cal-audit-title">🔎 Accuracy check</div>' +
+        audit.issues.map((it) => `<div class="cal-audit-item ${it.level}"><span>${icon(it.level)}</span><span>${escapeHtml(it.msg)}</span></div>`).join("") +
+        `<div class="cal-audit-rec">→ ${escapeHtml(audit.recommendation)}</div>`;
+    }
     renderExerciseList();
   }
   // Average daily exercise kcal over the last `n` days (including zero days),
@@ -12776,7 +12847,7 @@
       isWorkoutHabit, isSleepHabit, isTempHabit, latestSkinTempDeltaC, fmtSkinTemp,
       metricNumber, dailyPointMs, recoveryScore, seriesBaseline, recoveryTrend,
       isRecoveryHabit, isRhrHabit, isHrvHabit, isSpo2Habit, buildAllCsv,
-      calorieForecast, estimateMaintenanceKcal, mifflinBmr, groupExerciseKcalByDay, bmiFrom,
+      calorieForecast, estimateMaintenanceKcal, mifflinBmr, groupExerciseKcalByDay, bmiFrom, calorieAudit,
       getState: () => state, setState: (s) => { state = s; },
     };
   }

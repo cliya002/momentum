@@ -122,6 +122,34 @@ console.log("groupExerciseKcalByDay (per-day exercise calories)");
   assert(Object.keys(T.groupExerciseKcalByDay([])).length === 0, "empty → {}");
 }
 
+console.log("calorieAudit (accuracy diagnostics)");
+{
+  const has = (r, sub) => r.issues.some((i) => i.msg.toLowerCase().includes(sub));
+  // No weight → prompt to log it.
+  const a0 = T.calorieAudit({ weightLb: null });
+  assert(has(a0, "log your weight"), "no weight → log weight");
+  // Implausibly high maintenance (the 5580 case).
+  const aHigh = T.calorieAudit({ weightLb: 240, caloriesIn: 1400, baseBurn: 5580, exerciseBurn: 0 });
+  assert(has(aHigh, "too high"), "flags implausibly high maintenance");
+  assert(has(aHigh, "unrealistic"), "flags unrealistic deficit");
+  // Missing height when not using Google.
+  const aNoH = T.calorieAudit({ weightLb: 200, caloriesIn: 2000, baseBurn: 2800, exerciseBurn: 0 });
+  assert(has(aNoH, "add height"), "suggests adding height/age/sex");
+  // Divergence from Google measured.
+  const aDiv = T.calorieAudit({ weightLb: 200, caloriesIn: 2000, baseBurn: 3600, exerciseBurn: 0, heightCm: 178, googleAvg: 2400 });
+  assert(has(aDiv, "off google") || has(aDiv, "% off"), "flags divergence from Google measured burn");
+  assert(aDiv.recommendation.toLowerCase().includes("use google"), "recommends using Google's measured burn");
+  // Using Google → clean recommendation.
+  const aG = T.calorieAudit({ weightLb: 200, caloriesIn: 2000, baseBurn: 2400, exerciseBurn: 0, usingGoogle: true, googleAvg: 2400 });
+  assert(aG.recommendation.toLowerCase().includes("most accurate") || aG.recommendation.includes("✓"), "using Google → most accurate");
+  // Very low intake warning.
+  const aLow = T.calorieAudit({ weightLb: 160, caloriesIn: 900, baseBurn: 2200, exerciseBurn: 0, heightCm: 170 });
+  assert(has(aLow, "very low"), "flags very low intake");
+  // Reasonable inputs → no warnings.
+  const aOk = T.calorieAudit({ weightLb: 180, caloriesIn: 2000, baseBurn: 2500, exerciseBurn: 0, heightCm: 178, usingGoogle: true, googleAvg: 2500 });
+  assert(aOk.issues.some((i) => i.level === "ok"), "clean inputs → OK");
+}
+
 console.log("bmiFrom (BMI + category)");
 {
   // 180 lb, 175 cm → 81.6 kg / 1.75² = ~26.7 (Overweight).
