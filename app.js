@@ -11040,19 +11040,27 @@
     if (!list.length) { el.innerHTML = ""; return; }
     const MAX = 25;
     const shown = list.slice(0, MAX);
-    let html = '<div class="cal-ex-title">🏋️ Pulled exercises</div>';
+    let rows = "";
     let lastDay = null;
     for (const s of shown) {
       if (s.dateKey !== lastDay) {
         lastDay = s.dateKey;
-        html += `<div class="cal-ex-day">${escapeHtml(formatDateShort(parseDateKey(s.dateKey)))}</div>`;
+        rows += `<div class="cal-ex-day">${escapeHtml(formatDateShort(parseDateKey(s.dateKey)))}</div>`;
       }
       const label = s.name || prettyExerciseType(s.type) || "Workout";
       const right = `${s.minutes ? s.minutes + " min · " : ""}${s.kcal} kcal`;
-      html += `<div class="cal-ex-row"><span>${escapeHtml(label)}</span><span>${escapeHtml(right)}</span></div>`;
+      rows += `<div class="cal-ex-row"><span>${escapeHtml(label)}</span><span>${escapeHtml(right)}</span></div>`;
     }
-    if (list.length > MAX) html += `<div class="cal-ex-more">+ ${list.length - MAX} more</div>`;
-    el.innerHTML = html;
+    if (list.length > MAX) rows += `<div class="cal-ex-more">+ ${list.length - MAX} more</div>`;
+    // Collapsible; remembers open/closed state across renders.
+    const openAttr = el.dataset.open === "1" ? " open" : "";
+    el.innerHTML =
+      `<details class="cal-ex-details"${openAttr}>` +
+      `<summary class="cal-ex-title">🏋️ Pulled exercises (${list.length})</summary>` +
+      `<div class="cal-ex-body">${rows}</div>` +
+      `</details>`;
+    const det = el.querySelector("details");
+    if (det) det.addEventListener("toggle", () => { el.dataset.open = det.open ? "1" : "0"; });
   }
   async function pullExerciseCalories() {
     if (!ghConnected()) { showToast("Connect Google Health in Settings first.", "warn"); return; }
