@@ -11301,6 +11301,22 @@
     html +=
       `<div class="cal-cmp-row"><span>Your estimate (maintenance + exercise)</span><span>${estimate} kcal</span></div>` +
       `<div class="cal-cmp-diff">${diff === 0 ? "Matches your estimate" : (diff > 0 ? "Google is " + diff + " kcal higher" : "Google is " + Math.abs(diff) + " kcal lower")}</div>`;
+    // Per-day breakdown so you can verify each measured value against Google Health.
+    const allDays = Object.keys(c.totalByDay || {}).sort().reverse();
+    if (allDays.length) {
+      const todayK = dateKey(new Date());
+      const rows = allDays.map((k) => {
+        const kcal = Math.round(Number(c.totalByDay[k]) || 0);
+        const active = c.activeByDay && c.activeByDay[k] != null ? Math.round(Number(c.activeByDay[k])) : null;
+        let tag = "";
+        if (k === todayK) tag = ` <span class="cal-day-tag">today · partial, excluded</span>`;
+        else if (!g.partial && g.from && k < g.from) tag = ` <span class="cal-day-tag">older · not in avg</span>`;
+        const activeStr = active != null ? ` <span class="cal-day-active">🔥 ${active} active</span>` : "";
+        return `<div class="cal-day-row"><span>${escapeHtml(formatDateShort(parseDateKey(k)))}${tag}${activeStr}</span><span>${kcal} kcal</span></div>`;
+      }).join("");
+      html += `<details class="cal-day-list"><summary>Per-day measured burn (${allDays.length}) — verify vs Google Health</summary>${rows}` +
+        `<div class="cal-day-note">The average uses complete days only (today is excluded because it's still accumulating). Compare these to the "Energy burned" / TDEE numbers in your Google Health or Fitbit app.</div></details>`;
+    }
     if (bigGap) {
       html += `<div class="cal-cmp-warn">⚠️ Big gap — your estimate looks off (check your height/age/sex, or an odd activity level). Google's number is measured, so it's usually more accurate.</div>` +
         `<button type="button" id="calUseGoogleBtn" class="btn-secondary" style="margin-top:6px">Use Google's measured burn</button>`;

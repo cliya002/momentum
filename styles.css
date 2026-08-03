@@ -2557,6 +2557,12 @@ body.hc .btn-secondary { border-color: var(--border); }
 .cal-compare .cal-cmp-sub { color: var(--text-dim); font-size: 0.8rem; }
 .cal-compare .cal-cmp-warn { margin-top: 6px; color: #f59e0b; font-size: 0.8rem; line-height: 1.35; }
 .cal-compare .cal-cmp-note { margin-top: 6px; color: var(--text-dim); font-size: 0.8rem; }
+.cal-compare .cal-day-list { margin-top: 8px; font-size: 0.8rem; }
+.cal-compare .cal-day-list summary { cursor: pointer; color: var(--primary); font-weight: 600; }
+.cal-compare .cal-day-row { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; border-top: 1px solid rgba(127,127,127,0.15); }
+.cal-compare .cal-day-tag { color: var(--text-dim); font-weight: 500; font-size: 0.72rem; }
+.cal-compare .cal-day-active { color: var(--text-dim); font-size: 0.72rem; }
+.cal-compare .cal-day-note { margin-top: 6px; color: var(--text-dim); font-size: 0.75rem; line-height: 1.35; }
 .linklike { background: none; border: none; padding: 0; color: var(--primary); cursor: pointer; font: inherit; text-decoration: underline; }
 .cal-balance { margin: 0.5rem 0 0.75rem; font-weight: 700; font-size: 1.05rem; }
 .cal-balance .cal-deficit { color: #22c55e; }
