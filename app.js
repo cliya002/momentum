@@ -11763,11 +11763,6 @@
       right.appendChild(delta);
       const actions = document.createElement("div");
       actions.className = "history-actions";
-      const restBtn = document.createElement("button");
-      restBtn.className = "history-btn" + (m.restDay ? " on" : "");
-      restBtn.textContent = m.restDay ? "😴 Rest ✓" : "😴 Rest";
-      restBtn.title = "Tag this day as a rest / recovery day";
-      restBtn.addEventListener("click", () => toggleRestDay(m.weekKey));
       const editBtn = document.createElement("button");
       editBtn.className = "history-btn";
       editBtn.textContent = "Edit";
@@ -11786,7 +11781,6 @@
         save();
         renderProgress();
       });
-      actions.appendChild(restBtn);
       actions.appendChild(editBtn);
       actions.appendChild(delBtn);
       right.appendChild(actions);
