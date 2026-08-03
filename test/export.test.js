@@ -154,6 +154,27 @@ console.log("calorieAudit (accuracy diagnostics)");
   assert(aOk.issues.some((i) => i.level === "ok"), "clean inputs → OK");
 }
 
+console.log("goalInsight (goal-tracking sentence)");
+{
+  // Losing toward a lower goal, good pace → ETA sentence with 'to go'.
+  const g = T.goalInsight({ latestLb: 200, targetLb: 180, avgPerWeekLb: -1.5, metric: false });
+  assert(/20\b/.test(g) && /to go/.test(g) && /on track/i.test(g), "20 lb to go, on track (" + g + ")");
+  // Reached goal.
+  const r = T.goalInsight({ latestLb: 180, targetLb: 180, avgPerWeekLb: -1, metric: false });
+  assert(/reached/i.test(r), "at target → goal reached");
+  // Wrong direction / flat → no ETA.
+  const n = T.goalInsight({ latestLb: 200, targetLb: 180, avgPerWeekLb: 0, metric: false });
+  assert(/no eta/i.test(n), "flat pace → no ETA");
+  const up = T.goalInsight({ latestLb: 200, targetLb: 180, avgPerWeekLb: 1, metric: false });
+  assert(/no eta/i.test(up), "gaining while goal is to lose → no ETA");
+  // Missing inputs → null.
+  assert(T.goalInsight({ latestLb: 200 }) === null, "no target → null");
+  assert(T.goalInsight({}) === null, "empty → null");
+  // Target-date comparison text appears.
+  const withDate = T.goalInsight({ latestLb: 200, targetLb: 190, avgPerWeekLb: -1, targetDate: "2020-01-01", metric: false });
+  assert(/behind/i.test(withDate), "past target date + still to go → 'behind' note");
+}
+
 console.log("rest day → freezes fitness/workout habits only");
 {
   const st = T.defaultState();

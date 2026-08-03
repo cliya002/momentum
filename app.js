@@ -11287,6 +11287,35 @@
     return den === 0 ? null : num / den;
   }
 
+  // Goal-tracking sentence for the insight line. Pure (dates via addDays/now).
+  // avgPerWeekLb is negative when losing. Returns a string or null.
+  function goalInsight(o) {
+    o = o || {};
+    const latestLb = o.latestLb, targetLb = o.targetLb;
+    if (latestLb == null || targetLb == null) return null;
+    const disp = (lb) => (o.metric ? lb * 0.453592 : lb);
+    const unit = o.metric ? "kg" : "lb";
+    const remaining = latestLb - targetLb;         // + = above target
+    const losing = targetLb < latestLb;
+    const gaining = targetLb > latestLb;
+    if (Math.abs(remaining) < 0.1) return `🎯 Goal reached — you're at ${round1(disp(latestLb))} ${unit}!`;
+    const avg = Number(o.avgPerWeekLb) || 0;
+    const toGo = Math.abs(remaining);
+    const onRightPath = (losing && avg < -0.05) || (gaining && avg > 0.05);
+    if (!onRightPath) return `${round1(disp(toGo))} ${unit} to go to your ${round1(disp(targetLb))} ${unit} goal — no ETA at the current pace.`;
+    const weeksLeft = toGo / Math.abs(avg);
+    const eta = addDays(new Date(), Math.round(weeksLeft * 7));
+    let line = `${round1(disp(toGo))} ${unit} to go — on track for ${round1(disp(targetLb))} ${unit} around ${formatDateShort(eta)}.`;
+    if (o.targetDate && /^\d{4}-\d{2}-\d{2}$/.test(o.targetDate)) {
+      const td = new Date(o.targetDate);
+      const diffDays = Math.round((eta - td) / 86400000);
+      if (diffDays <= -7) line += ` Ahead of your ${formatDateShort(td)} target.`;
+      else if (diffDays >= 7) line += ` ~${Math.max(1, Math.round(diffDays / 7))} wk behind your ${formatDateShort(td)} target.`;
+      else line += ` On pace for your ${formatDateShort(td)} target.`;
+    }
+    return line;
+  }
+
   /* ---- Insight line ---- */
   function renderInsight() {
     const card = $("#insightCard");
@@ -11300,6 +11329,10 @@
       const avg = weeks > 0 ? change / weeks : 0;
       const dir = change < 0 ? "Down" : change > 0 ? "Up" : "Flat";
       parts.push(`${dir} ${round1(Math.abs(wDisp(change)))} ${wUnit()} over ${weeks} week${weeks === 1 ? "" : "s"} (~${round1(Math.abs(wDisp(avg)))}/wk).`);
+      if (state.goal && state.goal.targetWeight != null) {
+        const gi = goalInsight({ latestLb: latest.weight, targetLb: state.goal.targetWeight, avgPerWeekLb: avg, targetDate: state.goal.targetDate, metric: isMetric() });
+        if (gi) parts.push(gi);
+      }
     }
     const waistList = measurementList().filter((e) => e.waist !== null);
     if (waistList.length >= 2) {
@@ -12908,7 +12941,7 @@
       isWorkoutHabit, isSleepHabit, isTempHabit, latestSkinTempDeltaC, fmtSkinTemp,
       metricNumber, dailyPointMs, recoveryScore, seriesBaseline, recoveryTrend,
       isRecoveryHabit, isRhrHabit, isHrvHabit, isSpo2Habit, buildAllCsv,
-      calorieForecast, estimateMaintenanceKcal, mifflinBmr, groupExerciseKcalByDay, bmiFrom, calorieAudit,
+      calorieForecast, estimateMaintenanceKcal, mifflinBmr, groupExerciseKcalByDay, bmiFrom, calorieAudit, goalInsight,
       getState: () => state, setState: (s) => { state = s; },
     };
   }
