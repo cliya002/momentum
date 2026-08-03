@@ -10675,15 +10675,19 @@
       const remaining = latest - target;
       const reached = (totalDelta < 0 && latest <= target) || (totalDelta > 0 && latest >= target) || Math.abs(remaining) < 0.05;
 
-      // Projection from average weekly change (elapsed weeks, not entry count)
-      const weeks = weeksBetween(wl[0].weekKey, wl[wl.length - 1].weekKey) || (wl.length - 1);
-      const avgWk = weeks > 0 ? (latest - start) / weeks : 0;
+      // Projection from average weekly change over actual elapsed time.
+      const wkE = weeksElapsed(wl[0].weekKey, wl[wl.length - 1].weekKey);
+      const avgWk = wkE > 0 ? (latest - start) / wkE : 0;
       let projection = "";
-      if (!reached && avgWk !== 0 && Math.sign(avgWk) === Math.sign(target - latest)) {
+      if (reached) {
+        projection = "";
+      } else if (wkE < 1) {
+        projection = `Log for at least a week to project a date`;
+      } else if (avgWk !== 0 && Math.sign(avgWk) === Math.sign(target - latest)) {
         const weeksLeft = Math.abs((target - latest) / avgWk);
         const eta = addDays(new Date(), Math.ceil(weeksLeft * 7));
-        projection = `On pace for <b>${eta.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</b> (~${round1(Math.abs(avgWk))} ${wUnit()}/wk)`;
-      } else if (!reached) {
+        projection = `On pace for <b>${eta.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</b> (~${round1(Math.abs(wDisp(avgWk)))} ${wUnit()}/wk)`;
+      } else {
         projection = `Not trending toward the goal yet`;
       }
 
@@ -10744,15 +10748,15 @@
       .sort((a, b) => a.weekKey.localeCompare(b.weekKey));
   }
   // Actual calendar weeks between two "YYYY-MM-DD" week keys (Mondays). Used so
-  // weekly-rate math reflects elapsed time, not the number of logged entries
-  // (logging is sporadic, so entry-count is not a reliable week count).
-  function weeksBetween(weekKeyA, weekKeyB) {
-    const pa = String(weekKeyA).split("-").map(Number);
-    const pb = String(weekKeyB).split("-").map(Number);
+  // Precise elapsed weeks (fractional) between two date keys — for rate and
+  // projection math, so daily logging doesn't distort the per-week figure.
+  // Returns 0 when the span is non-positive or the keys are invalid.
+  function weeksElapsed(keyA, keyB) {
+    const pa = String(keyA).split("-").map(Number);
+    const pb = String(keyB).split("-").map(Number);
     if (pa.length !== 3 || pb.length !== 3 || pa.some(isNaN) || pb.some(isNaN)) return 0;
-    const a = new Date(pa[0], pa[1] - 1, pa[2]);
-    const b = new Date(pb[0], pb[1] - 1, pb[2]);
-    return Math.round((b - a) / (7 * 86400000));
+    const days = (new Date(pb[0], pb[1] - 1, pb[2]) - new Date(pa[0], pa[1] - 1, pa[2])) / 86400000;
+    return days > 0 ? days / 7 : 0;
   }
   function measurementsWithWeight() { return measurementList().filter((e) => e.weight !== null); }
 
@@ -11222,9 +11226,9 @@
       els.pStartWeight.textContent = `${round1(wDisp(start.weight))} ${wUnit()}`;
       els.pLatestWeight.textContent = `${round1(wDisp(latest.weight))} ${wUnit()}`;
       const change = latest.weight - start.weight;
-      const weeks = weeksBetween(wl[0].weekKey, wl[wl.length - 1].weekKey) || (wl.length - 1);
+      const wkE = weeksElapsed(wl[0].weekKey, wl[wl.length - 1].weekKey);
       setDeltaCard(els.pChange, wDisp(change), wUnit());
-      setDeltaCard(els.pAvgWeekly, wDisp(weeks > 0 ? change / weeks : 0), wUnit());
+      setDeltaCard(els.pAvgWeekly, wDisp(wkE > 0 ? change / wkE : 0), wUnit());
     }
 
     const waistList = all.filter((e) => e.waist !== null);
@@ -11325,11 +11329,12 @@
     if (wl.length >= 2) {
       const start = wl[0], latest = wl[wl.length - 1];
       const change = latest.weight - start.weight;
-      const weeks = weeksBetween(wl[0].weekKey, wl[wl.length - 1].weekKey) || (wl.length - 1);
-      const avg = weeks > 0 ? change / weeks : 0;
+      const wkE = weeksElapsed(wl[0].weekKey, wl[wl.length - 1].weekKey);
+      const avg = wkE > 0 ? change / wkE : 0;             // precise lb/week
+      const weeksDisp = Math.max(1, Math.round(wkE));      // for the "over N weeks" text
       const dir = change < 0 ? "Down" : change > 0 ? "Up" : "Flat";
-      parts.push(`${dir} ${round1(Math.abs(wDisp(change)))} ${wUnit()} over ${weeks} week${weeks === 1 ? "" : "s"} (~${round1(Math.abs(wDisp(avg)))}/wk).`);
-      if (state.goal && state.goal.targetWeight != null) {
+      parts.push(`${dir} ${round1(Math.abs(wDisp(change)))} ${wUnit()} over ${weeksDisp} week${weeksDisp === 1 ? "" : "s"} (~${round1(Math.abs(wDisp(avg)))}/wk).`);
+      if (state.goal && state.goal.targetWeight != null && wkE >= 1) {
         const gi = goalInsight({ latestLb: latest.weight, targetLb: state.goal.targetWeight, avgPerWeekLb: avg, targetDate: state.goal.targetDate, metric: isMetric() });
         if (gi) parts.push(gi);
       }
