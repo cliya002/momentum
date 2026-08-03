@@ -61,6 +61,7 @@
     collapseToday: "ht_collapse_today",
     calorie: "ht_calorie",   // calorie balance inputs (device-local)
     lastFinalize: "ht_last_finalize", // last day missed step-goals were finalized
+    installDismissed: "ht_install_dismissed", // first-run install prompt dismissed
   };
   const DEFAULT_CATEGORIES = ["Fitness","Nutrition","Sleep","Supplements","Custom"];
   // Fallback color/icon per default category (used until the user customizes).
@@ -11771,6 +11772,82 @@
         window.navigator.standalone === true;
     } catch (e) { return false; }
   }
+  function isIOSDevice() {
+    const ua = navigator.userAgent || "";
+    // iPadOS 13+ reports as Mac, so also treat a touch-capable "Mac" as iOS.
+    return /iphone|ipad|ipod/i.test(ua) || (/Macintosh/.test(ua) && "ontouchend" in document);
+  }
+
+  /* ---- First-run "Install as an app" prompt ---- */
+  let deferredInstallPrompt = null; // set by beforeinstallprompt (Chrome/Android/desktop)
+  function installPromptDismissed() { return localStorage.getItem(KEYS.installDismissed) === "true"; }
+  function hideInstallBanner() {
+    const b = document.getElementById("installBanner");
+    if (!b) return;
+    b.classList.remove("show");
+    setTimeout(() => { b.hidden = true; }, 250);
+  }
+  function dismissInstallBanner(remember) {
+    if (remember) localStorage.setItem(KEYS.installDismissed, "true");
+    hideInstallBanner();
+  }
+  // Show the first-run install prompt when the app isn't installed yet.
+  function maybeShowInstallPrompt() {
+    const banner = document.getElementById("installBanner");
+    if (!banner) return;
+    if (isInstalledStandalone() || installPromptDismissed()) return;
+    const ios = isIOSDevice();
+    // On iOS there's no programmatic install — guide to Share → Add to Home Screen.
+    // Elsewhere we need the captured beforeinstallprompt to offer a one-tap install.
+    if (!ios && !deferredInstallPrompt) return;
+    const sub = document.getElementById("installBannerSub");
+    const action = document.getElementById("installBannerAction");
+    if (ios) {
+      if (sub) sub.textContent = "Tap the Share button, then “Add to Home Screen”, to use Momentum like an app.";
+      if (action) action.textContent = "How";
+    } else {
+      if (sub) sub.textContent = "Add it to your Home Screen so it opens like an app and works offline.";
+      if (action) action.textContent = "Install";
+    }
+    banner.hidden = false;
+    requestAnimationFrame(() => banner.classList.add("show"));
+  }
+  async function onInstallAction() {
+    if (isIOSDevice() && !deferredInstallPrompt) {
+      // Point the user at the detailed steps in Settings and expand them.
+      dismissInstallBanner(false);
+      switchView("settings");
+      const card = document.getElementById("installHelpCard");
+      if (card) { card.hidden = false; card.open = true; card.scrollIntoView({ behavior: "smooth", block: "center" }); }
+      return;
+    }
+    if (!deferredInstallPrompt) { dismissInstallBanner(true); return; }
+    hideInstallBanner();
+    try {
+      deferredInstallPrompt.prompt();
+      const choice = await deferredInstallPrompt.userChoice;
+      if (choice && choice.outcome === "accepted") localStorage.setItem(KEYS.installDismissed, "true");
+    } catch (e) { /* user gesture expired or unsupported */ }
+    deferredInstallPrompt = null;
+  }
+  function initInstallPrompt() {
+    window.addEventListener("beforeinstallprompt", (e) => {
+      e.preventDefault();            // stop Chrome's mini-infobar; we show our own
+      deferredInstallPrompt = e;
+      maybeShowInstallPrompt();
+    });
+    window.addEventListener("appinstalled", () => {
+      localStorage.setItem(KEYS.installDismissed, "true");
+      deferredInstallPrompt = null;
+      hideInstallBanner();
+    });
+    const act = document.getElementById("installBannerAction");
+    const dis = document.getElementById("installBannerDismiss");
+    if (act) act.addEventListener("click", onInstallAction);
+    if (dis) dis.addEventListener("click", () => dismissInstallBanner(true));
+    // iOS never fires beforeinstallprompt, so try to show the guide directly.
+    maybeShowInstallPrompt();
+  }
   function hydrateSettings() {
     const els = getEls();
     if (!els.syncTokenInput) return;
@@ -12777,6 +12854,7 @@
       if (!handled && odAutoEnabled()) oneDrivePull({ silent: true });
     }).catch(() => {});
     cleanupNotifiedKeys();
+    initInstallPrompt(); // first-run "install as an app" nudge
     if (purgeTrash()) save(); // drop trash older than 7 days (writes tombstones)
     maybeBackupReminder();
     scheduleReminders();

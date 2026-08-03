@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=4.94.0" />
+  <link rel="stylesheet" href="styles.css?v=4.95.0" />
 </head>
 <body>
 
@@ -1341,6 +1341,17 @@
     </div>
     <button id="updateDismiss" class="update-dismiss" aria-label="Dismiss">Later</button>
     <button id="updateNow" class="update-now">Update</button>
+  </div>
+
+  <!-- Install prompt (first run, when not yet installed) -->
+  <div id="installBanner" class="install-banner" hidden>
+    <span class="install-banner-icon">📲</span>
+    <div class="install-banner-text">
+      <b>Install Momentum</b>
+      <span class="install-banner-sub" id="installBannerSub">Add it to your Home Screen so it opens like an app and works offline.</span>
+    </div>
+    <button id="installBannerDismiss" class="update-dismiss" aria-label="Dismiss">Not now</button>
+    <button id="installBannerAction" class="update-now">Install</button>
   </div>
 
   <!-- QR pairing modal -->

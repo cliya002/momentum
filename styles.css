@@ -2483,6 +2483,31 @@ body.hc .btn-secondary { border-color: var(--border); }
 }
 .update-now:disabled { opacity: 0.7; }
 
+/* Install prompt banner (first run) — reuses the update-banner layout */
+.install-banner {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--safe-bottom) + 5.5rem);
+  transform: translateX(-50%) translateY(1.5rem);
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: min(94vw, 460px);
+  padding: 0.75rem 0.9rem;
+  border-radius: 16px;
+  background: var(--card, #fff);
+  border: 1px solid var(--primary);
+  box-shadow: var(--shadow), 0 8px 30px rgba(0,0,0,0.18);
+  opacity: 0;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.install-banner.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.install-banner-icon { font-size: 1.4rem; flex-shrink: 0; }
+.install-banner-text { display: flex; flex-direction: column; line-height: 1.3; flex: 1; min-width: 0; }
+.install-banner-text b { font-size: 0.92rem; }
+.install-banner-sub { font-size: 0.75rem; color: var(--text-dim); }
+
 /* Journal card */
 .journal-card textarea {
   width: 100%;
