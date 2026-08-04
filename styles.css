@@ -1370,6 +1370,13 @@ body.compact .habit-list { gap: 0.35rem; }
 }
 .goal-meta b { color: var(--text); }
 .goal-reached { color: var(--success); font-weight: 700; }
+.goal-status { margin: 0.5rem 0 0.15rem; }
+.goal-pill { display: inline-block; font-size: 0.78rem; font-weight: 700; padding: 0.2rem 0.65rem; border-radius: 999px; }
+.goal-pill.ok { background: color-mix(in srgb, #22c55e 18%, var(--card)); color: #16a34a; }
+.goal-pill.warn { background: color-mix(in srgb, var(--amber) 22%, var(--card)); color: var(--amber); }
+.goal-pill.bad { background: color-mix(in srgb, #ef4444 18%, var(--card)); color: #ef4444; }
+.goal-pace { font-size: 0.8rem; color: var(--text-dim); margin: 0.25rem 0; line-height: 1.4; }
+.goal-pace b { color: var(--text); }
 
 /* Insight card */
 .insight-card {

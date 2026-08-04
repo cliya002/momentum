@@ -10519,6 +10519,26 @@
         projection = `Not trending toward the goal yet`;
       }
 
+      // On-track status + required-vs-actual pace (answers "am I meeting my goal?").
+      const gs = goalStatus({ startLb: start, latestLb: latest, targetLb: target, avgPerWeekLb: avgWk, targetDate: g.targetDate });
+      const pillMap = {
+        reached:  ["ok",  "🎉 Reached"],
+        ahead:    ["ok",  "🚀 Ahead of schedule"],
+        onTrack:  ["ok",  "✓ On track"],
+        behind:   ["warn", "⚠ Behind schedule"],
+        wrongWay: ["bad", "↩ Wrong direction"],
+      };
+      const pill = gs && pillMap[gs.status] ? pillMap[gs.status] : null;
+      let paceLine = "";
+      if (gs && !gs.reached && gs.requiredPerWeekLb != null) {
+        const need = round1(Math.abs(wDisp(gs.requiredPerWeekLb)));
+        const act = round1(Math.abs(wDisp(gs.actualPerWeekLb)));
+        paceLine = `Averaging <b>${act} ${wUnit()}/wk</b> · need <b>${need} ${wUnit()}/wk</b> to hit ${escapeHtml(g.targetDate)}`;
+        if (gs.projectedByDateLb != null && gs.onRightPath) {
+          paceLine += ` · at this pace ~<b>${round1(wDisp(gs.projectedByDateLb))} ${wUnit()}</b> by then`;
+        }
+      }
+
       html = `
         <div class="goal-progress-wrap">
           <div class="goal-progress-head">
@@ -10526,6 +10546,8 @@
             <span class="${reached ? "goal-reached" : "goal-remaining"}">${reached ? "🎉 Goal reached!" : `${round1(Math.abs(wDisp(remaining)))} ${wUnit()} to go`}</span>
           </div>
           <div class="goal-bar"><div class="goal-bar-fill" style="width:${pct}%"></div></div>
+          ${pill ? `<div class="goal-status"><span class="goal-pill ${pill[0]}">${pill[1]}</span></div>` : ""}
+          ${paceLine ? `<div class="goal-pace">${paceLine}</div>` : ""}
           <div class="goal-meta">
             ${projection ? `<span>${projection}</span>` : ""}
             ${g.targetDate ? `<span>Target date: <b>${escapeHtml(g.targetDate)}</b></span>` : ""}
@@ -11285,6 +11307,47 @@
       else line += ` On pace for your ${formatDateShort(td)} target.`;
     }
     return line;
+  }
+
+  // Structured goal status for the Progress goal card. Pure (dates via `today`
+  // override in tests). All weights are in lb; the caller converts for display.
+  // Returns { status, reached, onRightPath, remainingLb, actualPerWeekLb,
+  //   requiredPerWeekLb, projectedByDateLb, weeksToDate } or null.
+  // status ∈ reached | ahead | onTrack | behind | wrongWay
+  function goalStatus(o) {
+    o = o || {};
+    const start = o.startLb, latest = o.latestLb, target = o.targetLb;
+    if (start == null || latest == null || target == null) return null;
+    const remaining = latest - target;         // + = above target
+    const losing = target < start;             // intended direction of the goal
+    const reached = (losing && latest <= target) || (!losing && latest >= target) || Math.abs(remaining) < 0.05;
+    const avg = Number(o.avgPerWeekLb) || 0;
+    const onRightPath = (target < latest && avg < -0.02) || (target > latest && avg > 0.02);
+    const res = {
+      reached, onRightPath, remainingLb: Math.abs(remaining), actualPerWeekLb: avg,
+      requiredPerWeekLb: null, projectedByDateLb: null, weeksToDate: null, status: "onTrack",
+    };
+    if (reached) { res.status = "reached"; return res; }
+    const hasDate = o.targetDate && /^\d{4}-\d{2}-\d{2}$/.test(o.targetDate);
+    if (hasDate) {
+      const today = o.today ? new Date(o.today) : new Date();
+      const td = new Date(o.targetDate + "T00:00:00");
+      const weeks = (td - today) / (7 * 86400000);
+      res.weeksToDate = weeks;
+      if (weeks > 0) {
+        res.requiredPerWeekLb = (target - latest) / weeks;   // signed lb/wk needed
+        res.projectedByDateLb = latest + avg * weeks;        // where this pace lands you
+        if (!onRightPath) { res.status = "wrongWay"; return res; }
+        const projReaches = losing ? res.projectedByDateLb <= target + 0.05 : res.projectedByDateLb >= target - 0.05;
+        const ratio = Math.abs(avg) / Math.max(1e-6, Math.abs(res.requiredPerWeekLb));
+        res.status = !projReaches ? "behind" : (ratio >= 1.15 ? "ahead" : "onTrack");
+        return res;
+      }
+      res.status = onRightPath ? "behind" : "wrongWay"; // target date already passed
+      return res;
+    }
+    res.status = onRightPath ? "onTrack" : "wrongWay";   // no date → just direction
+    return res;
   }
 
   /* ---- Insight line ---- */
@@ -13014,7 +13077,7 @@
       recentSleepHours, sleepSessionSeconds, sleepSessionEndMs, sleepSessionStartMs, sleepSourceKey, ghScopeHint,
       isWorkoutHabit, isSleepHabit, isTempHabit, latestSkinTempDeltaC, fmtSkinTemp,
       buildAllCsv, finalizeMissedStepGoals, stepHabitKind,
-      calorieForecast, estimateMaintenanceKcal, mifflinBmr, groupExerciseKcalByDay, groupActiveEnergyByDay, bmiFrom, calorieAudit, goalInsight,
+      calorieForecast, estimateMaintenanceKcal, mifflinBmr, groupExerciseKcalByDay, groupActiveEnergyByDay, bmiFrom, calorieAudit, goalInsight, goalStatus,
       computeRestImpact, latestGoogleTotal, avgByDayComplete, avgExerciseKcal, effectiveExerciseBurn,
       measurementList, measurementsWithWeight, weeksElapsed,
       getState: () => state, setState: (s) => { state = s; },
