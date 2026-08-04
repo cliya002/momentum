@@ -2511,6 +2511,10 @@
     autoSyncInterval = setInterval(() => {
       if (!syncInFlight && navigator.onLine && !isRateLimited()) syncPull({ skipConfirm: true, silent: true });
     }, 5 * 60 * 1000);
+    // Pull the latest from the cloud immediately on launch / when auto-sync
+    // starts — a silent pull-merge — so a device opens with fresh data instead
+    // of waiting up to 5 minutes for the first interval tick.
+    if (navigator.onLine && !syncInFlight) syncPull({ skipConfirm: true, silent: true });
     if (dirtyForSync && navigator.onLine) queueAutoSyncPush();
   }
   function stopAutoSync() {
@@ -12941,7 +12945,9 @@
       scheduleReminders();
       catchUpReminders();
       maybeFireWeeklyReport();
+      // Pull the latest from the cloud when the app comes back to the foreground.
       if (odAutoEnabled()) oneDrivePull({ silent: true });
+      if (isAutoSyncEnabled() && navigator.onLine && !syncInFlight && !isRateLimited()) syncPull({ skipConfirm: true, silent: true });
     });
     document.addEventListener("pointerdown", unlockAudioOnce, { once: true });
     document.addEventListener("keydown", unlockAudioOnce, { once: true });
