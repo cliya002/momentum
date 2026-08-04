@@ -2586,6 +2586,8 @@ body.hc .btn-secondary { border-color: var(--border); }
 .cal-today .cal-today-label { font-size: 0.8rem; color: var(--text-dim); }
 .cal-today .cal-today-basis { font-size: 0.78rem; color: var(--text-dim); margin-top: 4px; width: 100%; }
 .cal-today .cal-today-basis b { color: var(--text); }
+.steps-cal-out { font-size: 1.4rem; font-weight: 800; color: #ef4444; margin: 0.25rem 0; }
+.steps-cal-out .steps-cal-dist { font-size: 0.9rem; font-weight: 600; color: var(--text-dim); }
 .cal-compare { margin: 0.25rem 0 0.5rem; padding: 10px 12px; border-radius: 10px; background: rgba(59,130,246,0.1); font-size: 0.85rem; }
 .cal-compare .cal-cmp-row { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
 .cal-compare .cal-cmp-diff { font-weight: 700; margin-top: 4px; }

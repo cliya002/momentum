@@ -10357,6 +10357,7 @@
     renderGoal();
     renderProgressSummary();
     renderCalorieForecast();
+    renderStepsCalories();
     renderInsight();
     renderTrendMetricOptions();
     renderTrendChart();
@@ -10627,6 +10628,52 @@
     if (!Number.isFinite(bmi) || bmi <= 0 || bmi > 120) return null;
     const category = bmi < 18.5 ? "Underweight" : bmi < 25 ? "Normal" : bmi < 30 ? "Overweight" : "Obese";
     return { bmi, category };
+  }
+
+  // Rough calories burned for a step count, from body weight (and height for a
+  // better stride). Walks/runs are part of the step total, so this covers them.
+  // gross ≈ 0.9 kcal per kg per km (walking). Pure + tested. Not medical advice.
+  function stepsToKcal(steps, weightLb, heightCm) {
+    steps = Number(steps) || 0;
+    const wKg = (Number(weightLb) || 0) * 0.453592;
+    if (steps <= 0 || wKg <= 0) return null;
+    // Stride ≈ 0.414 × height (m); default ~0.75 m when height is unknown.
+    const strideM = heightCm > 0 ? (heightCm / 100) * 0.414 : 0.75;
+    const km = (steps * strideM) / 1000;
+    const kcal = Math.round(wKg * km * 0.9);
+    return { kcal, km: Math.round(km * 10) / 10, miles: Math.round((km / 1.609) * 10) / 10, strideM: Math.round(strideM * 100) / 100 };
+  }
+
+  function renderStepsCalories() {
+    const input = document.getElementById("stepsCalInput");
+    const out = document.getElementById("stepsCalOut");
+    const note = document.getElementById("stepsCalNote");
+    if (!input || !out) return;
+    const wl = measurementsWithWeight();
+    const weightLb = wl.length ? wl[wl.length - 1].weight : null;
+    const heightCm = (loadCalorie().profile || {}).heightCm || 0;
+    // Prefill (without stomping typing): today's steps → step-goal target → 20,000.
+    if (document.activeElement !== input && (input.value === "" || input.value == null)) {
+      let pre = 0;
+      const h = typeof findStepsGoalHabit === "function" ? findStepsGoalHabit() : null;
+      if (h) { pre = Number(completionValue(h.id, new Date())) || 0; if (pre <= 0) pre = Number(h.target) || 0; }
+      input.value = pre > 0 ? pre : 20000;
+    }
+    const steps = Number(input.value) || 0;
+    if (!weightLb) {
+      out.textContent = "Log your weight (above) to estimate calories from steps.";
+      if (note) note.textContent = "";
+      return;
+    }
+    const r = stepsToKcal(steps, weightLb, heightCm);
+    if (!r) { out.textContent = "Enter a step count to estimate calories."; if (note) note.textContent = ""; return; }
+    const dist = isMetric() ? `${r.km} km` : `${r.miles} mi`;
+    out.innerHTML = `≈ <b>${r.kcal} kcal</b> <span class="steps-cal-dist">· ${dist}</span>`;
+    if (note) {
+      note.textContent = heightCm
+        ? "Rough estimate. Your walks/runs are already in your steps, so this overlaps your active-energy / exercise burn — don't add it on top of Google's measured total."
+        : "Add your height in Personalise (above) for a more accurate stride. This overlaps your active-energy burn — don't double-count.";
+    }
   }
 
   /* ---- Calorie balance & weight-loss forecast ---- */
@@ -12693,6 +12740,8 @@
     if (pullWeightBtn) pullWeightBtn.addEventListener("click", pullWeightForProgress);
     const calPullBtn = $("#calPullBtn");
     if (calPullBtn) calPullBtn.addEventListener("click", pullExerciseCalories);
+    const stepsCalInput = $("#stepsCalInput");
+    if (stepsCalInput) stepsCalInput.addEventListener("input", renderStepsCalories);
     const calTotalPullBtn = $("#calTotalPullBtn");
     if (calTotalPullBtn) calTotalPullBtn.addEventListener("click", pullTotalCalories);
     ["calIn", "calBase", "calExercise", "calHeight", "calAge"].forEach((id) => {
@@ -13083,7 +13132,7 @@
       recentSleepHours, sleepSessionSeconds, sleepSessionEndMs, sleepSessionStartMs, sleepSourceKey, ghScopeHint,
       isWorkoutHabit, isSleepHabit, isTempHabit, latestSkinTempDeltaC, fmtSkinTemp,
       buildAllCsv, finalizeMissedStepGoals, stepHabitKind,
-      calorieForecast, estimateMaintenanceKcal, mifflinBmr, groupExerciseKcalByDay, groupActiveEnergyByDay, bmiFrom, calorieAudit, goalInsight, goalStatus,
+      calorieForecast, estimateMaintenanceKcal, mifflinBmr, groupExerciseKcalByDay, groupActiveEnergyByDay, bmiFrom, calorieAudit, goalInsight, goalStatus, stepsToKcal,
       computeRestImpact, latestGoogleTotal, avgByDayComplete, avgExerciseKcal, effectiveExerciseBurn,
       measurementList, measurementsWithWeight, weeksElapsed,
       getState: () => state, setState: (s) => { state = s; },

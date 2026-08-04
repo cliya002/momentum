@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=4.96.1" />
+  <link rel="stylesheet" href="styles.css?v=4.97.0" />
 </head>
 <body>
 
@@ -377,6 +377,18 @@
             <div id="calForecast" class="cal-forecast"></div>
             <div id="calAudit" class="cal-audit" hidden></div>
             <div id="calExerciseList" class="cal-ex-list"></div>
+          </div>
+
+          <!-- Steps → calories estimate -->
+          <div class="card">
+            <div class="card-title">👟 Steps → calories</div>
+            <p class="card-sub">Roughly how many calories a step count burns, from your weight (and height for stride). Your walks and runs are counted in your step total, so this already includes them.</p>
+            <div class="field">
+              <label for="stepsCalInput">Steps</label>
+              <input id="stepsCalInput" type="number" inputmode="numeric" step="500" min="0" placeholder="20000" />
+            </div>
+            <div id="stepsCalOut" class="steps-cal-out">Enter steps to estimate calories.</div>
+            <p class="card-sub" id="stepsCalNote"></p>
           </div>
 
           <div class="card insight-card" id="insightCard" hidden>
