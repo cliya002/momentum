@@ -10644,11 +10644,26 @@
     return { kcal, km: Math.round(km * 10) / 10, miles: Math.round((km / 1.609) * 10) / 10, strideM: Math.round(strideM * 100) / 100 };
   }
 
+  // Average daily steps from the step-goal habit's recorded history (last `days`
+  // complete days that have a value). Local data — no extra API call.
+  function avgStepsPerDay(days) {
+    const h = typeof findStepsGoalHabit === "function" ? findStepsGoalHabit() : null;
+    if (!h) return null;
+    let sum = 0, n = 0;
+    for (let i = 1; i <= (days || 7); i++) {
+      const v = Number(completionValue(h.id, addDays(new Date(), -i))) || 0;
+      if (v > 0) { sum += v; n++; }
+    }
+    return n ? { avg: Math.round(sum / n), days: n } : null;
+  }
   function renderStepsCalories() {
     const input = document.getElementById("stepsCalInput");
     const out = document.getElementById("stepsCalOut");
     const note = document.getElementById("stepsCalNote");
+    const avgEl = document.getElementById("stepsCalAvg");
     if (!input || !out) return;
+    const pullBtn = document.getElementById("stepsCalPullBtn");
+    if (pullBtn) pullBtn.hidden = !ghConnected();
     const wl = measurementsWithWeight();
     const weightLb = wl.length ? wl[wl.length - 1].weight : null;
     const heightCm = (loadCalorie().profile || {}).heightCm || 0;
@@ -10662,17 +10677,55 @@
     const steps = Number(input.value) || 0;
     if (!weightLb) {
       out.textContent = "Log your weight (above) to estimate calories from steps.";
+      if (avgEl) avgEl.hidden = true;
       if (note) note.textContent = "";
       return;
     }
     const r = stepsToKcal(steps, weightLb, heightCm);
-    if (!r) { out.textContent = "Enter a step count to estimate calories."; if (note) note.textContent = ""; return; }
+    if (!r) { out.textContent = "Enter a step count to estimate calories."; if (avgEl) avgEl.hidden = true; if (note) note.textContent = ""; return; }
     const dist = isMetric() ? `${r.km} km` : `${r.miles} mi`;
     out.innerHTML = `≈ <b>${r.kcal} kcal</b> <span class="steps-cal-dist">· ${dist}</span>`;
+    // Recent daily-average steps (from local step history), converted the same way.
+    if (avgEl) {
+      const a = avgStepsPerDay(7);
+      const ar = a ? stepsToKcal(a.avg, weightLb, heightCm) : null;
+      if (a && ar) {
+        avgEl.hidden = false;
+        avgEl.innerHTML = `📅 ${a.days}-day avg: <b>${a.avg.toLocaleString()}</b> steps ≈ <b>${ar.kcal} kcal/day</b>`;
+      } else { avgEl.hidden = true; }
+    }
     if (note) {
       note.textContent = heightCm
         ? "Rough estimate. Your walks/runs are already in your steps, so this overlaps your active-energy / exercise burn — don't add it on top of Google's measured total."
         : "Add your height in Personalise (above) for a more accurate stride. This overlaps your active-energy burn — don't double-count.";
+    }
+  }
+  // Pull today's steps from Google Health into the estimator (reconciled across
+  // sources). Also records them into the step-goal habit so the daily average builds.
+  async function pullStepsForCard() {
+    if (!ghConnected()) { showToast("Connect Google Health in Settings first.", "warn"); return; }
+    if (!navigator.onLine) { showToast("You're offline.", "warn"); return; }
+    if (ghInFlight) return;
+    ghInFlight = true;
+    const btn = document.getElementById("stepsCalPullBtn");
+    if (btn) { btn.disabled = true; btn.textContent = "⏳ Pulling…"; }
+    try {
+      const steps = await ghStepsFor("allday");
+      const input = document.getElementById("stepsCalInput");
+      if (steps > 0) {
+        if (input) input.value = steps;
+        const h = typeof findStepsGoalHabit === "function" ? findStepsGoalHabit() : null;
+        if (h) { const msgs = []; applyStepsToHabit(h, steps, new Date(), msgs); }
+        renderStepsCalories();
+        showToast(`👟 ${steps.toLocaleString()} steps today`, "success");
+      } else {
+        showToast("👟 No steps found yet today. Sync your watch or Fitbit app, then try again.", "warn");
+      }
+    } catch (e) {
+      showToast("Steps pull failed: " + (e.message || e), "error");
+    } finally {
+      ghInFlight = false;
+      if (btn) { btn.disabled = false; btn.textContent = "👟 Pull today's steps"; }
     }
   }
 
@@ -12742,6 +12795,8 @@
     if (calPullBtn) calPullBtn.addEventListener("click", pullExerciseCalories);
     const stepsCalInput = $("#stepsCalInput");
     if (stepsCalInput) stepsCalInput.addEventListener("input", renderStepsCalories);
+    const stepsCalPullBtn = $("#stepsCalPullBtn");
+    if (stepsCalPullBtn) stepsCalPullBtn.addEventListener("click", pullStepsForCard);
     const calTotalPullBtn = $("#calTotalPullBtn");
     if (calTotalPullBtn) calTotalPullBtn.addEventListener("click", pullTotalCalories);
     ["calIn", "calBase", "calExercise", "calHeight", "calAge"].forEach((id) => {
