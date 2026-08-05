@@ -3948,6 +3948,15 @@
     }
   }
 
+  // Silent Google Health pull on app open / foreground, throttled to once per
+  // ~10 minutes so reopening the app doesn't hammer the API.
+  function maybeAutoPullGoogle() {
+    if (!ghConnected() || !navigator.onLine || ghInFlight) return;
+    const last = Number(localStorage.getItem(KEYS.ghLastSync) || 0);
+    if (Date.now() - last < 10 * 60 * 1000) return;
+    pullGoogleActivity({ silent: true });
+  }
+
   function disconnectGoogleHealth() {
     [KEYS.ghAccess, KEYS.ghRefresh, KEYS.ghExpiry, KEYS.ghEnabled, KEYS.ghLastSync].forEach((k) => localStorage.removeItem(k));
     showGhStatus("Disconnected from Google Health.", "success");
@@ -13020,7 +13029,7 @@
     // OneDrive: finish an OAuth redirect if we're returning from sign-in,
     // otherwise pull the latest on open when auto-sync is on.
     // Google Health: finish an OAuth redirect if we're returning from Google.
-    handleGoogleRedirect().catch(() => {});
+    handleGoogleRedirect().then((handled) => { if (!handled) maybeAutoPullGoogle(); }).catch(() => {});
     handleOneDriveRedirect().then((handled) => {
       if (!handled && odAutoEnabled()) oneDrivePull({ silent: true });
     }).catch(() => {});
@@ -13052,6 +13061,7 @@
       // Pull the latest from the cloud when the app comes back to the foreground.
       if (odAutoEnabled()) oneDrivePull({ silent: true });
       if (isAutoSyncEnabled() && navigator.onLine && !syncInFlight && !isRateLimited()) syncPull({ skipConfirm: true, silent: true });
+      maybeAutoPullGoogle();
     });
     document.addEventListener("pointerdown", unlockAudioOnce, { once: true });
     document.addEventListener("keydown", unlockAudioOnce, { once: true });
