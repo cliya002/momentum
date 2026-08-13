@@ -696,6 +696,43 @@ body.compact .stepper-btn { width: 30px; height: 30px; font-size: 1.05rem; }
 body.compact .time-groups, body.compact .category-groups { gap: 0.85rem; }
 body.compact .habit-list { gap: 0.35rem; }
 
+/* Today day navigation */
+.day-nav { display: flex; align-items: center; gap: 0.5rem; margin: 0 0 0.75rem; }
+.day-nav-arrow {
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  width: 40px; height: 40px; font-size: 0.95rem; cursor: pointer; color: var(--text); flex-shrink: 0;
+}
+.day-nav-arrow:disabled { opacity: 0.35; cursor: default; }
+.day-nav-label {
+  flex: 1; background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  height: 40px; font-weight: 700; cursor: pointer; color: var(--text);
+}
+.day-nav-jump {
+  background: var(--primary); color: #fff; border: none; border-radius: 10px;
+  height: 40px; padding: 0 0.9rem; font-weight: 700; cursor: pointer; flex-shrink: 0;
+}
+.day-cal-pop {
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 0.75rem; margin: -0.35rem 0 0.85rem; box-shadow: var(--shadow);
+}
+.day-cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; font-weight: 700; }
+.day-cal-head button { background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--text); padding: 0.15rem 0.6rem; }
+.day-cal-head button:disabled { opacity: 0.35; cursor: default; }
+.day-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.day-cal-dow { text-align: center; font-size: 0.62rem; color: var(--text-dim); font-weight: 600; padding-bottom: 2px; }
+.day-cal-cell {
+  aspect-ratio: 1; border: none; border-radius: 8px; background: var(--card-soft); color: var(--text);
+  font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.day-cal-cell:disabled { opacity: 0.3; cursor: default; }
+.day-cal-cell.sel { outline: 2px solid var(--primary); outline-offset: -2px; }
+.day-cal-cell.today-mark { font-weight: 800; }
+.day-cal-cell.b0 { background: color-mix(in srgb, #ef4444 18%, var(--card-soft)); }
+.day-cal-cell.b1 { background: color-mix(in srgb, #22c55e 20%, var(--card-soft)); }
+.day-cal-cell.b2 { background: color-mix(in srgb, #22c55e 40%, var(--card-soft)); }
+.day-cal-cell.b3 { background: color-mix(in srgb, #22c55e 60%, var(--card-soft)); }
+.day-cal-cell.b4 { background: #22c55e; color: #fff; }
+
 /* One-time hint banner */
 .today-hint {
   display: flex;

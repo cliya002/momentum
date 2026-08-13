@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=4.98.1" />
+  <link rel="stylesheet" href="styles.css?v=4.99.0" />
 </head>
 <body>
 
@@ -102,6 +102,14 @@
               </div>
             </div>
           </div>
+
+          <div class="day-nav" id="dayNav">
+            <button id="dayPrevBtn" class="day-nav-arrow" type="button" aria-label="Previous day">◀</button>
+            <button id="dayLabelBtn" class="day-nav-label" type="button" aria-haspopup="dialog">📅 Today</button>
+            <button id="dayNextBtn" class="day-nav-arrow" type="button" aria-label="Next day">▶</button>
+            <button id="dayTodayBtn" class="day-nav-jump" type="button" hidden>Today</button>
+          </div>
+          <div id="dayCalPop" class="day-cal-pop hidden" role="dialog" aria-label="Pick a date"></div>
 
           <div class="card adherence-card" id="adherenceCard">
             <div class="adherence-ring-wrap">

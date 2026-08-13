@@ -5089,7 +5089,7 @@
     for (const [name, node] of Object.entries(els.pages)) {
       node.classList.toggle("active", name === view);
     }
-    if (view === "today") { scrollToNowPending = true; renderToday(); }
+    if (view === "today") { scrollToNowPending = true; todayViewDate = null; renderToday(); }
     else if (view === "habits") renderHabits();
     else if (view === "progress") { progressDateKey = dateKey(new Date()); renderProgress(); }
     else if (view === "report") { weekOffset = 0; renderReport(); }
@@ -5420,12 +5420,93 @@
     };
   }
 
+  // Day navigation for the Today tab. null = viewing today; a Date = a past day.
+  let todayViewDate = null;
+  let dayCalOffset = 0;      // month offset for the day-picker popover
+  let journalDateKey = null; // which day the journal textarea edits
+  function isViewingToday() { return !todayViewDate || sameDay(todayViewDate, new Date()); }
+
+  // Update the Today date-nav bar (label, arrow states, jump button).
+  function renderDayNav() {
+    const label = document.getElementById("dayLabelBtn");
+    const nextBtn = document.getElementById("dayNextBtn");
+    const jump = document.getElementById("dayTodayBtn");
+    if (!label) return;
+    const d = todayViewDate || new Date();
+    const viewing = isViewingToday();
+    label.textContent = "📅 " + (viewing ? "Today" : d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }));
+    if (nextBtn) nextBtn.disabled = viewing; // can't step into the future
+    if (jump) jump.hidden = viewing;
+  }
+  // Step the viewed day by `delta` days (never into the future).
+  function goDay(delta) {
+    const base = todayViewDate || new Date();
+    const d = addDays(base, delta);
+    const now = new Date();
+    if (d > now && !sameDay(d, now)) return;
+    todayViewDate = sameDay(d, now) ? null : d;
+    closeDayCal();
+    renderToday();
+  }
+  function goToToday() { todayViewDate = null; closeDayCal(); renderToday(); }
+  function closeDayCal() { const p = document.getElementById("dayCalPop"); if (p) p.classList.add("hidden"); }
+  function toggleDayCal() {
+    const pop = document.getElementById("dayCalPop");
+    if (!pop) return;
+    if (pop.classList.contains("hidden")) { dayCalOffset = 0; renderDayCal(); pop.classList.remove("hidden"); }
+    else pop.classList.add("hidden");
+  }
+  function pickDay(dk) {
+    const parts = String(dk).split("-").map(Number);
+    if (parts.length !== 3 || parts.some(isNaN)) return;
+    const d = new Date(parts[0], parts[1] - 1, parts[2]);
+    const now = new Date();
+    if (d > now && !sameDay(d, now)) return;
+    todayViewDate = sameDay(d, now) ? null : d;
+    closeDayCal();
+    renderToday();
+  }
+  // Month-grid day picker, coloured by that day's overall adherence.
+  function renderDayCal() {
+    const pop = document.getElementById("dayCalPop");
+    if (!pop) return;
+    const now = new Date();
+    const base = new Date(now.getFullYear(), now.getMonth() + dayCalOffset, 1);
+    const monthLabel = base.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+    const firstDow = (base.getDay() + 6) % 7; // Monday-first
+    const daysInMonth = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
+    const sel = todayViewDate || now;
+    let cells = "";
+    for (const dn of ["M", "T", "W", "T", "F", "S", "S"]) cells += `<div class="day-cal-dow">${dn}</div>`;
+    for (let i = 0; i < firstDow; i++) cells += `<div></div>`;
+    for (let day = 1; day <= daysInMonth; day++) {
+      const d = new Date(base.getFullYear(), base.getMonth(), day);
+      const future = d > now && !sameDay(d, now);
+      const bucket = dayAdherenceBucket(d);
+      const cls = ["day-cal-cell"];
+      if (!future && bucket !== "none" && bucket !== "future") cls.push("b" + bucket);
+      if (sameDay(d, now)) cls.push("today-mark");
+      if (sameDay(d, sel)) cls.push("sel");
+      cells += `<button type="button" class="${cls.join(" ")}" data-dk="${dateKey(d)}"${future ? " disabled" : ""}>${day}</button>`;
+    }
+    pop.innerHTML =
+      `<div class="day-cal-head"><button type="button" id="dayCalPrev" aria-label="Previous month">‹</button><span>${escapeHtml(monthLabel)}</span><button type="button" id="dayCalNext" aria-label="Next month"${dayCalOffset >= 0 ? " disabled" : ""}>›</button></div>` +
+      `<div class="day-cal-grid">${cells}</div>`;
+    const prev = pop.querySelector("#dayCalPrev");
+    if (prev) prev.addEventListener("click", () => { dayCalOffset--; renderDayCal(); });
+    const nx = pop.querySelector("#dayCalNext");
+    if (nx) nx.addEventListener("click", () => { if (dayCalOffset < 0) { dayCalOffset++; renderDayCal(); } });
+    pop.querySelectorAll(".day-cal-cell").forEach((b) => b.addEventListener("click", () => pickDay(b.dataset.dk)));
+  }
+
   function renderToday() {
     const els = getEls();
-    finalizeMissedStepGoals(); // mark yesterday's unmet step goals as not done
+    const viewingToday = isViewingToday();
+    if (viewingToday) finalizeMissedStepGoals(); // mark yesterday's unmet step goals as not done
     resetRenderCaches();
     els.todayGroups.innerHTML = "";
-    const today = new Date();
+    const today = todayViewDate || new Date();
+    renderDayNav();
 
     // Reset fasting-card placement: default it back to the top anchor. If an
     // "Intermittent fasting" habit is rendered below, the card is moved into
@@ -5442,8 +5523,8 @@
       }
     }
 
-    // Greeting
-    const hour = today.getHours();
+    // Greeting (always based on the real time of day, not the viewed date)
+    const hour = new Date().getHours();
     els.todayGreeting.textContent = greetingForHour(hour) + " 👋";
 
     // One-time usage hint (only if there are habits and not yet dismissed)
@@ -5463,7 +5544,9 @@
     const dateStr = today.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
     let leftMsg;
     if (scheduled.length === 0) {
-      leftMsg = state.habits.length === 0 ? "Let's set up your first habit." : "Nothing scheduled today.";
+      leftMsg = state.habits.length === 0 ? "Let's set up your first habit." : (viewingToday ? "Nothing scheduled today." : "Nothing was scheduled.");
+    } else if (!viewingToday) {
+      leftMsg = `${doneToday}/${scheduled.length} done`;
     } else if (leftToday === 0) {
       leftMsg = "Everything's logged. Nice work. 🎉";
     } else {
@@ -5474,8 +5557,9 @@
     renderVacationBanner();
     renderKeystone();
     renderReviewPrompt();
-    renderMoodStrip();
-    renderFasting();
+    // Mood strip + live fasting only make sense for today; skip on a past day.
+    if (viewingToday) { renderMoodStrip(); renderFasting(); }
+    else if (els.moodStrip) { els.moodStrip.innerHTML = ""; }
     renderJournal(today);
 
     const active = todayCategoryFilter === "all"
@@ -5515,7 +5599,7 @@
         for (const pid of dayPartsForHabit(h, todayIdx)) (buckets.get(pid) || buckets.get("anytime")).push({ h, slot: null });
       }
     }
-    const nowPart = currentDayPartId();
+    const nowPart = viewingToday ? currentDayPartId() : null;
 
     const entryStatus = (e) => e.slot ? doseStatus(e.h, today, e.slot.i) : todayStatus(e.h, today);
     const entryTime = (e) => {
@@ -5676,6 +5760,8 @@
   function renderUpNext(active, today) {
     const el = getEls().adherenceUpNext;
     if (!el) return;
+    // "Up next" / "Missed so far" are time-of-day relative — only for today.
+    if (!isViewingToday()) { el.hidden = true; el.innerHTML = ""; return; }
     const tIdx = today.getDay();
     const timeOf = (h) => parseTimeToMinutes(effectiveTime(h, tIdx));
     const nowMin = today.getHours() * 60 + today.getMinutes();
@@ -6331,8 +6417,9 @@
     li.appendChild(controls);
     }
 
-    // Embed the fasting tracker inline within the intermittent-fasting habit.
-    if (isFastingHabit(habit) && !fastingCardPlacedThisRender) {
+    // Embed the fasting tracker inline within the intermittent-fasting habit
+    // (live tracker — only for today, not when viewing a past day).
+    if (isFastingHabit(habit) && !fastingCardPlacedThisRender && isViewingToday()) {
       const e = getEls();
       if (e.fastingCard) {
         fastingCardPlacedThisRender = true;
@@ -6513,13 +6600,14 @@
   function renderJournal(date) {
     const els = getEls();
     const key = dateKey(date);
+    journalDateKey = key; // so edits save to the viewed day, not always today
     const entry = state.journal[key];
     els.journalText.value = entry ? entry.text : "";
     els.journalSaved.hidden = true;
   }
   function onJournalInput() {
     const els = getEls();
-    const key = todayKey();
+    const key = journalDateKey || todayKey();
     const text = els.journalText.value;
     if (journalSaveTimer) clearTimeout(journalSaveTimer);
     journalSaveTimer = setTimeout(() => {
@@ -12573,6 +12661,11 @@
       renderToday();
     });
     els.todayAddBtn.addEventListener("click", () => openHabitModal(null));
+    // Today day-navigation (view previous days + calendar picker)
+    const dayPrevBtn = $("#dayPrevBtn"); if (dayPrevBtn) dayPrevBtn.addEventListener("click", () => goDay(-1));
+    const dayNextBtn = $("#dayNextBtn"); if (dayNextBtn) dayNextBtn.addEventListener("click", () => goDay(1));
+    const dayLabelBtn = $("#dayLabelBtn"); if (dayLabelBtn) dayLabelBtn.addEventListener("click", toggleDayCal);
+    const dayTodayBtn = $("#dayTodayBtn"); if (dayTodayBtn) dayTodayBtn.addEventListener("click", goToToday);
     els.todayMenuBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       els.todayMenu.classList.toggle("hidden");
