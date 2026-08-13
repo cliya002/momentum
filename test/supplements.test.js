@@ -75,5 +75,30 @@ console.log("supplementTiming (evidence-based timing)");
   assert(T.supplementTiming("") === null, "empty name → null");
 }
 
+console.log("supplementSafety (safe / needs research / use with care)");
+{
+  const tier = (name) => { const s = T.supplementSafety(name); return s ? s.tier : null; };
+  // Well-studied → safe.
+  assert(tier("Vitamin D3") === "safe", "vitamin D → safe");
+  assert(tier("Magnesium Glycinate") === "safe", "magnesium → safe");
+  assert(tier("Creatine") === "safe", "creatine → safe");
+  assert(tier("Omega-3 fish oil") === "safe", "omega-3 → safe");
+  assert(tier("Whey protein") === "safe", "protein → safe");
+  // Higher-risk → caution.
+  assert(tier("Yohimbine HCl") === "caution", "yohimbine → use with care");
+  assert(tier("Berberine") === "caution", "berberine → use with care (interactions)");
+  // Needs more research / caveats → moderate.
+  assert(tier("Ashwagandha") === "moderate", "ashwagandha → needs more research");
+  assert(tier("Lion's Mane") === "moderate", "lion's mane → needs more research");
+  assert(tier("Iron bisglycinate") === "moderate", "iron → moderate (test levels)");
+  assert(tier("Green tea extract") === "moderate", "green tea → moderate (liver at high dose)");
+  assert(tier("Glucomannan") === "moderate", "glucomannan → moderate (water/choking)");
+  // Every tier carries a short label.
+  const s = T.supplementSafety("Yohimbine HCl");
+  assert(s.label && /heart|bp|anxiety|ssri/i.test(s.label), "caution label explains the risk");
+  // Unknown → null.
+  assert(T.supplementSafety("Dragon fruit smoothie") === null, "unknown → null safety");
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

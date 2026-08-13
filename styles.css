@@ -3064,6 +3064,11 @@ body.hc .btn-secondary { border-color: var(--border); }
   line-height: 1.45;
 }
 .detail-suppl .suppl-ok { color: var(--success); font-weight: 700; }
+.detail-suppl .suppl-safety-row { margin-bottom: 0.4rem; }
+.suppl-badge { display: inline-block; font-size: 0.72rem; font-weight: 800; padding: 0.15rem 0.5rem; border-radius: 999px; letter-spacing: 0.02em; }
+.suppl-badge.safe { background: color-mix(in srgb, #22c55e 20%, var(--card)); color: #16a34a; }
+.suppl-badge.moderate { background: color-mix(in srgb, var(--amber) 22%, var(--card)); color: var(--amber); }
+.suppl-badge.caution { background: color-mix(in srgb, #ef4444 20%, var(--card)); color: #ef4444; }
 
 /* Smart hints inside the habit form */
 .form-warn {

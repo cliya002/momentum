@@ -2278,6 +2278,30 @@
     return null;
   }
 
+  // Safety tier for a supplement: "safe" (well-studied at typical doses),
+  // "moderate" (promising / needs more research / notable caveats), or
+  // "caution" (real risks or drug interactions). General info, not medical advice.
+  function supplementSafety(name) {
+    const n = String(name || "").toLowerCase();
+    const S = (tier, label) => ({ tier, label });
+    // Higher-risk — cardiovascular effects or notable drug interactions.
+    if (/yohimbine/.test(n)) return S("caution", "Use with care — raises heart rate/BP; avoid with heart, anxiety or SSRIs");
+    if (/berberine/.test(n)) return S("caution", "Use with care — interacts with several medications; check first");
+    // Needs more research / narrow safe range / real caveats.
+    if (/selenium/.test(n)) return S("moderate", "Narrow safe range — don't exceed ~200mcg/day");
+    if (/vitamin\s*e|tocopherol/.test(n)) return S("moderate", "Avoid high doses (bleeding risk)");
+    if (/green\s*tea|egcg|matcha/.test(n)) return S("moderate", "Liver caution at high EGCG doses");
+    if (/glucomannan|konjac/.test(n)) return S("moderate", "Take with plenty of water — swelling/choking risk otherwise");
+    if (/melatonin/.test(n)) return S("moderate", "Fine short-term; long-term use less studied");
+    if (/\biron\b|ferrous/.test(n)) return S("moderate", "Only supplement if deficient — overdose is harmful; test levels");
+    if (/apple\s*cider|\bacv\b/.test(n)) return S("moderate", "Always dilute — protects teeth and throat");
+    if (/caffeine|pre-?workout/.test(n)) return S("moderate", "Dose-dependent — mind sleep, anxiety and blood pressure");
+    if (/carnitine|green\s*coffee|chlorogenic|capsaicin|cayenne|rhodiola|tongkat|lion'?s\s*mane|hericium|\bnac\b|acetyl\s*cysteine|ashwagandha/.test(n)) return S("moderate", "Promising but the evidence is still limited");
+    // Well-studied, broadly safe at typical doses.
+    if (/magnesium|threonate|vitamin\s*d|vit\s*d|\bd3\b|vitamin\s*k|\bk2\b|mk-?7|b-?12|b-?complex|methylcobalamin|thiamin|riboflavin|niacin|omega|fish\s*oil|\bepa\b|\bdha\b|krill|probiotic|creatine|l-?theanine|calcium|coq10|ubiquinol|collagen|glycine|multivitamin|\bmulti\b|prenatal|vitamin\s*c|ascorb|\bzinc\b|whey|protein|fiber|psyllium|electrolyte|turmeric|curcumin|5-?mthf|folate|biotin/.test(n)) return S("safe", "Well-studied and broadly safe at typical doses");
+    return null;
+  }
+
   function openHabitDetail(habit, keepMonth) {
     const els = getEls();
     if (!els.habitDetailModal) return;
@@ -2301,15 +2325,24 @@
       const when = dTimes.length ? dTimes.join(" · ") : escapeHtml(habit.time);
       html += `<p class="detail-line hint">🕒 ${when}${habit.type === "count" ? ` · target ${escapeHtml(fmtValue(habit, habit.target))}` : ""}</p>`;
     }
-    // Research-based best timing for recognised supplements.
+    // Research-based best timing + safety tier for recognised supplements.
     const st = habit.category === "Supplements" ? supplementTiming(habit.name) : null;
-    if (st) {
-      const already = st.time && (habit.reminderTime === st.time || (habit.reminderTimes && habit.reminderTimes.length === 1 && habit.reminderTimes[0] === st.time));
-      const applyBtn = (st.time && !already)
-        ? ` <button type="button" id="applySupplTime" class="linklike">Set to ${escapeHtml(fmtClockLabel(st.time))}</button>`
-        : (st.time && already ? ` <span class="suppl-ok">✓ set</span>` : "");
-      html += `<div class="detail-suppl"><b>🔬 Best timing:</b> ${escapeHtml(st.label)}${st.time ? ` (${escapeHtml(fmtClockLabel(st.time))})` : ""}${applyBtn}` +
-        `<br><span class="hint">${escapeHtml(st.reason)}</span></div>`;
+    const ss = habit.category === "Supplements" ? supplementSafety(habit.name) : null;
+    if (st || ss) {
+      let inner = "";
+      if (ss) {
+        const badgeText = ss.tier === "safe" ? "✓ Safe" : ss.tier === "caution" ? "⚠ Use with care" : "🔬 Needs more research";
+        inner += `<div class="suppl-safety-row"><span class="suppl-badge ${ss.tier}">${badgeText}</span> <span class="hint">${escapeHtml(ss.label)}</span></div>`;
+      }
+      if (st) {
+        const already = st.time && (habit.reminderTime === st.time || (habit.reminderTimes && habit.reminderTimes.length === 1 && habit.reminderTimes[0] === st.time));
+        const applyBtn = (st.time && !already)
+          ? ` <button type="button" id="applySupplTime" class="linklike">Set to ${escapeHtml(fmtClockLabel(st.time))}</button>`
+          : (st.time && already ? ` <span class="suppl-ok">✓ set</span>` : "");
+        inner += `<div><b>🔬 Best timing:</b> ${escapeHtml(st.label)}${st.time ? ` (${escapeHtml(fmtClockLabel(st.time))})` : ""}${applyBtn}` +
+          `<br><span class="hint">${escapeHtml(st.reason)}</span></div>`;
+      }
+      html += `<div class="detail-suppl">${inner}</div>`;
     }
     const at = adaptiveTargetSuggestion(habit);
     if (at) {
@@ -13385,7 +13418,7 @@
       mapSleepHours, parseDurationSeconds, mapWorkoutSessions, workoutHabitMatch,
       recentSleepHours, sleepSessionSeconds, sleepSessionEndMs, sleepSessionStartMs, sleepSourceKey, ghScopeHint,
       isWorkoutHabit, isSleepHabit, isTempHabit, latestSkinTempDeltaC, fmtSkinTemp,
-      buildAllCsv, finalizeMissedStepGoals, stepHabitKind, supplementTiming,
+      buildAllCsv, finalizeMissedStepGoals, stepHabitKind, supplementTiming, supplementSafety,
       calorieForecast, estimateMaintenanceKcal, mifflinBmr, groupExerciseKcalByDay, groupActiveEnergyByDay, bmiFrom, calorieAudit, goalInsight, goalStatus, stepsToKcal,
       computeRestImpact, latestGoogleTotal, avgByDayComplete, avgExerciseKcal, effectiveExerciseBurn,
       measurementList, measurementsWithWeight, weeksElapsed,
