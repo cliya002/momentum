@@ -2210,6 +2210,37 @@
       </div>`;
   }
 
+  // Evidence-based "best time to take it" for common supplements. Returns
+  // { time: "HH:MM"|null, label, reason } or null when the name isn't recognised.
+  // General wellness guidance — not medical advice; follow your provider.
+  function supplementTiming(name) {
+    const n = String(name || "").toLowerCase();
+    const rec = (time, label, reason) => ({ time, label, reason });
+    if (/magnesium|threonate|magtein/.test(n)) return rec("21:30", "Evening / before bed", "Calming and supports sleep and muscle relaxation — best a couple of hours before bed.");
+    if (/ashwagandha/.test(n)) return rec("20:00", "Evening, with food", "Adaptogen for stress and sleep; take with a meal to ease the stomach.");
+    if (/melatonin/.test(n)) return rec("21:30", "30–60 min before bed", "Signals sleep onset — take shortly before your target bedtime.");
+    if (/\bzinc\b/.test(n)) return rec("18:00", "With dinner", "Take with food to avoid nausea; keep apart from iron, calcium and coffee.");
+    if (/\biron\b|ferrous|ferritin/.test(n)) return rec("08:00", "Morning, empty stomach", "Absorbs best on an empty stomach with vitamin C; avoid calcium, coffee and tea nearby.");
+    if (/vitamin\s*d|vit\s*d|\bd3\b|cholecalciferol/.test(n)) return rec("08:00", "Morning, with a fatty meal", "Fat-soluble, so pair with fat; morning is gentler on sleep than late-night dosing.");
+    if (/vitamin\s*k|\bk2\b|mk-?7/.test(n)) return rec("08:00", "With a fatty meal", "Fat-soluble; works well alongside vitamin D and dietary fat.");
+    if (/\bb-?12\b|b-?complex|b\s*vitamin|methylcobalamin|thiamin|riboflavin|niacin/.test(n)) return rec("08:00", "Morning", "B-vitamins can be energizing — morning avoids disrupting sleep.");
+    if (/omega|fish\s*oil|\bepa\b|\bdha\b|krill/.test(n)) return rec("18:00", "With a meal (fat)", "Take with a fat-containing meal for absorption and to reduce fishy reflux.");
+    if (/probiotic/.test(n)) return rec("08:00", "Morning, empty stomach", "Take ~30 min before breakfast (or at bedtime) — consistency matters most.");
+    if (/turmeric|curcumin/.test(n)) return rec("18:00", "With a meal + fat", "Poorly absorbed alone — take with food, fat and black pepper (piperine).");
+    if (/apple\s*cider|\bacv\b/.test(n)) return rec("07:45", "10–15 min before a meal", "Dilute in water and sip before a meal; never undiluted (protects teeth and throat).");
+    if (/creatine/.test(n)) return rec(null, "Any time — daily", "Timing barely matters; daily consistency builds saturation. Post-workout is a fine default.");
+    if (/caffeine|pre-?workout/.test(n)) return rec("08:00", "Morning", "Long half-life — keep it 8–10h before bed to protect sleep.");
+    if (/l-?theanine/.test(n)) return rec("08:00", "Morning (with caffeine) or evening", "Pairs with caffeine for smooth focus; also calming in the evening.");
+    if (/calcium/.test(n)) return rec("18:00", "With a meal (split doses)", "Absorbs best in ≤500 mg doses with food; keep apart from iron and zinc.");
+    if (/coq10|ubiquinol/.test(n)) return rec("08:00", "Morning, with a fatty meal", "Fat-soluble and mildly energizing — morning with fat works well.");
+    if (/collagen|glycine/.test(n)) return rec(null, "Any time — daily", "Timing isn't critical; some take glycine at night to aid sleep.");
+    if (/multivitamin|\bmulti\b|prenatal/.test(n)) return rec("08:00", "Morning, with a meal", "Take with food so the fat-soluble vitamins inside absorb.");
+    if (/vitamin\s*c|ascorb/.test(n)) return rec("08:00", "Morning (pairs with iron)", "Water-soluble; boosts iron absorption when taken together.");
+    if (/fiber|psyllium|metamucil/.test(n)) return rec(null, "With plenty of water, apart from meds", "Take with a full glass of water and keep ~2h from other supplements/medications.");
+    if (/whey|protein/.test(n)) return rec(null, "Around training / to top up protein", "Timing is flexible — total daily protein matters most; post-workout is convenient.");
+    return null;
+  }
+
   function openHabitDetail(habit, keepMonth) {
     const els = getEls();
     if (!els.habitDetailModal) return;
@@ -2232,6 +2263,16 @@
     if (dTimes.length || habit.time) {
       const when = dTimes.length ? dTimes.join(" · ") : escapeHtml(habit.time);
       html += `<p class="detail-line hint">🕒 ${when}${habit.type === "count" ? ` · target ${escapeHtml(fmtValue(habit, habit.target))}` : ""}</p>`;
+    }
+    // Research-based best timing for recognised supplements.
+    const st = habit.category === "Supplements" ? supplementTiming(habit.name) : null;
+    if (st) {
+      const already = st.time && (habit.reminderTime === st.time || (habit.reminderTimes && habit.reminderTimes.length === 1 && habit.reminderTimes[0] === st.time));
+      const applyBtn = (st.time && !already)
+        ? ` <button type="button" id="applySupplTime" class="linklike">Set to ${escapeHtml(fmtClockLabel(st.time))}</button>`
+        : (st.time && already ? ` <span class="suppl-ok">✓ set</span>` : "");
+      html += `<div class="detail-suppl"><b>🔬 Best timing:</b> ${escapeHtml(st.label)}${st.time ? ` (${escapeHtml(fmtClockLabel(st.time))})` : ""}${applyBtn}` +
+        `<br><span class="hint">${escapeHtml(st.reason)}</span></div>`;
     }
     const at = adaptiveTargetSuggestion(habit);
     if (at) {
@@ -2256,6 +2297,24 @@
     els.habitDetailBody.innerHTML = html;
     const fz = document.getElementById("detailFreezeToday");
     if (fz) fz.addEventListener("change", () => { setFreeze(habit.id, new Date(), fz.checked); openHabitDetail(habit, true); });
+    const applyST = document.getElementById("applySupplTime");
+    if (applyST) applyST.addEventListener("click", () => {
+      const rec = supplementTiming(habit.name);
+      if (!rec || !rec.time) return;
+      const h = state.habits.find((x) => x.id === habit.id);
+      if (!h) return;
+      h.reminderTime = rec.time;
+      h.reminderTimes = [rec.time];
+      h.time = fmtClockLabel(rec.time); // re-slots it into the right day-part
+      h.updatedAt = Date.now();
+      resetRenderCaches();
+      save();
+      scheduleReminders();
+      if (currentView === "today") renderToday();
+      if (currentView === "habits") renderHabits();
+      openHabitDetail(h, true);
+      showToast(`⏰ ${h.name} set to ${fmtClockLabel(rec.time)}`, "success");
+    });
     const mcPrev = document.getElementById("mcPrev");
     const mcNext = document.getElementById("mcNext");
     if (mcPrev) mcPrev.addEventListener("click", () => { detailMonthOffset -= 1; openHabitDetail(habit, true); });
@@ -13289,7 +13348,7 @@
       mapSleepHours, parseDurationSeconds, mapWorkoutSessions, workoutHabitMatch,
       recentSleepHours, sleepSessionSeconds, sleepSessionEndMs, sleepSessionStartMs, sleepSourceKey, ghScopeHint,
       isWorkoutHabit, isSleepHabit, isTempHabit, latestSkinTempDeltaC, fmtSkinTemp,
-      buildAllCsv, finalizeMissedStepGoals, stepHabitKind,
+      buildAllCsv, finalizeMissedStepGoals, stepHabitKind, supplementTiming,
       calorieForecast, estimateMaintenanceKcal, mifflinBmr, groupExerciseKcalByDay, groupActiveEnergyByDay, bmiFrom, calorieAudit, goalInsight, goalStatus, stepsToKcal,
       computeRestImpact, latestGoogleTotal, avgByDayComplete, avgExerciseKcal, effectiveExerciseBurn,
       measurementList, measurementsWithWeight, weeksElapsed,

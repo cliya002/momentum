@@ -3054,6 +3054,16 @@ body.hc .btn-secondary { border-color: var(--border); }
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.detail-suppl {
+  background: color-mix(in srgb, var(--teal) 12%, var(--card-soft));
+  border-left: 4px solid var(--teal);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.8rem;
+  margin: 0.4rem 0 0.6rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+.detail-suppl .suppl-ok { color: var(--success); font-weight: 700; }
 
 /* Smart hints inside the habit form */
 .form-warn {
