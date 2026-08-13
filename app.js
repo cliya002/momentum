@@ -203,6 +203,21 @@
       ],
     },
     {
+      title: "🔥 Fat-loss support (evidence-based)",
+      items: [
+        { name: "Caffeine", icon: "☕", color: "#a855f7", category: "Supplements", time: "Morning", notes: "100–200mg — the best-evidenced aid: a small metabolism bump, appetite blunting and better workouts. Keep it 8–10h before bed. The calorie deficit does the real work; supplements are marginal.", reminderTimes: ["08:00"] },
+        { name: "Protein (whey)", icon: "🥛", color: "#ec4899", category: "Supplements", time: "All day", notes: "Not a burner — but high protein keeps you full and protects muscle in a deficit. One of the most effective fat-loss tools when it helps you hit your protein target." },
+        { name: "Green tea extract (EGCG)", icon: "🍵", color: "#22c55e", category: "Supplements", time: "Morning", notes: "Modest rise in fat oxidation, mostly alongside caffeine. Take with food; don't megadose (liver caution at very high EGCG doses)." },
+        { name: "Glucomannan", icon: "🌿", color: "#14b8a6", category: "Supplements", time: "Before meals", notes: "1g with a big glass of water 15–30 min before meals — a viscous fiber that curbs appetite. Always take with plenty of water so it doesn't swell in the throat.", type: "count", target: 3, unit: "", increment: 1, reminderTimes: ["07:45", "11:45", "17:45"] },
+        { name: "Berberine", icon: "🌿", color: "#84cc16", category: "Supplements", time: "8:00 AM & 6:00 PM", notes: "~500mg with carb meals — improves insulin sensitivity and blood-sugar control, which can help a deficit. Split doses; check interactions with any medications.", type: "count", target: 2, unit: "", increment: 1, reminderTimes: ["08:00", "18:00"] },
+        { name: "Apple cider vinegar", icon: "🍯", color: "#f59e0b", category: "Supplements", time: "Before meals", notes: "1 tbsp diluted in water before a meal — a small appetite/blood-sugar effect. Sip through a straw to protect tooth enamel.", reminderTimes: ["07:45"] },
+        { name: "Cayenne / Capsaicin", icon: "🌶️", color: "#ef4444", category: "Supplements", time: "With meals", notes: "Mild thermogenic and appetite effect. Take with food; can irritate a sensitive stomach." },
+        { name: "L-Carnitine", icon: "💊", color: "#3b82f6", category: "Supplements", time: "With a carb meal", notes: "Evidence is mixed — may slightly aid fat oxidation and is absorbed better with carbs. Modest at best.", reminderTimes: ["08:00"] },
+        { name: "Yohimbine HCl", icon: "⚠️", color: "#f97316", category: "Supplements", time: "Fasted, pre-cardio", notes: "~0.2mg/kg fasted may aid stubborn-fat loss, but side effects are common: anxiety, raised heart rate and blood pressure. Avoid with heart conditions, anxiety, or SSRIs. Not for everyone — this is general info, not medical advice.", reminderTimes: ["07:00"] },
+        { name: "Electrolytes", icon: "🧂", color: "#38bdf8", category: "Supplements", time: "All day", notes: "Not fat loss directly — but sodium, potassium and magnesium ease low-carb or fasting adherence (steadier energy, fewer cramps and headaches)." },
+      ],
+    },
+    {
       title: "💇 Hair & grooming",
       items: [
         { name: "Hair oil",        icon: "🧴",  color: "#f59e0b", category: "Custom", time: "Evening", notes: "Scalp massage + oil" },
@@ -2246,6 +2261,7 @@
     if (/collagen|glycine/.test(n)) return rec(null, "Any time — daily", "Timing isn't critical; some take glycine at night to aid sleep.");
     if (/multivitamin|\bmulti\b|prenatal/.test(n)) return rec("08:00", "Morning, with a meal", "Take with food so the fat-soluble vitamins inside absorb.");
     if (/vitamin\s*c|ascorb/.test(n)) return rec("08:00", "Morning (pairs with iron)", "Water-soluble; boosts iron absorption when taken together.");
+    if (/glucomannan|konjac/.test(n)) return rec("07:45", "15–30 min before meals, lots of water", "Viscous fiber that curbs appetite — always take with a full glass of water; keep apart from meds.");
     if (/fiber|psyllium|metamucil/.test(n)) return rec(null, "With plenty of water, apart from meds", "Take with a full glass of water and keep ~2h from other supplements/medications.");
     if (/whey|protein/.test(n)) return rec(null, "Around training / to top up protein", "Timing is flexible — total daily protein matters most; post-workout is convenient.");
     if (/berberine/.test(n)) return rec("18:00", "With each main meal", "Take with carb-containing meals to blunt blood-sugar spikes; split across meals. Check interactions with medications.");
@@ -2254,6 +2270,11 @@
     if (/\bnac\b|acetyl\s*cysteine/.test(n)) return rec(null, "Any time (empty stomach ideal)", "Absorbs well on an empty stomach; timing is flexible.");
     if (/selenium/.test(n)) return rec("08:00", "Morning, with food", "A little goes a long way — take with a meal and don't exceed ~200 mcg/day.");
     if (/vitamin\s*e|tocopherol/.test(n)) return rec("08:00", "With a fatty meal", "Fat-soluble — take with dietary fat.");
+    if (/green\s*tea|egcg|matcha/.test(n)) return rec("08:00", "Morning, with caffeine", "Modest fat-oxidation effect, mostly alongside caffeine; take with food.");
+    if (/capsaicin|cayenne/.test(n)) return rec("18:00", "With meals", "Mild thermogenic and appetite effect; take with food to spare the stomach.");
+    if (/carnitine/.test(n)) return rec("08:00", "With a carb-containing meal", "Absorbs better with carbs; fat-loss evidence is mixed and modest.");
+    if (/yohimbine/.test(n)) return rec("07:00", "Fasted, before cardio", "May aid stubborn-fat loss fasted, but raises heart rate/BP and anxiety — avoid with heart, anxiety or SSRI concerns.");
+    if (/green\s*coffee|chlorogenic/.test(n)) return rec("08:00", "Before a meal", "Weak evidence for small weight effects; take before eating.");
     return null;
   }
 

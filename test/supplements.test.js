@@ -60,6 +60,16 @@ console.log("supplementTiming (evidence-based timing)");
   assert(slot(T.supplementTiming("Calcium citrate").time) === "evening", "calcium → with a meal (evening)");
   assert(slot(T.supplementTiming("CoQ10 ubiquinol").time) === "morning", "coq10 → morning");
 
+  // Fat-loss support matchers.
+  assert(slot(T.supplementTiming("Green tea extract (EGCG)").time) === "morning", "green tea → morning");
+  assert(slot(T.supplementTiming("Cayenne / Capsaicin").time) === "evening", "capsaicin → with meals");
+  assert(slot(T.supplementTiming("L-Carnitine").time) === "morning", "l-carnitine → with a carb meal (morning)");
+  assert(slot(T.supplementTiming("Yohimbine HCl").time) === "morning", "yohimbine → fasted morning pre-cardio");
+  assert(/heart|anxiety|ssri/i.test(T.supplementTiming("Yohimbine HCl").reason), "yohimbine flags cardiovascular/anxiety caution");
+  // Glucomannan must NOT be swallowed by the generic fiber matcher.
+  const gluco = T.supplementTiming("Glucomannan");
+  assert(gluco.time === "07:45" && /before meals/i.test(gluco.label), "glucomannan → before meals (its own rule, not generic fiber)");
+
   // Unknown → null.
   assert(T.supplementTiming("Dragon fruit smoothie") === null, "unrecognised supplement → null");
   assert(T.supplementTiming("") === null, "empty name → null");
