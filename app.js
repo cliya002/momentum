@@ -190,6 +190,16 @@
         { name: "Whey protein shake", icon: "🥛", color: "#ec4899", category: "Supplements", time: "6:00 PM · post-workout", notes: "1 scoop (~25g protein) within a couple of hours of training, or to top up your daily protein." },
         { name: "Amla + Collagen", icon: "💊",  color: "#22c55e", category: "Supplements", time: "Morning", notes: "For hair, skin & nails — take with vitamin C to support collagen." },
         { name: "Cinnamon Turmeric ACV", icon: "🍯", color: "#f59e0b", category: "Supplements", time: "8:00 AM & 8:00 PM", notes: "Twice a day — morning & evening. Dilute 1 tbsp ACV in water; turmeric absorbs better with black pepper + a little fat. Sip through a straw to protect tooth enamel.", type: "count", target: 2, unit: "", increment: 1, reminderTimes: ["08:00", "20:00"] },
+        { name: "Melatonin", icon: "🌙", color: "#6366f1", category: "Supplements", time: "Night", notes: "0.5–3mg, 30–60 min before bed. Start low — it shifts sleep timing more than it sedates. General wellness, not for long-term nightly use without advice.", reminderTimes: ["21:30"] },
+        { name: "Iron (bisglycinate)", icon: "🩸", color: "#ef4444", category: "Supplements", time: "8:00 AM", notes: "Morning on an empty stomach with vitamin C for absorption; keep away from coffee, tea, calcium and zinc. Only supplement if you're low — get levels checked.", reminderTimes: ["08:00"] },
+        { name: "Calcium", icon: "🦴", color: "#38bdf8", category: "Supplements", time: "6:00 PM", notes: "Split into ≤500mg doses with meals for absorption; keep ~2h from iron and zinc. Pairs with vitamin D/K2.", reminderTimes: ["18:00"] },
+        { name: "CoQ10 (Ubiquinol)", icon: "⚡", color: "#f59e0b", category: "Supplements", time: "8:00 AM", notes: "100–200mg in the morning with a fatty meal — fat-soluble and mildly energizing.", reminderTimes: ["08:00"] },
+        { name: "L-Theanine", icon: "🍵", color: "#22c55e", category: "Supplements", time: "Morning", notes: "100–200mg. Pairs with caffeine for calm focus; also relaxing in the evening. Flexible timing." },
+        { name: "Turmeric / Curcumin", icon: "🟡", color: "#f59e0b", category: "Supplements", time: "6:00 PM", notes: "Take with a meal that has fat + black pepper (piperine) — poorly absorbed on its own.", reminderTimes: ["18:00"] },
+        { name: "Berberine", icon: "🌿", color: "#84cc16", category: "Supplements", time: "8:00 AM & 6:00 PM", notes: "~500mg with each main carb meal to blunt blood-sugar spikes; split doses. Can upset the stomach — check interactions with any medications.", type: "count", target: 2, unit: "", increment: 1, reminderTimes: ["08:00", "18:00"] },
+        { name: "Rhodiola Rosea", icon: "🌱", color: "#22c55e", category: "Supplements", time: "8:00 AM", notes: "Adaptogen for fatigue and stress — morning on an empty stomach. Can be stimulating, so avoid taking it late.", reminderTimes: ["08:00"] },
+        { name: "Lion's Mane", icon: "🍄", color: "#a78bfa", category: "Supplements", time: "Morning", notes: "Nootropic for focus and mood — daytime dosing, with or without food." },
+        { name: "NAC (N-Acetyl Cysteine)", icon: "💊", color: "#14b8a6", category: "Supplements", time: "Morning", notes: "600–1200mg. Absorbs well on an empty stomach; timing is flexible. Supports antioxidant (glutathione) status." },
       ],
     },
     {
@@ -2238,6 +2248,12 @@
     if (/vitamin\s*c|ascorb/.test(n)) return rec("08:00", "Morning (pairs with iron)", "Water-soluble; boosts iron absorption when taken together.");
     if (/fiber|psyllium|metamucil/.test(n)) return rec(null, "With plenty of water, apart from meds", "Take with a full glass of water and keep ~2h from other supplements/medications.");
     if (/whey|protein/.test(n)) return rec(null, "Around training / to top up protein", "Timing is flexible — total daily protein matters most; post-workout is convenient.");
+    if (/berberine/.test(n)) return rec("18:00", "With each main meal", "Take with carb-containing meals to blunt blood-sugar spikes; split across meals. Check interactions with medications.");
+    if (/rhodiola/.test(n)) return rec("08:00", "Morning, empty stomach", "Adaptogen for energy and stress — take earlier in the day; can be stimulating.");
+    if (/lion'?s\s*mane|hericium/.test(n)) return rec("08:00", "Morning", "Nootropic for focus and mood — daytime dosing, with or without food.");
+    if (/\bnac\b|acetyl\s*cysteine/.test(n)) return rec(null, "Any time (empty stomach ideal)", "Absorbs well on an empty stomach; timing is flexible.");
+    if (/selenium/.test(n)) return rec("08:00", "Morning, with food", "A little goes a long way — take with a meal and don't exceed ~200 mcg/day.");
+    if (/vitamin\s*e|tocopherol/.test(n)) return rec("08:00", "With a fatty meal", "Fat-soluble — take with dietary fat.");
     return null;
   }
 

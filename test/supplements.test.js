@@ -51,6 +51,15 @@ console.log("supplementTiming (evidence-based timing)");
   const r = T.supplementTiming("Vitamin D");
   assert(r.label && r.reason && r.reason.length > 10, "returns a label and a reason");
 
+  // Newly added recognitions.
+  assert(slot(T.supplementTiming("Rhodiola Rosea").time) === "morning", "rhodiola → morning");
+  assert(slot(T.supplementTiming("Lion's Mane").time) === "morning", "lion's mane → morning");
+  assert(slot(T.supplementTiming("Berberine").time) === "evening", "berberine → with meals (evening bucket)");
+  assert(T.supplementTiming("NAC").time === null, "NAC → flexible timing");
+  assert(slot(T.supplementTiming("Melatonin").time) === "evening", "melatonin → evening");
+  assert(slot(T.supplementTiming("Calcium citrate").time) === "evening", "calcium → with a meal (evening)");
+  assert(slot(T.supplementTiming("CoQ10 ubiquinol").time) === "morning", "coq10 → morning");
+
   // Unknown → null.
   assert(T.supplementTiming("Dragon fruit smoothie") === null, "unrecognised supplement → null");
   assert(T.supplementTiming("") === null, "empty name → null");
